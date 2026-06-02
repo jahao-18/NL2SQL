@@ -12,5 +12,7 @@ main.container { max-width: 960px; padding-top: 2rem; padding-bottom: 4rem; }
 #result-table th { text-align: left; background: var(--pico-card-sectioning-background-color); }
 
 #error-box { border-left: 4px solid #d9534f; }
+#clarify-box { border-left: 4px solid #f0ad4e; background: rgba(240, 173, 78, 0.06); }
+#clarify-msg { font-weight: 500; }
 
 details pre { max-height: 320px; overflow: auto; }

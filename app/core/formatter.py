@@ -21,6 +21,7 @@ def format_success(
         "elapsed_ms": elapsed_ms,
         "truncated": truncated,
         "error": None,
+        "clarify": None,
     }
 
 
@@ -34,4 +35,20 @@ def format_error(error: str, sql: str | None = None) -> dict[str, Any]:
         "elapsed_ms": 0,
         "truncated": False,
         "error": error,
+        "clarify": None,
+    }
+
+
+def format_clarify(question: str) -> dict[str, Any]:
+    """LLM 需要用户先回答澄清问题再生成 SQL。不走 validator/executor。"""
+    return {
+        "sql": None,
+        "columns": [],
+        "column_sources": [],
+        "rows": [],
+        "row_count": 0,
+        "elapsed_ms": 0,
+        "truncated": False,
+        "error": None,
+        "clarify": question,
     }

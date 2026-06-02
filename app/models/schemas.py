@@ -1,15 +1,16 @@
 """API 请求 / 响应模型。"""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
 class Turn(BaseModel):
-    """一轮成功的历史对话(用户问题 + 模型生成的最终 SQL)。"""
+    """一轮历史对话。kind=sql 时 content 是 SQL;kind=clarify 时 content 是模型问用户的澄清问题。"""
     question: str = Field(..., min_length=1, max_length=500)
-    sql: str = Field(..., min_length=1, max_length=2000)
+    sql: str = Field(..., min_length=1, max_length=2000, description="kind=sql 时为 SQL,kind=clarify 时为 'CLARIFY: ...' 文本")
+    kind: Literal["sql", "clarify"] = Field("sql", description="本轮模型输出类型")
 
 
 class AskRequest(BaseModel):
@@ -26,6 +27,7 @@ class AskResponse(BaseModel):
     elapsed_ms: int = 0
     truncated: bool = Field(False, description="用户请求的 LIMIT 是否被收紧到 MAX_ROWS")
     error: str | None = None
+    clarify: str | None = Field(None, description="LLM 觉得信息模糊,需要用户先回答这个问题再继续")
 
 
 class SchemaResponse(BaseModel):

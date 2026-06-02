@@ -7,6 +7,8 @@ const clearBtn = $("clear-btn");
 const historyBadge = $("history-badge");
 const errorBox = $("error-box");
 const errorMsg = $("error-msg");
+const clarifyBox = $("clarify-box");
+const clarifyMsg = $("clarify-msg");
 const sqlBox = $("sql-box");
 const sqlText = $("sql-text");
 const metaText = $("meta-text");
@@ -96,6 +98,7 @@ form.addEventListener("submit", async (e) => {
   if (!question) return;
 
   hide(errorBox);
+  hide(clarifyBox);
   hide(sqlBox);
   hide(resultBox);
   submitBtn.disabled = true;
@@ -111,6 +114,19 @@ form.addEventListener("submit", async (e) => {
       body: JSON.stringify({ question, history }),
     });
     const data = await resp.json();
+
+    if (data.clarify) {
+      // LLM 要求澄清:展示问题, 把这轮以 kind=clarify 写入历史, 让用户输入回答
+      clarifyMsg.textContent = data.clarify;
+      show(clarifyBox);
+      const next = loadHistory();
+      next.push({ question, sql: `CLARIFY: ${data.clarify}`, kind: "clarify" });
+      saveHistory(next.slice(-MAX_HISTORY_TURNS * 2));
+      updateHistoryBadge();
+      questionEl.value = "";
+      questionEl.focus();
+      return;
+    }
 
     if (data.sql) {
       sqlText.textContent = data.sql;
@@ -133,7 +149,7 @@ form.addEventListener("submit", async (e) => {
       const isPlaceholder = data.columns.length === 1 && data.columns[0] === "error";
       if (data.sql && !isPlaceholder) {
         const next = loadHistory();
-        next.push({ question, sql: data.sql });
+        next.push({ question, sql: data.sql, kind: "sql" });
         saveHistory(next.slice(-MAX_HISTORY_TURNS * 2));  // 本地多存一点,发送时再截
         updateHistoryBadge();
       }

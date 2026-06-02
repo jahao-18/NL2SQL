@@ -1,15 +1,4 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 2594bd8e8e19a5e62b153b8298f20392_ac1407af5e4a11f1b5095254007bceed
-    ReservedCode1: RjyfN3ocLtB8KVzmxOhoi0cLk9LuCY79u6Dw4WAyjGTAoHUieyCgc5uEy0unDVF4ZILHAGJp53Uesag5JO+Q0OFDsDVSLl+T2/paRa+iORaDXSujCrbp8Py6Lw2Yb9lRi6Tl5C4oKvWTz48zg1JJRJhskQg7CYwr0ND/tz/BkbeL0UJbaDcjV/i32Hk=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 2594bd8e8e19a5e62b153b8298f20392_ac1407af5e4a11f1b5095254007bceed
-    ReservedCode2: RjyfN3ocLtB8KVzmxOhoi0cLk9LuCY79u6Dw4WAyjGTAoHUieyCgc5uEy0unDVF4ZILHAGJp53Uesag5JO+Q0OFDsDVSLl+T2/paRa+iORaDXSujCrbp8Py6Lw2Yb9lRi6Tl5C4oKvWTz48zg1JJRJhskQg7CYwr0ND/tz/BkbeL0UJbaDcjV/i32Hk=
----
-
-﻿# NL2SQL 智能问数系统 — 回归测试 & 探索测试报告
+-# NL2SQL 智能问数系统 — 回归测试 & 探索测试报告
 
 **测试日期**: 2026-06-02  
 **测试环境**: Windows 11, http://127.0.0.1:8000  
