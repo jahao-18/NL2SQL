@@ -15,6 +15,11 @@
     </hgroup>
 
     <form id="ask-form">
+      <label for="source-select">数据源</label>
+      <select id="source-select" style="margin-bottom:.6rem;">
+        <option value="">加载中…</option>
+      </select>
+
       <label for="question">你的问题</label>
       <textarea id="question" rows="2" placeholder="例:北京有多少用户?可以追问:他们里 60 岁以上有几个?" required></textarea>
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">

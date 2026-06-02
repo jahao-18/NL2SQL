@@ -17,8 +17,10 @@ const thead = $("result-thead");
 const tbody = $("result-tbody");
 const emptyHint = $("empty-hint");
 const copyBtn = $("copy-btn");
+const sourceSelect = $("source-select");
 
 const HISTORY_KEY = "nl2sql.history.v1";
+const SOURCE_KEY = "nl2sql.source.v1";
 const MAX_HISTORY_TURNS = 5;
 
 function loadHistory() {
@@ -36,6 +38,11 @@ function saveHistory(history) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 }
 
+function clearHistory() {
+  localStorage.removeItem(HISTORY_KEY);
+  updateHistoryBadge();
+}
+
 function updateHistoryBadge() {
   const n = loadHistory().length;
   historyBadge.textContent = n === 0 ? "未开始会话" : `已记 ${n} 轮(发送最近 ${Math.min(n, MAX_HISTORY_TURNS)} 轮上下文)`;
@@ -43,6 +50,10 @@ function updateHistoryBadge() {
 
 function show(el) { el.hidden = false; }
 function hide(el) { el.hidden = true; }
+
+function currentSource() {
+  return sourceSelect.value || null;
+}
 
 function renderTable(columns, rows, sources) {
   thead.innerHTML = "";
@@ -53,7 +64,6 @@ function renderTable(columns, rows, sources) {
     const alias = columns[i];
     const src = hasSources ? (sources[i] || "") : "";
     if (src && src !== alias) {
-      // 双行表头:主标题(别名) + 灰色小字(源表达式)
       th.innerHTML = "";
       const nameDiv = document.createElement("div");
       nameDiv.textContent = alias;
@@ -83,14 +93,54 @@ function renderTable(columns, rows, sources) {
 
 async function loadSchema() {
   try {
-    const resp = await fetch("/api/schema");
-    if (!resp.ok) return;
+    const src = currentSource();
+    const url = src ? `/api/schema?source=${encodeURIComponent(src)}` : "/api/schema";
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      $("schema-text").textContent = `(加载失败: HTTP ${resp.status})`;
+      return;
+    }
     const data = await resp.json();
     $("schema-text").textContent = data.ddl;
   } catch (e) {
     $("schema-text").textContent = "(加载失败)";
   }
 }
+
+async function loadSources() {
+  try {
+    const resp = await fetch("/api/sources");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    sourceSelect.innerHTML = "";
+    for (const s of data.sources) {
+      const opt = document.createElement("option");
+      opt.value = s.name;
+      opt.textContent = `${s.label} · ${s.dialect}`;
+      sourceSelect.appendChild(opt);
+    }
+    const remembered = localStorage.getItem(SOURCE_KEY);
+    const fallback = data.default || (data.sources[0] && data.sources[0].name);
+    const valid = data.sources.some(s => s.name === remembered);
+    sourceSelect.value = valid ? remembered : fallback;
+  } catch (e) {
+    sourceSelect.innerHTML = `<option value="">(数据源加载失败)</option>`;
+  }
+}
+
+sourceSelect.addEventListener("change", () => {
+  const src = currentSource();
+  if (src) localStorage.setItem(SOURCE_KEY, src);
+  // 跨库历史无意义,切换时清空 history 并提示
+  if (loadHistory().length > 0) {
+    clearHistory();
+  }
+  hide(errorBox);
+  hide(clarifyBox);
+  hide(sqlBox);
+  hide(resultBox);
+  loadSchema();
+});
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -106,17 +156,17 @@ form.addEventListener("submit", async (e) => {
   submitBtn.textContent = "查询中…";
 
   const history = loadHistory().slice(-MAX_HISTORY_TURNS);
+  const source = currentSource();
 
   try {
     const resp = await fetch("/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify({ question, history, source }),
     });
     const data = await resp.json();
 
     if (data.clarify) {
-      // LLM 要求澄清:展示问题, 把这轮以 kind=clarify 写入历史, 让用户输入回答
       clarifyMsg.textContent = data.clarify;
       show(clarifyBox);
       const next = loadHistory();
@@ -145,12 +195,11 @@ form.addEventListener("submit", async (e) => {
       renderTable(data.columns, data.rows, data.column_sources);
       show(resultBox);
 
-      // 仅追加成功且非"无法回答"占位的轮次
       const isPlaceholder = data.columns.length === 1 && data.columns[0] === "error";
       if (data.sql && !isPlaceholder) {
         const next = loadHistory();
         next.push({ question, sql: data.sql, kind: "sql" });
-        saveHistory(next.slice(-MAX_HISTORY_TURNS * 2));  // 本地多存一点,发送时再截
+        saveHistory(next.slice(-MAX_HISTORY_TURNS * 2));
         updateHistoryBadge();
       }
     }
@@ -167,8 +216,7 @@ form.addEventListener("submit", async (e) => {
 clearBtn.addEventListener("click", () => {
   if (loadHistory().length === 0) return;
   if (!confirm("清空当前会话历史?后续提问将不再带上下文。")) return;
-  localStorage.removeItem(HISTORY_KEY);
-  updateHistoryBadge();
+  clearHistory();
 });
 
 copyBtn.addEventListener("click", async () => {
@@ -177,5 +225,8 @@ copyBtn.addEventListener("click", async () => {
   setTimeout(() => (copyBtn.textContent = "复制"), 1200);
 });
 
-loadSchema();
-updateHistoryBadge();
+(async () => {
+  await loadSources();
+  await loadSchema();
+  updateHistoryBadge();
+})();

@@ -19,6 +19,35 @@ from app.models.schemas import Turn
 
 CLARIFY_PREFIX = "CLARIFY:"
 
+# 方言提示:LLM 生成 SQL 时需要的方言专有写法概览。
+# 故意保持简短,避免污染上下文;详细差异让模型从 schema 推断。
+_DIALECT_NOTES: dict[str, str] = {
+    "sqlite": (
+        "- 时间字段是 ISO8601 文本时:用 substr(col,1,4) 取年、substr(col,1,7) 取年-月、"
+        "或 col LIKE '2025%' 这类前缀匹配。也支持 strftime('%Y-%m', col)。\n"
+        "- 字符串拼接用 ||。\n"
+        "- LIMIT N 强制分页;ROW_NUMBER() OVER (PARTITION BY ...) 支持窗口函数。"
+    ),
+    "postgresql": (
+        "- 时间字段若是 timestamp/date,用 EXTRACT(YEAR FROM col)、DATE_TRUNC('month', col)、"
+        "或 to_char(col,'YYYY-MM');若是 text 列存的 ISO8601,用 substr(col,1,4)。\n"
+        "- 字符串拼接用 || 或 CONCAT()。\n"
+        "- LIMIT N 强制分页;严格类型——数字与字符串比较需 CAST。"
+    ),
+    "mysql": (
+        "- 时间字段:用 YEAR(col)、DATE_FORMAT(col,'%Y-%m')、或 DATE(col)。\n"
+        "- 字符串拼接用 CONCAT(a,b),不要用 ||(会被当成 OR)。\n"
+        "- LIMIT N 强制分页。"
+    ),
+    "other": (
+        "- 用标准 SQL 写法;LIMIT N 分页,窗口函数 ROW_NUMBER() OVER (...) 可用。"
+    ),
+}
+
+
+def dialect_notes(dialect: str) -> str:
+    return _DIALECT_NOTES.get(dialect, _DIALECT_NOTES["other"])
+
 
 def _read(filename: str) -> str:
     return (PROMPTS_DIR / filename).read_text(encoding="utf-8")
@@ -102,7 +131,10 @@ def _chat_prompt() -> ChatPromptTemplate:
 
 
 def generate_sql(
-    schema: str, question: str, history: list[Turn] | None = None
+    schema: str,
+    question: str,
+    history: list[Turn] | None = None,
+    dialect: str = "sqlite",
 ) -> tuple[Literal["sql", "clarify"], str]:
     """返回 (kind, content):kind=sql 时 content 是 SQL,kind=clarify 时 content 是要问用户的问题。"""
     chain = _chat_prompt() | _llm() | StrOutputParser()
@@ -112,6 +144,8 @@ def generate_sql(
             "question": question,
             "history": _history_to_messages(history or []),
             "current_date": date.today().isoformat(),
+            "dialect": dialect,
+            "dialect_notes": dialect_notes(dialect),
         }
     )
     return _parse_output(raw)
@@ -122,7 +156,13 @@ def _repair_prompt() -> PromptTemplate:
     return PromptTemplate.from_template(_read("sql_repair_prompt.txt"))
 
 
-def repair_sql(schema: str, question: str, previous_sql: str, error: str) -> str:
+def repair_sql(
+    schema: str,
+    question: str,
+    previous_sql: str,
+    error: str,
+    dialect: str = "sqlite",
+) -> str:
     chain = _repair_prompt() | _llm() | StrOutputParser()
     raw = chain.invoke(
         {
@@ -131,6 +171,7 @@ def repair_sql(schema: str, question: str, previous_sql: str, error: str) -> str
             "previous_sql": previous_sql,
             "error": error,
             "current_date": date.today().isoformat(),
+            "dialect": dialect,
         }
     )
     return _strip_sql(raw)

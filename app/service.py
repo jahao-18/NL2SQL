@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from app.core.chain import generate_sql, repair_sql
+from app.core.data_sources import get_source
 from app.core.executor import SQLExecutionError, execute
 from app.core.formatter import format_clarify, format_error, format_success
 from app.core.schema import load_schema
@@ -22,10 +23,19 @@ MAX_REPAIR_ROUNDS = 2
 MAX_HISTORY_TURNS = 5  # 后端兜底截断,防止前端发太多
 
 
-def ask(question: str, history: list[Turn] | None = None) -> dict[str, Any]:
+def ask(
+    question: str,
+    history: list[Turn] | None = None,
+    source: str | None = None,
+) -> dict[str, Any]:
     try:
-        schema_info = load_schema()
-    except FileNotFoundError as e:
+        ds = get_source(source)
+    except KeyError as e:
+        return format_error(str(e))
+
+    try:
+        schema_info = load_schema(ds.name)
+    except (FileNotFoundError, RuntimeError) as e:
         return format_error(str(e))
 
     trimmed_history = (history or [])[-MAX_HISTORY_TURNS:]
@@ -38,11 +48,14 @@ def ask(question: str, history: list[Turn] | None = None) -> dict[str, Any]:
     for attempt in range(MAX_REPAIR_ROUNDS + 1):
         try:
             if attempt == 0:
-                kind, content = generate_sql(schema_info.ddl_text, question, trimmed_history)
+                kind, content = generate_sql(
+                    schema_info.ddl_text, question, trimmed_history, dialect=ds.dialect,
+                )
             else:
                 # 失败回修走单轮 prompt,不带历史,只允许返回 SQL
                 kind, content = "sql", repair_sql(
-                    schema_info.ddl_text, question, last_sql or "", last_err or ""
+                    schema_info.ddl_text, question, last_sql or "", last_err or "",
+                    dialect=ds.dialect,
                 )
         except Exception as e:
             logger.exception("LLM 调用失败")
@@ -50,13 +63,12 @@ def ask(question: str, history: list[Turn] | None = None) -> dict[str, Any]:
 
         if kind == "clarify":
             if last_turn_was_clarify:
-                # 用户已回答过一次澄清,模型仍然请求澄清 => prompt 没生效,降级为错误返回
                 logger.warning("已澄清一次仍触发 CLARIFY,降级为错误 | q=%s | clarify=%s", question, content)
                 return format_error(
                     "经过澄清后仍无法生成 SQL,请尝试更具体地描述需求。"
                 )
-            logger.info("ask clarify | q=%s | history=%d | clarify=%s",
-                        question, len(trimmed_history), content)
+            logger.info("ask clarify | source=%s | q=%s | history=%d | clarify=%s",
+                        ds.name, question, len(trimmed_history), content)
             return format_clarify(content)
 
         raw_sql = content
@@ -68,20 +80,19 @@ def ask(question: str, history: list[Turn] | None = None) -> dict[str, Any]:
             continue
 
         try:
-            columns, rows, elapsed_ms = execute(safe_sql)
+            columns, rows, elapsed_ms = execute(safe_sql, source_name=ds.name)
         except SQLExecutionError as e:
             last_sql, last_err = safe_sql, str(e)
             logger.warning("SQL 执行失败 attempt=%s err=%s sql=%s", attempt, e, safe_sql)
             continue
 
         column_sources = extract_column_sources(safe_sql)
-        # 长度对齐兜底:解析结果数量与实际列对不上时,丢弃源信息,避免前端错位
         if len(column_sources) != len(columns):
             column_sources = []
 
         logger.info(
-            "ask ok | q=%s | history=%d | sql=%s | rows=%d | %dms | truncated=%s",
-            question, len(trimmed_history), safe_sql, len(rows), elapsed_ms, truncated,
+            "ask ok | source=%s | q=%s | history=%d | sql=%s | rows=%d | %dms | truncated=%s",
+            ds.name, question, len(trimmed_history), safe_sql, len(rows), elapsed_ms, truncated,
         )
         return format_success(
             safe_sql, columns, rows, elapsed_ms,

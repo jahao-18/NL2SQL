@@ -15,14 +15,8 @@ class Settings(BaseSettings):
 
     dashscope_api_key: str = ""
     qwen_model: str = "qwen-plus"
-    db_path: str = "data/app.db"
     max_rows: int = 200
     query_timeout_seconds: int = 5
-
-    @property
-    def db_abspath(self) -> Path:
-        p = Path(self.db_path)
-        return p if p.is_absolute() else ROOT_DIR / p
 
 
 settings = Settings()

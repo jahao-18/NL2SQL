@@ -221,6 +221,48 @@ uvicorn app.main:app --reload
 
 ---
 
+## 连接你自己的数据库
+
+系统通过项目根目录的 `data_sources.yaml` 注册数据源,前端顶部下拉可切换。
+当前支持 **SQLite** 和 **PostgreSQL**(只需改 `url`,无需改代码)。
+
+### 1. 编辑 `data_sources.yaml`
+
+```yaml
+sources:
+  - name: demo_sqlite                     # 内部标识,前端用
+    label: 示例电商 (SQLite)               # 下拉显示名
+    url: sqlite:///data/app.db            # SQLAlchemy 风格连接串
+    glossary: data/glossaries/demo_sqlite.md   # 可选,业务词表
+
+  - name: prod_pg
+    label: 生产库 (PostgreSQL)
+    url: postgresql+psycopg://readonly_user:password@127.0.0.1:5432/mydb
+    glossary: data/glossaries/prod_pg.md
+```
+
+### 2. (可选)给新数据库写业务词表
+
+在 `data/glossaries/<name>.md` 写枚举映射、跨表语义、字段口径等。系统会:
+- 自动发现**低基数 TEXT 列**的枚举值(扫 `SELECT DISTINCT`,≤20 个 distinct 才注入),不用手写
+- **手写词表**用于补充自动发现不到的内容,比如"客单价 = SUM(amount)/COUNT(DISTINCT order_id)"、表间业务关联等
+
+留空文件或不配 `glossary` 字段也能跑,只是模型对该库的业务语义全靠 schema 推断。
+
+### 3. 重启服务
+
+`data_sources.yaml` 在启动时加载,改完需重启 `uvicorn`。前端下拉切换会自动:
+- 重新拉取该源的 schema
+- 清空 history(跨库历史 SQL 无意义)
+
+### 安全说明
+
+- SQLite 走 `?mode=ro` URI,DB 层强制只读
+- PostgreSQL 走 `SET default_transaction_read_only=on`,会话级只读
+- 即使 SQL 解析器漏过危险操作,DB 账号层面也会拒绝写
+
+---
+
 ## 使用方式
 
 ### Web 前端

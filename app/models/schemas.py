@@ -16,6 +16,18 @@ class Turn(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500, description="用户的自然语言问题")
     history: list[Turn] = Field(default_factory=list, description="历史对话,最近 N 轮,无状态由前端持有")
+    source: str | None = Field(None, description="数据源名称,None 表示用默认(配置里的第一个)")
+
+
+class SourceInfo(BaseModel):
+    name: str
+    label: str
+    dialect: str
+
+
+class SourcesResponse(BaseModel):
+    sources: list[SourceInfo]
+    default: str
 
 
 class AskResponse(BaseModel):
