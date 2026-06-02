@@ -1,0 +1,16 @@
+main.container { max-width: 960px; padding-top: 2rem; padding-bottom: 4rem; }
+
+#sql-box pre { margin: 0; }
+#sql-box code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.95rem; }
+
+#result-table { width: 100%; font-size: 0.92rem; }
+#result-table th, #result-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  white-space: nowrap;
+}
+#result-table th { text-align: left; background: var(--pico-card-sectioning-background-color); }
+
+#error-box { border-left: 4px solid #d9534f; }
+
+details pre { max-height: 320px; overflow: auto; }

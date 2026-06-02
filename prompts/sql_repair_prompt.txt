@@ -1,0 +1,17 @@
+你之前生成的 SQL 执行失败,请基于错误信息修正,仍然严格遵守原有规则。
+
+今天是 {current_date}。
+
+【表结构】
+{schema}
+
+【用户问题】
+{question}
+
+【上次生成的 SQL】
+{previous_sql}
+
+【执行错误】
+{error}
+
+【修正后的 SQL】(仅输出 SQL 本身,无解释)

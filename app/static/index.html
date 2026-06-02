@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>NL2SQL · 自然语言查数据库</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="container">
+    <hgroup>
+      <h2>NL2SQL</h2>
+      <p>用自然语言提问,系统翻译成 SQL 并查询 SQLite。</p>
+    </hgroup>
+
+    <form id="ask-form">
+      <label for="question">你的问题</label>
+      <textarea id="question" rows="2" placeholder="例:北京有多少用户?可以追问:他们里 60 岁以上有几个?" required></textarea>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+        <button type="submit" id="submit-btn" style="margin:0;">查询</button>
+        <button type="button" id="clear-btn" class="secondary outline" style="margin:0;">清空会话</button>
+        <small id="history-badge" style="margin-left:auto;color:var(--pico-muted-color);">未开始会话</small>
+      </div>
+    </form>
+
+    <article id="error-box" hidden>
+      <strong>错误:</strong> <span id="error-msg"></span>
+    </article>
+
+    <article id="sql-box" hidden>
+      <header style="display:flex;justify-content:space-between;align-items:center;">
+        <strong>生成的 SQL</strong>
+        <button class="secondary outline" id="copy-btn" type="button" style="margin:0;padding:.2rem .6rem;">复制</button>
+      </header>
+      <pre><code id="sql-text"></code></pre>
+      <footer>
+        <small id="meta-text"></small>
+      </footer>
+    </article>
+
+    <article id="result-box" hidden>
+      <strong>查询结果</strong>
+      <div style="overflow-x:auto;">
+        <table id="result-table">
+          <thead><tr id="result-thead"></tr></thead>
+          <tbody id="result-tbody"></tbody>
+        </table>
+      </div>
+      <footer><small id="empty-hint" hidden>(无数据)</small></footer>
+    </article>
+
+    <details>
+      <summary>查看数据库表结构</summary>
+      <pre><code id="schema-text">加载中…</code></pre>
+    </details>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
