@@ -27,6 +27,7 @@ def format_success(
     auto_routed: bool = False,
     confidence: int | None = None,
     confidence_detail: dict[str, Any] | None = None,
+    judge_id: str | None = None,
 ) -> dict[str, Any]:
     return {
         "sql": sql,
@@ -40,6 +41,7 @@ def format_success(
         "clarify": None,
         "confidence": confidence,
         "confidence_detail": confidence_detail,
+        "judge_id": judge_id,
         **_source_fields(source, source_label, auto_routed),
     }
 

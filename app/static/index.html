@@ -103,6 +103,15 @@ WHERE a.city = '北京'</div>
     <span class="routed-text" id="routed-text"></span>
   </div>
 
+  <!-- 查询进度 -->
+  <div class="progress-box" id="progress-box" hidden>
+    <div class="progress-stage" id="progress-stage">
+      <span class="progress-spinner"></span>
+      <span id="progress-stage-text">正在准备…</span>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+  </div>
+
   <!-- Results -->
   <section class="result-area" id="result-area">
 
@@ -139,6 +148,29 @@ WHERE a.city = '北京'</div>
         </table>
       </div>
       <div class="result-empty" id="empty-hint" hidden>无数据</div>
+    </div>
+  </section>
+
+  <!-- 我的术语表(用户自定义术语/取值映射,按库存浏览器 localStorage)-->
+  <section class="schema-section">
+    <button class="schema-toggle" id="glossary-toggle" type="button">
+      <span class="arrow">▶</span> <span id="glossary-toggle-label">我的术语表</span>
+    </button>
+    <div class="schema-body" id="glossary-body">
+      <p class="glossary-hint">
+        给 <b id="glossary-source-name">当前数据源</b> 补充「业务术语 / 取值映射」,提问时自动带上,
+        专治模型猜不出的加密取值。只存在你的浏览器,按数据源分开保存。
+        例如:<code>交易后出账 = frequency 列的 'POPLATEK PO OBRATU'</code>
+      </p>
+      <div class="glossary-add">
+        <input type="text" id="glossary-input" maxlength="200"
+          placeholder="例如:念力 = superpower.power_name 的 'Telekinesis'" />
+        <button id="glossary-add-btn" type="button">添加</button>
+      </div>
+      <ul class="glossary-list" id="glossary-list"></ul>
+      <div class="glossary-empty" id="glossary-empty">
+        当前数据源还没有自定义术语。提问一次确定数据源后,或在上方手动选库,即可添加。
+      </div>
     </div>
   </section>
 

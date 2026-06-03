@@ -392,6 +392,47 @@ main{
 .sql-meta span.confidence.conf-low{
   color:#fca5a5;background:rgba(239,68,68,0.14);
 }
+.sql-meta span.confidence.conf-pending{
+  color:#94a3b8;background:rgba(148,163,184,0.12);cursor:default;opacity:0.85;
+}
+
+/* 查询进度条 */
+.progress-box{
+  margin:0.6rem 0 0.2rem;padding:0.85rem 1rem;border-radius:12px;
+  background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.18);
+}
+.progress-stage{
+  display:flex;align-items:center;gap:0.5rem;
+  font-size:0.85rem;color:#a5b4fc;margin-bottom:0.55rem;letter-spacing:0.02em;
+}
+.progress-spinner{
+  width:13px;height:13px;border-radius:50%;flex:0 0 auto;
+  border:2px solid rgba(165,180,252,0.25);border-top-color:#a5b4fc;
+  animation:progress-spin 0.7s linear infinite;
+}
+.progress-box.done .progress-spinner{
+  border-color:rgba(34,197,94,0.3);border-top-color:#22c55e;animation:none;
+}
+.progress-box.done .progress-stage{color:#86efac;}
+.progress-track{
+  height:6px;border-radius:6px;overflow:hidden;
+  background:rgba(255,255,255,0.06);
+}
+.progress-fill{
+  height:100%;width:0;border-radius:6px;
+  background:linear-gradient(90deg,#6366f1,#8b5cf6,#ec4899);
+  background-size:200% 100%;
+  transition:width 0.5s cubic-bezier(0.4,0,0.2,1);
+  animation:progress-shimmer 1.6s linear infinite;
+}
+.progress-box.done .progress-fill{animation:none;background:#22c55e;}
+@keyframes progress-spin{to{transform:rotate(360deg);}}
+@keyframes progress-shimmer{
+  0%{background-position:0% 0;}100%{background-position:-200% 0;}
+}
+@media (prefers-reduced-motion:reduce){
+  .progress-spinner,.progress-fill{animation:none;}
+}
 
 .result-table-wrap{
   background:rgba(15,15,40,0.5);
@@ -473,6 +514,50 @@ main{
   font-size:.78rem;line-height:1.8;
   color:rgba(196,181,253,0.85);
   white-space:pre;
+}
+
+/* 我的术语表 */
+.glossary-hint{
+  padding:16px 20px 8px;margin:0;
+  font-size:.8rem;line-height:1.7;color:rgba(255,255,255,0.45);
+}
+.glossary-hint b{color:#c4b5fd;font-weight:600}
+.glossary-hint code{
+  font-family:'JetBrains Mono',monospace;font-size:.74rem;
+  background:rgba(100,100,255,0.1);padding:2px 6px;border-radius:4px;color:#a5b4fc;
+}
+.glossary-add{display:flex;gap:8px;padding:8px 20px 12px}
+.glossary-add input{
+  flex:1;padding:10px 14px;
+  background:rgba(0,0,0,0.25);
+  border:1px solid rgba(100,100,255,0.15);border-radius:8px;
+  color:#fff;font-size:.82rem;font-family:inherit;
+}
+.glossary-add input:focus{outline:none;border-color:rgba(139,92,246,0.5)}
+.glossary-add button{
+  padding:10px 18px;
+  background:rgba(139,92,246,0.85);
+  border:none;border-radius:8px;color:#fff;
+  font-size:.82rem;font-weight:600;cursor:pointer;transition:background .2s;
+}
+.glossary-add button:hover{background:rgba(139,92,246,1)}
+.glossary-list{list-style:none;margin:0;padding:0 20px 8px}
+.glossary-list li{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 14px;margin-bottom:6px;
+  background:rgba(100,100,255,0.06);
+  border:1px solid rgba(100,100,255,0.1);border-radius:8px;
+  font-size:.8rem;color:rgba(255,255,255,0.8);
+}
+.glossary-list li span{flex:1;word-break:break-all}
+.glossary-list li button{
+  flex-shrink:0;width:22px;height:22px;
+  background:rgba(239,68,68,0.15);border:none;border-radius:6px;
+  color:#fca5a5;font-size:1rem;line-height:1;cursor:pointer;
+}
+.glossary-list li button:hover{background:rgba(239,68,68,0.3);color:#fff}
+.glossary-empty{
+  padding:4px 20px 20px;font-size:.78rem;color:rgba(255,255,255,0.3);
 }
 
 @keyframes fadeInUp{

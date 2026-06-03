@@ -18,6 +18,8 @@ class AskRequest(BaseModel):
     history: list[Turn] = Field(default_factory=list, description="历史对话,最近 N 轮,无状态由前端持有")
     source: str | None = Field(None, description="手动选定的数据源(硬锁,跳过自动路由);None=自动路由")
     current_source: str | None = Field(None, description="本会话当前所在数据源,自动路由时作为提示,让追问留在原库、换话题再切库")
+    user_glossary: list[str] = Field(default_factory=list, max_length=50,
+                                     description="用户为当前数据源补充的术语/取值映射,逐条拼进 schema 喂模型(前端按库存 localStorage)")
 
 
 class SourceInfo(BaseModel):
@@ -46,6 +48,7 @@ class AskResponse(BaseModel):
     auto_routed: bool = Field(False, description="数据源是否由系统按问题自动选择")
     confidence: int | None = Field(None, description="AI 评估的答案准确率 0-100(召回质量+SQL正确性合成),None=未评估")
     confidence_detail: ConfidenceDetail | None = Field(None, description="准确率分项明细")
+    judge_id: str | None = Field(None, description="异步准确率评估的取件号;非空时前端用它请求 /api/judge 补勋章")
 
 
 class ConfidenceDetail(BaseModel):
@@ -53,6 +56,17 @@ class ConfidenceDetail(BaseModel):
     retrieval: int = Field(..., description="召回质量 0-100")
     correctness: int = Field(..., description="SQL 正确性 0-100")
     reason: str = Field("", description="裁判 LLM 给的一句话理由")
+
+
+class JudgeRequest(BaseModel):
+    """异步准确率评估请求:凭 /api/ask 返回的 judge_id 取件并评分。"""
+    judge_id: str = Field(..., min_length=1, max_length=64)
+
+
+class JudgeResponse(BaseModel):
+    """异步准确率评估结果;judge_id 过期或评估失败时 confidence 为 None。"""
+    confidence: int | None = Field(None, description="最终准确率 0-100,None=未评估/已过期")
+    confidence_detail: ConfidenceDetail | None = Field(None, description="准确率分项明细")
 
 
 class SchemaResponse(BaseModel):

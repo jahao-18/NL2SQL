@@ -127,6 +127,12 @@ def _llm() -> BaseChatModel:
     return make_llm(settings.qwen_model)
 
 
+@lru_cache(maxsize=1)
+def _router_llm() -> BaseChatModel:
+    """路由专用的快模型(qwen-turbo 级),与主生成 _llm() 分开,降低选库延迟。"""
+    return make_llm(settings.router_model)
+
+
 def _strip_sql(raw: str) -> str:
     """去掉模型可能加的 markdown 围栏或解释。"""
     s = raw.strip()

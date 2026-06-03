@@ -12,7 +12,7 @@ from app.core.chain import generate_sql, repair_sql
 from app.core.data_sources import get_source
 from app.core.executor import SQLExecutionError, execute
 from app.core.formatter import format_clarify, format_error, format_success
-from app.core.judge import judge
+from app.core.judge import stash as stash_judge
 from app.core.retrieval import retrieve_context
 from app.core.schema import load_schema
 from app.core.source_router import route
@@ -31,6 +31,7 @@ def ask(
     history: list[Turn] | None = None,
     source: str | None = None,
     current_source: str | None = None,
+    user_glossary: list[str] | None = None,
 ) -> dict[str, Any]:
     trimmed_history = (history or [])[-MAX_HISTORY_TURNS:]
     # 上一轮就是 clarify => 本轮是用户的回答,禁止再次 clarify(兼顾路由反问与生成澄清)
@@ -95,6 +96,13 @@ def ask(
     except Exception:
         logger.exception("schema 检索异常,回退整库 DDL")
 
+    # 用户为该库补充的术语/取值映射:拼在 schema 末尾(放在检索替换之后,保证一定喂到模型)。
+    # 专治"加密取值"——如"交易后出账 = frequency 的 POPLATEK PO OBRATU",模型就不用猜了。
+    clean_glossary = [g.strip() for g in (user_glossary or []) if g and g.strip()][:50]
+    if clean_glossary:
+        schema_text += ("\n\n【用户补充术语 / 取值映射(用户提供,写 SQL 时请优先采用)】\n"
+                        + "\n".join(f"- {g[:200]}" for g in clean_glossary))
+
     last_sql: str | None = None
     last_err: str | None = None
 
@@ -148,20 +156,16 @@ def ask(
             ds.name, question, len(trimmed_history), safe_sql, len(rows), elapsed_ms, truncated,
         )
 
-        # 答案准确率评估(另一个 LLM 当裁判,合成一个准确率给用户参考)。best-effort,失败返回 None。
+        # 答案准确率评估(另一个 LLM 当裁判)异步化:此处只把输入暂存,返回 judge_id,
+        # 让结果先返回;前端拿到结果后再用 judge_id 请求 /api/judge 补上勋章(省一次往返的等待)。
         # 「无法回答」占位结果(单列名为 error)是模型主动声明答不了,不评分。
         is_placeholder = columns == ["error"]
-        jr = None if is_placeholder else judge(
+        judge_id = None if is_placeholder else stash_judge(
             question, schema_text, safe_sql, columns, rows, len(rows), ds.dialect, retrieval_used)
-        confidence = jr.final if jr else None
-        confidence_detail = (
-            {"retrieval": jr.retrieval, "correctness": jr.correctness, "reason": jr.reason}
-            if jr else None
-        )
         return format_success(
             safe_sql, columns, rows, elapsed_ms,
             truncated=truncated, column_sources=column_sources,
-            confidence=confidence, confidence_detail=confidence_detail, **src_kw,
+            judge_id=judge_id, **src_kw,
         )
 
     return format_error(f"经过 {MAX_REPAIR_ROUNDS + 1} 次尝试仍失败: {last_err}", sql=last_sql, **src_kw)

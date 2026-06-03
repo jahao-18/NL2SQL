@@ -99,6 +99,10 @@
   const routedSource = $("routed-source");
   const routedText = $("routed-text");
 
+  const progressBox = $("progress-box");
+  const progressFill = $("progress-fill");
+  const progressStageText = $("progress-stage-text");
+
   const clarifyBox = $("clarify-box");
   const clarifyMsg = $("clarify-msg");
   const errorBox = $("error-box");
@@ -120,8 +124,18 @@
   const schemaBody = $("schema-body");
   const schemaText = $("schema-text");
 
+  const glossaryToggle = $("glossary-toggle");
+  const glossaryBody = $("glossary-body");
+  const glossaryList = $("glossary-list");
+  const glossaryInput = $("glossary-input");
+  const glossaryAddBtn = $("glossary-add-btn");
+  const glossaryEmpty = $("glossary-empty");
+  const glossarySourceName = $("glossary-source-name");
+
   const HISTORY_KEY = "nl2sql.history.v1";
+  const GLOSSARY_KEY = "nl2sql.glossary.v1";  // 后接 .<source>
   const MAX_HISTORY_TURNS = 5;
+  const MAX_GLOSSARY = 50;
 
   // 会话首轮路由选定的数据源;多轮追问复用它,避免串库。新会话/手动切换时重置。
   let conversationSource = null;
@@ -136,11 +150,69 @@
   function hideAllStateCards() {
     hide(errorBox);
     hide(clarifyBox);
+    if (typeof failProgress === "function") failProgress();
     sqlBlock.classList.remove("visible");
     resultWrap.classList.remove("visible");
   }
 
   function manualSource() { return selectedSource || null; }
+
+  /* ---------------- 我的术语表(按库存 localStorage) ---------------- */
+
+  // 当前术语表归属的库:手动选的优先,否则会话当前库
+  function glossarySource() { return manualSource() || conversationSource; }
+
+  function loadGlossary(source) {
+    if (!source) return [];
+    try { return JSON.parse(localStorage.getItem(GLOSSARY_KEY + "." + source)) || []; }
+    catch { return []; }
+  }
+  function saveGlossary(source, arr) {
+    if (!source) return;
+    localStorage.setItem(GLOSSARY_KEY + "." + source, JSON.stringify(arr.slice(0, MAX_GLOSSARY)));
+  }
+
+  function renderGlossary() {
+    const src = glossarySource();
+    glossarySourceName.textContent = src || "当前数据源";
+    const entries = loadGlossary(src);
+    glossaryList.innerHTML = "";
+    if (!src || entries.length === 0) {
+      glossaryEmpty.hidden = false;
+      glossaryEmpty.textContent = src
+        ? "当前数据源还没有自定义术语,在上面输入框添加。"
+        : "当前数据源还没有自定义术语。提问一次确定数据源后,或在上方手动选库,即可添加。";
+    } else {
+      glossaryEmpty.hidden = true;
+      entries.forEach((text, i) => {
+        const li = document.createElement("li");
+        const span = document.createElement("span");
+        span.textContent = text;
+        const del = document.createElement("button");
+        del.type = "button"; del.textContent = "×"; del.title = "删除";
+        del.addEventListener("click", () => {
+          const arr = loadGlossary(src); arr.splice(i, 1); saveGlossary(src, arr); renderGlossary();
+        });
+        li.appendChild(span); li.appendChild(del);
+        glossaryList.appendChild(li);
+      });
+    }
+    // 没有确定的库时禁用添加(无处归属)
+    const disabled = !src;
+    glossaryInput.disabled = disabled;
+    glossaryAddBtn.disabled = disabled;
+  }
+
+  function addGlossaryEntry() {
+    const src = glossarySource();
+    const text = glossaryInput.value.trim();
+    if (!src || !text) return;
+    const arr = loadGlossary(src);
+    if (arr.length >= MAX_GLOSSARY) { alert(`每个库最多 ${MAX_GLOSSARY} 条术语`); return; }
+    arr.push(text); saveGlossary(src, arr);
+    glossaryInput.value = "";
+    renderGlossary();
+  }
 
   /* ---------------- history ---------------- */
 
@@ -231,22 +303,50 @@
     emptyHint.hidden = rows.length !== 0;
   }
 
+  function confidenceBadge(c, d) {
+    const cls = c >= 80 ? "conf-high" : c >= 50 ? "conf-mid" : "conf-low";
+    let tip = "AI 对本次回答可信度的估算,仅供参考";
+    if (d) tip = `数据完整度 ${d.retrieval}% · 结果匹配度 ${d.correctness}%${d.reason ? " — " + d.reason : ""}(AI 估算,仅供参考)`;
+    const tipAttr = tip.replace(/"/g, "&quot;");
+    return `<span class="confidence ${cls}" title="${tipAttr}">AI 准确率 ${c}%</span>`;
+  }
+
   function renderMeta(data) {
     const parts = [];
     if (typeof data.row_count === "number") parts.push(`${data.row_count} 行`);
     if (typeof data.elapsed_ms === "number") parts.push(`${data.elapsed_ms} ms`);
     let html = parts.map((s) => `<span>${s}</span>`).join("");
     if (data.truncated) html += '<span class="warn">结果已截断</span>';
-    if (typeof data.confidence === "number") {
-      const c = data.confidence;
-      const cls = c >= 80 ? "conf-high" : c >= 50 ? "conf-mid" : "conf-low";
-      const d = data.confidence_detail;
-      let tip = "AI 估算的答案准确率,非真值,仅供参考";
-      if (d) tip = `召回质量 ${d.retrieval}% · SQL正确性 ${d.correctness}%${d.reason ? " — " + d.reason : ""}(AI 估算,仅供参考)`;
-      const tipAttr = tip.replace(/"/g, "&quot;");
-      html += `<span class="confidence ${cls}" title="${tipAttr}">AI 准确率 ${c}%</span>`;
-    }
+    // confidence 多在结果渲染后由 fetchConfidence 异步补上;若响应已直接带分(兼容),这里也渲染。
+    if (typeof data.confidence === "number") html += confidenceBadge(data.confidence, data.confidence_detail);
     sqlMeta.innerHTML = html;
+  }
+
+  // 异步补准确率勋章:结果已先渲染,这里凭 judge_id 请求评估,先挂"评估中"占位,回来后替换为真实勋章。
+  async function fetchConfidence(data) {
+    if (!data.judge_id) return;
+    const pending = document.createElement("span");
+    pending.className = "confidence conf-pending";
+    pending.title = "正在评估本次回答的可信度…";
+    pending.textContent = "AI 准确率 评估中…";
+    sqlMeta.appendChild(pending);
+    try {
+      const resp = await fetch("/api/judge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ judge_id: data.judge_id }),
+      });
+      const jd = await resp.json();
+      // 期间用户可能又发了新查询,sqlMeta 已被刷新,此时占位已脱离文档 -> 不再回填。
+      if (!pending.isConnected) return;
+      if (typeof jd.confidence === "number") {
+        pending.outerHTML = confidenceBadge(jd.confidence, jd.confidence_detail);
+      } else {
+        pending.remove();
+      }
+    } catch (e) {
+      pending.remove();
+    }
   }
 
   /* ---------------- data fetching ---------------- */
@@ -293,6 +393,7 @@
         hide(routedSource);
         hideAllStateCards();
         loadSchema();
+        renderGlossary();   // 切到该库的术语表(选「自动识别」时 src 为空,显示提示)
       });
     });
   }
@@ -306,6 +407,65 @@
     } catch {
       sourceTags.innerHTML = '<span class="source-tag active">（数据源加载失败）</span>';
     }
+  }
+
+  /* ---------------- progress ---------------- */
+  // 后端是一次性返回(不逐阶段推送),这里按真实流水线阶段做"乐观"进度:
+  // 分阶段推进、填到约 88%,响应一到补满 100% 收起。自动模式多一个"判断数据源"阶段。
+  let progressTimers = [];
+  const PROGRESS_AUTO = [
+    { text: "正在判断数据源…", pct: 18 },
+    { text: "检索相关表与字段…", pct: 44 },
+    { text: "生成 SQL…", pct: 72 },
+    { text: "执行查询…", pct: 88 },
+  ];
+  const PROGRESS_MANUAL = [
+    { text: "检索相关表与字段…", pct: 32 },
+    { text: "生成 SQL…", pct: 70 },
+    { text: "执行查询…", pct: 88 },
+  ];
+
+  function clearProgressTimers() {
+    progressTimers.forEach((t) => clearTimeout(t));
+    progressTimers = [];
+  }
+
+  function startProgress(isAuto) {
+    clearProgressTimers();
+    const stages = isAuto ? PROGRESS_AUTO : PROGRESS_MANUAL;
+    progressBox.classList.remove("done");
+    progressFill.style.transition = "none";
+    progressFill.style.width = "0%";
+    show(progressBox);
+    void progressFill.offsetWidth;          // 强制重排,让 0% 先落地再开始过渡
+    progressFill.style.transition = "";
+    let delay = 120;
+    stages.forEach((st, i) => {
+      progressTimers.push(setTimeout(() => {
+        progressStageText.textContent = st.text;
+        progressFill.style.width = st.pct + "%";
+      }, delay));
+      delay += 550 + i * 450;               // 越往后阶段越慢(生成 SQL 最耗时)
+    });
+  }
+
+  function finishProgress() {
+    clearProgressTimers();
+    progressStageText.textContent = "完成";
+    progressBox.classList.add("done");
+    progressFill.style.width = "100%";
+    progressTimers.push(setTimeout(() => {
+      hide(progressBox);
+      progressFill.style.width = "0%";
+      progressBox.classList.remove("done");
+    }, 480));
+  }
+
+  function failProgress() {
+    clearProgressTimers();
+    hide(progressBox);
+    progressFill.style.width = "0%";
+    progressBox.classList.remove("done");
   }
 
   /* ---------------- query ---------------- */
@@ -324,23 +484,41 @@
     // 让追问留在原库、换话题能切库)。自动模式下 source 为空,后端每轮按问题+历史重新路由。
     const source = manualSource();
     const currentSource = conversationSource;
+    const userGlossary = loadGlossary(glossarySource());  // 当前库的自定义术语,自动带上
+
+    startProgress(!source);   // 手动锁库时跳过"判断数据源"阶段
 
     try {
       const resp = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history, source, current_source: currentSource }),
+        body: JSON.stringify({ question, history, source, current_source: currentSource,
+                               user_glossary: userGlossary }),
       });
       const data = await resp.json();
+      finishProgress();   // 网络往返结束,进度补满收起(后续分支只管渲染)
 
-      // 透明展示本次实际使用的数据源,并锁定本会话后续追问到同一个库
+      // 透明展示本次实际使用的数据源
       showRoutedSource(data);
       if (data.source) {
+        // 自动路由切换了数据源 => 换库即换话题,清掉旧库的历史,避免把上一个库的问答
+        // 当上下文喂给新库(跨库上下文污染)。同库追问不受影响。
+        if (conversationSource && data.source !== conversationSource) {
+          clearHistory();
+          updateHistoryBadge();
+        }
         conversationSource = data.source;
         loadSchema(data.source);
+        renderGlossary();   // 数据源确定/切换后,刷新术语表面板到对应库
       }
 
       if (data.clarify) {
+        // 澄清时彻底清掉上一轮的 SQL/结果内容,避免和澄清卡片并存(连隐藏的 DOM 残留也清)
+        sqlBlock.classList.remove("visible");
+        resultWrap.classList.remove("visible");
+        sqlCode.textContent = "";
+        tbody.innerHTML = "";
+        sqlMeta.innerHTML = "";
         clarifyMsg.textContent = data.clarify;
         show(clarifyBox);
         const next = loadHistory();
@@ -366,6 +544,7 @@
         resultHeader.textContent = `查询结果 · ${rowCount} 行`;
         renderTable(data.columns, data.rows, data.column_sources);
         resultWrap.classList.add("visible");
+        fetchConfidence(data);   // 结果已出,异步补准确率勋章(不阻塞结果显示)
 
         const isPlaceholder = data.columns.length === 1 && data.columns[0] === "error";
         if (data.sql && !isPlaceholder) {
@@ -376,6 +555,7 @@
         }
       }
     } catch (err) {
+      failProgress();
       errorMsg.textContent = `请求失败: ${err.message}`;
       show(errorBox);
     } finally {
@@ -415,11 +595,21 @@
     schemaToggle.classList.toggle("open");
   });
 
+  glossaryToggle.addEventListener("click", () => {
+    glossaryBody.classList.toggle("visible");
+    glossaryToggle.classList.toggle("open");
+  });
+  glossaryAddBtn.addEventListener("click", addGlossaryEntry);
+  glossaryInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); addGlossaryEntry(); }
+  });
+
   /* ---------------- init ---------------- */
 
   (async () => {
     await loadSources();
     await loadSchema();
     updateHistoryBadge();
+    renderGlossary();
   })();
 })();

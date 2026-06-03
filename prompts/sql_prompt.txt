@@ -43,6 +43,10 @@
       - 历史对话中**上一轮就是 CLARIFY**——此时你必须直接基于用户的回答生成 SQL,严禁连续追问。
       - 仅仅是字段不存在(走规则 9 的"无法回答")。
     CLARIFY 输出必须**只有一行**,且以 `CLARIFY:` 开头,不要带 markdown 代码块。
+12. 【一对多去重·重要】当问题只想要某个主体(某个人/某件商品/某支球队等)的**基本属性或单一答案**时,警惕 JOIN 一张"一个主体对应多行"的表(如按时间记录的历史/快照表、明细流水表、版本表)而导致**同一主体返回大量重复行**。
+    - 识别信号:被 JOIN 的表里,目标列对同一主体在不同时间/明细下取值基本不变(如惯用脚、身高、性别、出生日期);或表中带 `date`/版本号且一个主体有多条。
+    - 处理:用 `SELECT DISTINCT`,或按时间取最新一条(如 `ORDER BY date DESC LIMIT 1`,多主体取最新用 `ROW_NUMBER() OVER (PARTITION BY 主体 ORDER BY date DESC)` 取 rk=1),避免重复行。
+    - 例外:用户**就是要看该属性随时间变化的历史/全部明细**时,才保留多行,不要去重。
 
 【示例】
 
@@ -75,6 +79,9 @@ SQL:SELECT u.name AS user_name, SUM(o.amount) AS total_spent FROM users u JOIN o
 
 问题:谁是体重最重的用户?
 SQL:SELECT '无法回答: users 表中没有体重(weight)字段' AS error LIMIT 1
+
+问题:梅西的惯用脚是哪只?(属性表 player_attributes 按日期对每个球员有多行)
+SQL:SELECT DISTINCT pl.player_name AS player_name, pa.preferred_foot AS preferred_foot FROM player pl JOIN player_attributes pa ON pl.player_api_id = pa.player_api_id WHERE pl.player_name = 'Lionel Messi'
 
 问题:用户的邮箱列表
 SQL:SELECT '无法回答: users 表中没有邮箱(email)字段' AS error LIMIT 1

@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 
     dashscope_api_key: str = ""
     qwen_model: str = "qwen-max"
+    # 数据源路由模型:只做"从库目录里选一个库"的分类小任务,无需主生成那么强,
+    # 用快模型砍掉路由这一步的延迟(只影响选库速度,不碰库内 schema 召回质量)。
+    router_model: str = "qwen-turbo"
     max_rows: int = 200
     query_timeout_seconds: int = 5
 
@@ -47,6 +50,9 @@ class Settings(BaseSettings):
     retrieval_top_tables: int = 8           # 融合后保留的相关表数量上限
     retrieval_top_k: int = 30               # 每路检索器返回的列命中数
     retrieval_max_bridge_tables: int = 3    # 关系图谱为连通选中表最多补的桥接表数
+    # 启动时后台预热:提前为"会真正走检索的大库"建好原子/检索器/图/术语索引(含嵌入全部原子),
+    # 消除每个库首次查询的冷启动延迟。后台线程跑,不阻塞启动;小库/检索关闭时自动跳过。
+    prewarm_enabled: bool = True
 
 
 settings = Settings()
