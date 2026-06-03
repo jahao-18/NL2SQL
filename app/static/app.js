@@ -11,6 +11,7 @@ const clarifyBox = $("clarify-box");
 const clarifyMsg = $("clarify-msg");
 const sqlBox = $("sql-box");
 const sqlText = $("sql-text");
+const metaRow = $("meta-row");
 const metaText = $("meta-text");
 const resultBox = $("result-box");
 const thead = $("result-thead");
@@ -18,10 +19,31 @@ const tbody = $("result-tbody");
 const emptyHint = $("empty-hint");
 const copyBtn = $("copy-btn");
 const sourceSelect = $("source-select");
+const themeToggle = $("theme-toggle");
+const routedSource = $("routed-source");
+const routedText = $("routed-text");
+
+// 会话首轮路由选定的数据源;多轮追问复用它,避免串库。新会话/手动切换时重置。
+let conversationSource = null;
 
 const HISTORY_KEY = "nl2sql.history.v1";
-const SOURCE_KEY = "nl2sql.source.v1";
+const THEME_KEY = "nl2sql.theme.v1";
 const MAX_HISTORY_TURNS = 5;
+
+/* ---------------- theme ---------------- */
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+}
+
+themeToggle.addEventListener("click", () => {
+  const current = document.documentElement.getAttribute("data-theme") || "light";
+  const next = current === "dark" ? "light" : "dark";
+  applyTheme(next);
+  localStorage.setItem(THEME_KEY, next);
+});
+
+/* ---------------- history ---------------- */
 
 function loadHistory() {
   try {
@@ -45,15 +67,44 @@ function clearHistory() {
 
 function updateHistoryBadge() {
   const n = loadHistory().length;
-  historyBadge.textContent = n === 0 ? "未开始会话" : `已记 ${n} 轮(发送最近 ${Math.min(n, MAX_HISTORY_TURNS)} 轮上下文)`;
+  historyBadge.textContent = n === 0
+    ? "未开始会话"
+    : `已记 ${n} 轮 · 发送最近 ${Math.min(n, MAX_HISTORY_TURNS)} 轮`;
 }
 
 function show(el) { el.hidden = false; }
 function hide(el) { el.hidden = true; }
 
-function currentSource() {
+function hideAllStateCards() {
+  hide(errorBox);
+  hide(clarifyBox);
+  hide(sqlBox);
+  hide(resultBox);
+}
+
+// 下拉显式选择的库(为空表示「自动识别」)
+function manualSource() {
   return sourceSelect.value || null;
 }
+
+// 本次提问最终发给后端的 source:手动选择优先;否则沿用会话已路由的库;都没有则为 null(由后端路由)
+function effectiveSource() {
+  return manualSource() || conversationSource;
+}
+
+function showRoutedSource(data) {
+  if (!data || !data.source) {
+    hide(routedSource);
+    return;
+  }
+  const label = data.source_label || data.source;
+  routedText.textContent = data.auto_routed
+    ? `数据源:${label} · 系统自动识别`
+    : `数据源:${label}`;
+  show(routedSource);
+}
+
+/* ---------------- render ---------------- */
 
 function renderTable(columns, rows, sources) {
   thead.innerHTML = "";
@@ -64,14 +115,10 @@ function renderTable(columns, rows, sources) {
     const alias = columns[i];
     const src = hasSources ? (sources[i] || "") : "";
     if (src && src !== alias) {
-      th.innerHTML = "";
       const nameDiv = document.createElement("div");
       nameDiv.textContent = alias;
       const srcDiv = document.createElement("small");
       srcDiv.textContent = src;
-      srcDiv.style.color = "var(--pico-muted-color)";
-      srcDiv.style.fontWeight = "normal";
-      srcDiv.style.display = "block";
       th.appendChild(nameDiv);
       th.appendChild(srcDiv);
     } else {
@@ -91,19 +138,42 @@ function renderTable(columns, rows, sources) {
   emptyHint.hidden = rows.length !== 0;
 }
 
-async function loadSchema() {
+function renderMeta(data) {
+  metaRow.innerHTML = "";
+  const pill1 = document.createElement("span");
+  pill1.className = "meta-pill";
+  pill1.textContent = `${data.row_count} 行`;
+  metaRow.appendChild(pill1);
+
+  const pill2 = document.createElement("span");
+  pill2.className = "meta-pill";
+  pill2.textContent = `${data.elapsed_ms} ms`;
+  metaRow.appendChild(pill2);
+
+  if (data.truncated) {
+    const pill3 = document.createElement("span");
+    pill3.className = "meta-pill warn";
+    pill3.textContent = "结果已截断";
+    metaRow.appendChild(pill3);
+  }
+}
+
+/* ---------------- data fetching ---------------- */
+
+async function loadSchema(forceSource) {
+  const target = $("schema-text");
   try {
-    const src = currentSource();
+    const src = forceSource || manualSource();
     const url = src ? `/api/schema?source=${encodeURIComponent(src)}` : "/api/schema";
     const resp = await fetch(url);
     if (!resp.ok) {
-      $("schema-text").textContent = `(加载失败: HTTP ${resp.status})`;
+      target.textContent = `(加载失败: HTTP ${resp.status})`;
       return;
     }
     const data = await resp.json();
-    $("schema-text").textContent = data.ddl;
+    target.textContent = data.ddl;
   } catch (e) {
-    $("schema-text").textContent = "(加载失败)";
+    target.textContent = "(加载失败)";
   }
 }
 
@@ -112,33 +182,31 @@ async function loadSources() {
     const resp = await fetch("/api/sources");
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    sourceSelect.innerHTML = "";
+    // 第一项始终是「自动识别」(value 为空 => 后端按问题路由)
+    sourceSelect.innerHTML = `<option value="">🤖 自动识别</option>`;
     for (const s of data.sources) {
       const opt = document.createElement("option");
       opt.value = s.name;
       opt.textContent = `${s.label} · ${s.dialect}`;
       sourceSelect.appendChild(opt);
     }
-    const remembered = localStorage.getItem(SOURCE_KEY);
-    const fallback = data.default || (data.sources[0] && data.sources[0].name);
-    const valid = data.sources.some(s => s.name === remembered);
-    sourceSelect.value = valid ? remembered : fallback;
+    // 默认停在「自动识别」,体现数据源透明化
+    sourceSelect.value = "";
   } catch (e) {
     sourceSelect.innerHTML = `<option value="">(数据源加载失败)</option>`;
   }
 }
 
+/* ---------------- events ---------------- */
+
 sourceSelect.addEventListener("change", () => {
-  const src = currentSource();
-  if (src) localStorage.setItem(SOURCE_KEY, src);
-  // 跨库历史无意义,切换时清空 history 并提示
+  // 手动切换数据源 => 开启新会话:清历史、清会话已路由的库
+  conversationSource = null;
   if (loadHistory().length > 0) {
     clearHistory();
   }
-  hide(errorBox);
-  hide(clarifyBox);
-  hide(sqlBox);
-  hide(resultBox);
+  hide(routedSource);
+  hideAllStateCards();
   loadSchema();
 });
 
@@ -147,16 +215,12 @@ form.addEventListener("submit", async (e) => {
   const question = questionEl.value.trim();
   if (!question) return;
 
-  hide(errorBox);
-  hide(clarifyBox);
-  hide(sqlBox);
-  hide(resultBox);
+  hideAllStateCards();
   submitBtn.disabled = true;
-  submitBtn.setAttribute("aria-busy", "true");
-  submitBtn.textContent = "查询中…";
+  submitBtn.classList.add("is-loading");
 
   const history = loadHistory().slice(-MAX_HISTORY_TURNS);
-  const source = currentSource();
+  const source = effectiveSource();
 
   try {
     const resp = await fetch("/api/ask", {
@@ -165,6 +229,13 @@ form.addEventListener("submit", async (e) => {
       body: JSON.stringify({ question, history, source }),
     });
     const data = await resp.json();
+
+    // 透明展示本次实际使用的数据源,并锁定本会话后续追问到同一个库
+    showRoutedSource(data);
+    if (data.source) {
+      conversationSource = data.source;
+      loadSchema(data.source);
+    }
 
     if (data.clarify) {
       clarifyMsg.textContent = data.clarify;
@@ -187,11 +258,7 @@ form.addEventListener("submit", async (e) => {
       errorMsg.textContent = data.error;
       show(errorBox);
     } else {
-      let meta = `返回 ${data.row_count} 行 · 耗时 ${data.elapsed_ms} ms`;
-      if (data.truncated) {
-        meta += ` · ⚠️ 结果已截断`;
-      }
-      metaText.textContent = meta;
+      renderMeta(data);
       renderTable(data.columns, data.rows, data.column_sources);
       show(resultBox);
 
@@ -208,21 +275,35 @@ form.addEventListener("submit", async (e) => {
     show(errorBox);
   } finally {
     submitBtn.disabled = false;
-    submitBtn.removeAttribute("aria-busy");
-    submitBtn.textContent = "查询";
+    submitBtn.classList.remove("is-loading");
   }
 });
 
 clearBtn.addEventListener("click", () => {
-  if (loadHistory().length === 0) return;
-  if (!confirm("清空当前会话历史?后续提问将不再带上下文。")) return;
+  if (loadHistory().length === 0 && !conversationSource) return;
+  if (!confirm("清空当前会话?后续提问将重新自动识别数据源、且不带上下文。")) return;
   clearHistory();
+  conversationSource = null;
+  hide(routedSource);
+  loadSchema();
 });
 
 copyBtn.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(sqlText.textContent);
-  copyBtn.textContent = "已复制";
-  setTimeout(() => (copyBtn.textContent = "复制"), 1200);
+  try {
+    await navigator.clipboard.writeText(sqlText.textContent);
+    const original = copyBtn.textContent;
+    copyBtn.textContent = "已复制";
+    setTimeout(() => (copyBtn.textContent = original), 1200);
+  } catch (e) {
+    // 静默失败
+  }
+});
+
+// 跟随系统主题(未手动覆盖时)
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+  if (!localStorage.getItem(THEME_KEY)) {
+    applyTheme(e.matches ? "dark" : "light");
+  }
 });
 
 (async () => {

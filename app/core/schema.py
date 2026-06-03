@@ -169,8 +169,21 @@ def load_schema(source_name: str | None = None) -> SchemaInfo:
     return SchemaInfo(ddl_text="\n\n".join(parts), tables=tables)
 
 
+@lru_cache(maxsize=32)
+def list_table_names(source_name: str | None = None) -> tuple[str, ...]:
+    """只取某数据源的表名(不拼 DDL、不做 enum 发现),供数据源路由快速构建目录。"""
+    source = get_source(source_name)
+    engine = get_engine(source)
+    try:
+        return tuple(inspect(engine).get_table_names())
+    except Exception as e:
+        logger.warning("list_table_names 失败 %s: %s", source.name, e)
+        return ()
+
+
 def clear_cache() -> None:
     load_schema.cache_clear()
+    list_table_names.cache_clear()
 
 
 def list_source_dialect(source_name: str | None = None) -> str:

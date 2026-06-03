@@ -4,66 +4,128 @@
   <meta charset="UTF-8" />
   <title>NL2SQL · 自然语言查数据库</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  <meta name="color-scheme" content="light dark" />
   <link rel="stylesheet" href="/style.css" />
+  <script>
+    // 提前应用主题,避免首屏闪烁
+    (function () {
+      var saved = localStorage.getItem("nl2sql.theme.v1");
+      var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var theme = saved || (prefersDark ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
 </head>
 <body>
-  <main class="container">
-    <hgroup>
-      <h2>NL2SQL</h2>
-      <p>用自然语言提问,系统翻译成 SQL 并查询 SQLite。</p>
-    </hgroup>
-
-    <form id="ask-form">
-      <label for="source-select">数据源</label>
-      <select id="source-select" style="margin-bottom:.6rem;">
-        <option value="">加载中…</option>
-      </select>
-
-      <label for="question">你的问题</label>
-      <textarea id="question" rows="2" placeholder="例:北京有多少用户?可以追问:他们里 60 岁以上有几个?" required></textarea>
-      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
-        <button type="submit" id="submit-btn" style="margin:0;">查询</button>
-        <button type="button" id="clear-btn" class="secondary outline" style="margin:0;">清空会话</button>
-        <small id="history-badge" style="margin-left:auto;color:var(--pico-muted-color);">未开始会话</small>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark">NL</div>
+        <span>NL2SQL</span>
+        <span class="brand-sub">自然语言查数据库</span>
       </div>
-    </form>
+      <button id="theme-toggle" class="theme-toggle" aria-label="切换主题" title="切换深/浅色">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+      </button>
+    </div>
+  </header>
 
-    <article id="error-box" hidden>
-      <strong>错误:</strong> <span id="error-msg"></span>
-    </article>
+  <main class="container">
+    <section class="hero">
+      <h1>用一句话查你的数据库</h1>
+      <p>用中文问问题就行。系统会自动判断该查哪个库、写 SQL、执行并返回结果——你不用选库,也不用碰 SQL。</p>
+    </section>
 
-    <article id="clarify-box" hidden>
-      <strong>需要澄清:</strong>
-      <p id="clarify-msg" style="margin:.4rem 0;"></p>
-      <small style="color:var(--pico-muted-color);">在上方输入框中回答后再次点击「查询」即可继续。</small>
-    </article>
+    <!-- 提问卡片 -->
+    <section class="card" id="ask-card">
+      <form id="ask-form" autocomplete="off">
+        <div class="field">
+          <label class="field-label" for="source-select">数据源 <span class="field-hint">默认自动识别,一般无需手动选</span></label>
+          <select id="source-select" class="select">
+            <option value="">🤖 自动识别</option>
+          </select>
+        </div>
 
-    <article id="sql-box" hidden>
-      <header style="display:flex;justify-content:space-between;align-items:center;">
-        <strong>生成的 SQL</strong>
-        <button class="secondary outline" id="copy-btn" type="button" style="margin:0;padding:.2rem .6rem;">复制</button>
-      </header>
-      <pre><code id="sql-text"></code></pre>
-      <footer>
-        <small id="meta-text"></small>
-      </footer>
-    </article>
+        <div class="field">
+          <label class="field-label" for="question">你的问题</label>
+          <textarea
+            id="question"
+            class="textarea"
+            rows="2"
+            placeholder="例:北京有多少用户?可以追问:他们里 60 岁以上有几个?"
+            required></textarea>
+        </div>
 
-    <article id="result-box" hidden>
-      <strong>查询结果</strong>
-      <div style="overflow-x:auto;">
-        <table id="result-table">
+        <div class="actions-row">
+          <button type="button" id="clear-btn" class="btn btn-secondary">清空会话</button>
+          <span class="spacer"></span>
+          <span id="history-badge" class="badge">未开始会话</span>
+          <button type="submit" id="submit-btn" class="btn btn-primary">查询</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 本次实际使用的数据源(自动路由透明展示) -->
+    <div class="routed-source fade-in" id="routed-source" hidden>
+      <span class="routed-icon">🗄️</span>
+      <span class="routed-text" id="routed-text"></span>
+    </div>
+
+    <!-- 需要澄清 -->
+    <section class="card is-clarify fade-in" id="clarify-box" hidden>
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>需要澄清</div>
+      </div>
+      <p class="clarify-body" id="clarify-msg"></p>
+      <p class="clarify-hint">在上方输入框中回答后再次点击「查询」即可继续</p>
+    </section>
+
+    <!-- 错误 -->
+    <section class="card is-error fade-in" id="error-box" hidden>
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>出错了</div>
+      </div>
+      <p class="clarify-body" id="error-msg"></p>
+    </section>
+
+    <!-- SQL 卡片 -->
+    <section class="card fade-in" id="sql-box" hidden>
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>生成的 SQL</div>
+        <button id="copy-btn" class="btn btn-ghost btn-icon" type="button">复制</button>
+      </div>
+      <pre class="code-block"><code id="sql-text"></code></pre>
+      <div class="meta-row" id="meta-row">
+        <span class="meta-pill" id="meta-text"></span>
+      </div>
+    </section>
+
+    <!-- 查询结果 -->
+    <section class="card fade-in" id="result-box" hidden>
+      <div class="card-header">
+        <div class="card-title"><span class="dot"></span>查询结果</div>
+      </div>
+      <div class="table-wrap">
+        <table class="result" id="result-table">
           <thead><tr id="result-thead"></tr></thead>
           <tbody id="result-tbody"></tbody>
         </table>
       </div>
-      <footer><small id="empty-hint" hidden>(无数据)</small></footer>
-    </article>
+      <div class="empty-state" id="empty-hint" hidden>无数据</div>
+    </section>
 
-    <details>
+    <!-- Schema 折叠 -->
+    <details class="schema" id="schema-details">
       <summary>查看数据库表结构</summary>
-      <pre><code id="schema-text">加载中…</code></pre>
+      <div class="schema-body">
+        <pre><code id="schema-text">加载中…</code></pre>
+      </div>
     </details>
   </main>
 

@@ -40,6 +40,9 @@ class AskResponse(BaseModel):
     truncated: bool = Field(False, description="用户请求的 LIMIT 是否被收紧到 MAX_ROWS")
     error: str | None = None
     clarify: str | None = Field(None, description="LLM 觉得信息模糊,需要用户先回答这个问题再继续")
+    source: str | None = Field(None, description="本次实际使用的数据源 name")
+    source_label: str | None = Field(None, description="数据源显示名")
+    auto_routed: bool = Field(False, description="数据源是否由系统按问题自动选择")
 
 
 class SchemaResponse(BaseModel):

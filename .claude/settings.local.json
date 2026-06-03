@@ -5,7 +5,23 @@
       "Bash(.venv/Scripts/python.exe -m pip install -r requirements.txt)",
       "Bash(.venv/Scripts/python.exe *)",
       "PowerShell(New-Item *)",
-      "Bash(curl -s http://127.0.0.1:8000/api/health)"
+      "Bash(curl -s http://127.0.0.1:8000/api/health)",
+      "Bash(python *)",
+      "Read(//d/dev/**)",
+      "Read(//d/dev/dev_databases/**)",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python scripts/eval_bird.py --bird-dir \"D:\\\\dev\" -n 10 --verbose)",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python scripts/eval_bird.py --bird-dir \"D:\\\\dev\" --gen-sources)",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python scripts/eval_bird.py --bird-dir \"D:\\\\dev\" --list-db toxicology 2>$null | Select-Object -First 12)",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; $env:DATA_SOURCES_FILE = \"D:\\\\python\\\\NL2SQL\\\\data\\\\bird\\\\bird_data_sources.yaml\"; python -c \"from app.core.data_sources import load_sources; s=load_sources\\(\\); print\\('源数量:', len\\(s\\)\\); [print\\(' -', n, v.dialect\\) for n,v in list\\(s.items\\(\\)\\)[:4]]; from app.core.schema import load_schema; info=load_schema\\('toxicology'\\); print\\('toxicology 表数:', len\\(info.tables\\), '| glossary注入:', '列含义业务词表' in info.ddl_text\\)\")",
+      "PowerShell(Remove-Item *)",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python scripts/_pick.py)",
+      "Bash(node --check app/static/app.js)",
+      "PowerShell(python -c \"import numpy; print\\('numpy', numpy.__version__\\)\" 2>&1; python -c \"import dashscope; print\\('dashscope ok'\\); from dashscope import TextEmbedding; print\\('TextEmbedding ok'\\)\" 2>&1)",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python scripts/eval_bird.py --bird-dir \"D:\\\\dev\" -n 12 --retrieval ab)",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python scripts/_fk.py)",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python -m pip install \"rank-bm25>=0.2.2\" \"networkx>=3.0\" --quiet 2>&1 | Select-Object -Last 3; python -c \"import rank_bm25, networkx; print\\('rank_bm25 + networkx OK'\\)\")",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python scripts/eval_bird.py --bird-dir \"D:\\\\dev\" --db formula_1 -n 16 --retrieval ab)",
+      "PowerShell($env:PYTHONUTF8 = \"1\"; python scripts/_probe_model.py)"
     ]
   }
 }

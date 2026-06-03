@@ -4,6 +4,17 @@ from __future__ import annotations
 from typing import Any
 
 
+def _source_fields(
+    source: str | None, source_label: str | None, auto_routed: bool
+) -> dict[str, Any]:
+    """本次实际使用的数据源信息,所有响应都带上,供前端透明展示。"""
+    return {
+        "source": source,
+        "source_label": source_label,
+        "auto_routed": auto_routed,
+    }
+
+
 def format_success(
     sql: str,
     columns: list[str],
@@ -11,6 +22,9 @@ def format_success(
     elapsed_ms: int,
     truncated: bool = False,
     column_sources: list[str] | None = None,
+    source: str | None = None,
+    source_label: str | None = None,
+    auto_routed: bool = False,
 ) -> dict[str, Any]:
     return {
         "sql": sql,
@@ -22,10 +36,17 @@ def format_success(
         "truncated": truncated,
         "error": None,
         "clarify": None,
+        **_source_fields(source, source_label, auto_routed),
     }
 
 
-def format_error(error: str, sql: str | None = None) -> dict[str, Any]:
+def format_error(
+    error: str,
+    sql: str | None = None,
+    source: str | None = None,
+    source_label: str | None = None,
+    auto_routed: bool = False,
+) -> dict[str, Any]:
     return {
         "sql": sql,
         "columns": [],
@@ -36,10 +57,16 @@ def format_error(error: str, sql: str | None = None) -> dict[str, Any]:
         "truncated": False,
         "error": error,
         "clarify": None,
+        **_source_fields(source, source_label, auto_routed),
     }
 
 
-def format_clarify(question: str) -> dict[str, Any]:
+def format_clarify(
+    question: str,
+    source: str | None = None,
+    source_label: str | None = None,
+    auto_routed: bool = False,
+) -> dict[str, Any]:
     """LLM 需要用户先回答澄清问题再生成 SQL。不走 validator/executor。"""
     return {
         "sql": None,
@@ -51,4 +78,5 @@ def format_clarify(question: str) -> dict[str, Any]:
         "truncated": False,
         "error": None,
         "clarify": question,
+        **_source_fields(source, source_label, auto_routed),
     }

@@ -12,7 +12,9 @@ from app.core.chain import generate_sql, repair_sql
 from app.core.data_sources import get_source
 from app.core.executor import SQLExecutionError, execute
 from app.core.formatter import format_clarify, format_error, format_success
+from app.core.retrieval import retrieve_context
 from app.core.schema import load_schema
+from app.core.source_router import route
 from app.core.sql_meta import extract_column_sources
 from app.core.validator import SQLValidationError, validate_and_fix
 from app.models.schemas import Turn
@@ -28,19 +30,58 @@ def ask(
     history: list[Turn] | None = None,
     source: str | None = None,
 ) -> dict[str, Any]:
+    trimmed_history = (history or [])[-MAX_HISTORY_TURNS:]
+    # 上一轮就是 clarify => 本轮是用户的回答,禁止再次 clarify(兼顾路由反问与生成澄清)
+    last_turn_was_clarify = bool(trimmed_history) and trimmed_history[-1].kind == "clarify"
+
+    # source 为空 => 系统按问题自动路由到最匹配的数据源(仅会话首轮;追问由前端回传 source)
+    auto_routed = False
+    if not source:
+        try:
+            routed = route(question)
+        except Exception as e:
+            logger.exception("数据源路由失败")
+            return format_error(f"数据源路由失败: {e}")
+
+        if routed is None:
+            # 实在没匹配上:第一次反问用户;若已反问过一次仍无法判断,引导手动选库(防死循环)
+            if last_turn_was_clarify:
+                logger.warning("路由反问后仍无法判断数据源 | q=%s", question)
+                return format_error(
+                    "仍无法确定要查询哪个数据库,请在上方「数据源」下拉中手动选择后再试。"
+                )
+            logger.info("路由无匹配,反问用户 | q=%s", question)
+            return format_clarify(
+                "没能判断这个问题该查哪个数据库。请补充说明你要查的数据涉及哪类业务或实体,"
+                "或在上方「数据源」下拉中手动选择数据源。"
+            )
+        source = routed
+        auto_routed = True
+
     try:
         ds = get_source(source)
     except KeyError as e:
         return format_error(str(e))
 
+    # 之后所有响应都带上实际使用的数据源信息(透明展示给用户)
+    src_kw = {"source": ds.name, "source_label": ds.label, "auto_routed": auto_routed}
+
     try:
         schema_info = load_schema(ds.name)
     except (FileNotFoundError, RuntimeError) as e:
-        return format_error(str(e))
+        return format_error(str(e), **src_kw)
 
-    trimmed_history = (history or [])[-MAX_HISTORY_TURNS:]
-    # 上一轮就是 clarify => 本轮是用户的回答,禁止再次 clarify
-    last_turn_was_clarify = bool(trimmed_history) and trimmed_history[-1].kind == "clarify"
+    # 知识库检索:针对问题召回精简 schema 上下文(替代整库 DDL 喂给模型)。
+    # 检索 query 带上历史问题,让"按城市拆分"这类追问也能召回上一轮涉及的表。
+    # 失败/库太小返回 None,此处回退整库 DDL;validator 仍用全量 schema_info.tables。
+    schema_text = schema_info.ddl_text
+    try:
+        retrieval_query = " ".join([t.question for t in trimmed_history] + [question])
+        rc = retrieve_context(retrieval_query, ds.name, schema_info.ddl_text)
+        if rc is not None:
+            schema_text = rc.context_text
+    except Exception:
+        logger.exception("schema 检索异常,回退整库 DDL")
 
     last_sql: str | None = None
     last_err: str | None = None
@@ -49,27 +90,27 @@ def ask(
         try:
             if attempt == 0:
                 kind, content = generate_sql(
-                    schema_info.ddl_text, question, trimmed_history, dialect=ds.dialect,
+                    schema_text, question, trimmed_history, dialect=ds.dialect,
                 )
             else:
                 # 失败回修走单轮 prompt,不带历史,只允许返回 SQL
                 kind, content = "sql", repair_sql(
-                    schema_info.ddl_text, question, last_sql or "", last_err or "",
+                    schema_text, question, last_sql or "", last_err or "",
                     dialect=ds.dialect,
                 )
         except Exception as e:
             logger.exception("LLM 调用失败")
-            return format_error(f"LLM 调用失败: {e}")
+            return format_error(f"LLM 调用失败: {e}", **src_kw)
 
         if kind == "clarify":
             if last_turn_was_clarify:
                 logger.warning("已澄清一次仍触发 CLARIFY,降级为错误 | q=%s | clarify=%s", question, content)
                 return format_error(
-                    "经过澄清后仍无法生成 SQL,请尝试更具体地描述需求。"
+                    "经过澄清后仍无法生成 SQL,请尝试更具体地描述需求。", **src_kw
                 )
             logger.info("ask clarify | source=%s | q=%s | history=%d | clarify=%s",
                         ds.name, question, len(trimmed_history), content)
-            return format_clarify(content)
+            return format_clarify(content, **src_kw)
 
         raw_sql = content
         try:
@@ -96,7 +137,7 @@ def ask(
         )
         return format_success(
             safe_sql, columns, rows, elapsed_ms,
-            truncated=truncated, column_sources=column_sources,
+            truncated=truncated, column_sources=column_sources, **src_kw,
         )
 
-    return format_error(f"经过 {MAX_REPAIR_ROUNDS + 1} 次尝试仍失败: {last_err}", sql=last_sql)
+    return format_error(f"经过 {MAX_REPAIR_ROUNDS + 1} 次尝试仍失败: {last_err}", sql=last_sql, **src_kw)

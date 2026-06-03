@@ -10,8 +10,10 @@ from functools import lru_cache
 from typing import Literal
 
 from langchain_community.chat_models.tongyi import ChatTongyi
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
 
 from app.core.config import PROMPTS_DIR, settings
@@ -53,10 +55,66 @@ def _read(filename: str) -> str:
     return (PROMPTS_DIR / filename).read_text(encoding="utf-8")
 
 
+class ChatQwenMultiModal(BaseChatModel):
+    """走 dashscope MultiModalConversation 接口的 Qwen 模型(如 qwen3.7-plus)。
+
+    qwen3.x 等模型只在多模态 endpoint 上,文本 Generation 接口(ChatTongyi 用的)会 400。
+    这里用纯文本消息把它当普通 chat 模型用,接口与 ChatTongyi 对齐,chain 无需改动。
+    """
+    model: str
+    dashscope_api_key: str
+    temperature: float = 0.0
+
+    @property
+    def _llm_type(self) -> str:
+        return "qwen-multimodal"
+
+    @staticmethod
+    def _to_dashscope(messages: list[BaseMessage]) -> list[dict]:
+        role_map = {"system": "system", "human": "user", "ai": "assistant"}
+        return [
+            {"role": role_map.get(m.type, "user"), "content": [{"text": m.content}]}
+            for m in messages
+        ]
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        import dashscope
+
+        # qwen3.x 在国内主站的多模态 endpoint;显式指定避免 SDK 默认到国际站导致 url error
+        dashscope.base_http_api_url = "https://dashscope.aliyuncs.com/api/v1"
+        resp = dashscope.MultiModalConversation.call(
+            api_key=self.dashscope_api_key,
+            model=self.model,
+            messages=self._to_dashscope(messages),
+            temperature=self.temperature,
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Qwen 多模态调用失败: {resp.code} {resp.message}")
+        content = resp.output.choices[0].message.content
+        # content 可能是字符串,也可能是 [{'text': ...}] 形式
+        if isinstance(content, list):
+            text = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+        else:
+            text = str(content)
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=text))])
+
+
+def _is_multimodal_model(name: str) -> bool:
+    """判断该模型是否走多模态 endpoint(qwen3.x / qwen-vl 系列)。"""
+    n = name.lower()
+    return n.startswith("qwen3") or "-vl" in n or "vl-" in n
+
+
 @lru_cache(maxsize=1)
-def _llm() -> ChatTongyi:
+def _llm() -> BaseChatModel:
     if not settings.dashscope_api_key:
         raise RuntimeError("DASHSCOPE_API_KEY 未配置,请在 .env 中填入")
+    if _is_multimodal_model(settings.qwen_model):
+        return ChatQwenMultiModal(
+            model=settings.qwen_model,
+            dashscope_api_key=settings.dashscope_api_key,
+            temperature=0,
+        )
     return ChatTongyi(
         model=settings.qwen_model,
         dashscope_api_key=settings.dashscope_api_key,

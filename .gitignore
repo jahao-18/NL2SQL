@@ -5,3 +5,11 @@ __pycache__/
 data/*.db
 .idea/
 .vscode/
+
+# BIRD 基准:数据集(几个 GB)与 eval_bird.py 生成的工作目录,都不入库
+/bird_dev/
+data/bird/
+bird_result.json
+
+# 知识库检索:embedding 等索引缓存(可由 schema 重建)
+data/retrieval_index/

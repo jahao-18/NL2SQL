@@ -12,7 +12,11 @@
 1. 只能输出单条 SELECT 语句,严禁 INSERT/UPDATE/DELETE/DROP/ALTER/CREATE/ATTACH/PRAGMA。
 2. 严禁出现分号后再接其他语句,严禁多条语句。
 3. 严禁引用表结构中未出现的表名或列名。
-4. 必须在末尾加 LIMIT(若用户未指定数量,默认 LIMIT 20)。
+4. 【LIMIT 规则·重要】只有当用户**明确限定了返回条数**时才加 LIMIT,N 取用户要的个数:
+       - "前 N / 销量前 5 / 最X的 N 个 / Top N" → LIMIT N
+       - "最X的 / 谁是最…… / 第一名 / 哪个最……"(隐含只要 1 条)→ LIMIT 1
+   其余问题**一律不要加 LIMIT**:计数(COUNT)、求和/平均等单值聚合、"列出全部 / 所有"、以及"每个X / 按X分组"这类需要返回全部分组的问题。
+   系统会在校验阶段自动补一个安全上限,**严禁为了"保险"而擅自加 LIMIT**——那会把本应返回的多行结果错误截断。
 5. 仅输出 SQL 本身,不要任何解释、注释、markdown 代码块包裹。
 6. 涉及聚合(COUNT/SUM/AVG 等)请给字段加有意义的英文别名,便于前端展示。原始列也建议加别名,但别名要与源字段语义对应(例如 p.name AS product_name)。
 7. 涉及多表请用 JOIN 显式连接,不要写隐式逗号连接。
@@ -43,28 +47,28 @@
 【示例】
 
 问题:北京有多少用户?
-SQL:SELECT COUNT(*) AS user_count FROM users WHERE city = '北京' LIMIT 100
+SQL:SELECT COUNT(*) AS user_count FROM users WHERE city = '北京'
 
 问题:销量前 5 的商品有哪些?
 SQL:SELECT p.name AS product_name, SUM(o.quantity) AS total_sold FROM orders o JOIN products p ON o.product_id = p.id WHERE o.status = 'paid' GROUP BY p.id, p.name ORDER BY total_sold DESC LIMIT 5
 
 问题:2025 年每个城市的已支付订单总金额是多少,按金额降序?
-SQL:SELECT u.city AS city, SUM(o.amount) AS total_amount FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status = 'paid' AND o.created_at LIKE '2025%' GROUP BY u.city ORDER BY total_amount DESC LIMIT 100
+SQL:SELECT u.city AS city, SUM(o.amount) AS total_amount FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status = 'paid' AND o.created_at LIKE '2025%' GROUP BY u.city ORDER BY total_amount DESC
 
 问题:2024 年的订单总金额
-SQL:SELECT SUM(o.amount) AS total_amount FROM orders o WHERE o.status = 'paid' AND o.created_at LIKE '2024%' LIMIT 1
+SQL:SELECT SUM(o.amount) AS total_amount FROM orders o WHERE o.status = 'paid' AND o.created_at LIKE '2024%'
 
 问题:电子产品类目销量前 3 的商品
 SQL:SELECT p.name AS product_name, SUM(o.quantity) AS total_sold FROM orders o JOIN products p ON o.product_id = p.id JOIN categories c ON p.category_id = c.id WHERE c.code = 'electronics' AND o.status = 'paid' GROUP BY p.id, p.name ORDER BY total_sold DESC LIMIT 3
 
 问题:每个类目销量第一的商品分别是哪个?
-SQL:SELECT category_name, product_name, total_sold FROM (SELECT c.name AS category_name, p.name AS product_name, SUM(o.quantity) AS total_sold, ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY SUM(o.quantity) DESC) AS rk FROM orders o JOIN products p ON o.product_id = p.id JOIN categories c ON p.category_id = c.id WHERE o.status = 'paid' GROUP BY c.id, c.name, p.id, p.name) WHERE rk = 1 LIMIT 100
+SQL:SELECT category_name, product_name, total_sold FROM (SELECT c.name AS category_name, p.name AS product_name, SUM(o.quantity) AS total_sold, ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY SUM(o.quantity) DESC) AS rk FROM orders o JOIN products p ON o.product_id = p.id JOIN categories c ON p.category_id = c.id WHERE o.status = 'paid' GROUP BY c.id, c.name, p.id, p.name) WHERE rk = 1
 
 问题:平均评分最高的 5 个商品(至少 10 条评价)
 SQL:SELECT p.name AS product_name, AVG(r.rating) AS avg_rating, COUNT(*) AS review_count FROM reviews r JOIN products p ON r.product_id = p.id GROUP BY p.id, p.name HAVING COUNT(*) >= 10 ORDER BY avg_rating DESC, review_count DESC LIMIT 5
 
 问题:广东省有多少个用户设置了默认地址?
-SQL:SELECT COUNT(DISTINCT user_id) AS user_count FROM addresses WHERE province = '广东' AND is_default = 1 LIMIT 100
+SQL:SELECT COUNT(DISTINCT user_id) AS user_count FROM addresses WHERE province = '广东' AND is_default = 1
 
 问题:最贵的用户是谁?
 SQL:SELECT u.name AS user_name, SUM(o.amount) AS total_spent FROM users u JOIN orders o ON u.id = o.user_id WHERE o.status = 'paid' GROUP BY u.id, u.name ORDER BY total_spent DESC LIMIT 1
@@ -81,7 +85,7 @@ SQL:SELECT '无法回答: users 表中没有邮箱(email)字段' AS error LIMIT 
   用户:2025 年每个城市的订单总金额
   你:  SELECT u.city AS city, SUM(o.amount) AS total_amount FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status='paid' AND o.created_at LIKE '2025%' GROUP BY u.city ORDER BY total_amount DESC LIMIT 100
 本轮问题:只看广东的
-输出:SELECT a.city AS city, SUM(o.amount) AS total_amount FROM orders o JOIN addresses a ON o.user_id = a.user_id WHERE a.province = '广东' AND o.status = 'paid' AND o.created_at LIKE '2025%' GROUP BY a.city ORDER BY total_amount DESC LIMIT 100
+输出:SELECT a.city AS city, SUM(o.amount) AS total_amount FROM orders o JOIN addresses a ON o.user_id = a.user_id WHERE a.province = '广东' AND o.status = 'paid' AND o.created_at LIKE '2025%' GROUP BY a.city ORDER BY total_amount DESC
 说明:从上一轮的 users.city 切换为 addresses.city + addresses.province 过滤,同源不混用。
 
 【CLARIFY 示例(真正模糊的场景)】
