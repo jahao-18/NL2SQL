@@ -49,5 +49,6 @@ def ask(req: AskRequest) -> AskResponse:
             get_source(req.source)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    result = ask_service(req.question, history=req.history, source=req.source)
+    result = ask_service(req.question, history=req.history, source=req.source,
+                         current_source=req.current_source)
     return AskResponse(**result)

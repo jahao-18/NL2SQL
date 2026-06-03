@@ -142,9 +142,6 @@
 
   function manualSource() { return selectedSource || null; }
 
-  // 本次提问最终发给后端的 source:手动选择优先;否则沿用会话已路由的库;都没有则由后端路由
-  function effectiveSource() { return manualSource() || conversationSource; }
-
   /* ---------------- history ---------------- */
 
   function loadHistory() {
@@ -238,8 +235,18 @@
     const parts = [];
     if (typeof data.row_count === "number") parts.push(`${data.row_count} 行`);
     if (typeof data.elapsed_ms === "number") parts.push(`${data.elapsed_ms} ms`);
-    sqlMeta.innerHTML = parts.map((s) => `<span>${s}</span>`).join("")
-      + (data.truncated ? '<span class="warn">结果已截断</span>' : "");
+    let html = parts.map((s) => `<span>${s}</span>`).join("");
+    if (data.truncated) html += '<span class="warn">结果已截断</span>';
+    if (typeof data.confidence === "number") {
+      const c = data.confidence;
+      const cls = c >= 80 ? "conf-high" : c >= 50 ? "conf-mid" : "conf-low";
+      const d = data.confidence_detail;
+      let tip = "AI 估算的答案准确率,非真值,仅供参考";
+      if (d) tip = `召回质量 ${d.retrieval}% · SQL正确性 ${d.correctness}%${d.reason ? " — " + d.reason : ""}(AI 估算,仅供参考)`;
+      const tipAttr = tip.replace(/"/g, "&quot;");
+      html += `<span class="confidence ${cls}" title="${tipAttr}">AI 准确率 ${c}%</span>`;
+    }
+    sqlMeta.innerHTML = html;
   }
 
   /* ---------------- data fetching ---------------- */
@@ -313,13 +320,16 @@
     submit.innerHTML = '查询中<span class="arrow">…</span>';
 
     const history = loadHistory().slice(-MAX_HISTORY_TURNS);
-    const source = effectiveSource();
+    // source = 手动选定的库(硬锁);current_source = 本会话当前库(给后端路由当提示,
+    // 让追问留在原库、换话题能切库)。自动模式下 source 为空,后端每轮按问题+历史重新路由。
+    const source = manualSource();
+    const currentSource = conversationSource;
 
     try {
       const resp = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history, source }),
+        body: JSON.stringify({ question, history, source, current_source: currentSource }),
       });
       const data = await resp.json();
 

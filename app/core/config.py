@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     max_rows: int = 200
     query_timeout_seconds: int = 5
 
+    # ── 答案准确率评估(用另一个 LLM 当裁判,给用户参考)──
+    # 成功执行后,裁判模型对「召回质量」+「SQL/结果正确性」各打 0-100,合成一个最终准确率展示。
+    # best-effort:裁判失败不影响查询本身。关掉则不评分、响应里 confidence 为 None。
+    judge_enabled: bool = True
+    judge_model: str = "qwen-plus"          # 裁判模型,与生成模型 qwen_model 分开(另一个 LLM),可调
+    judge_weight_correctness: float = 0.7   # 最终分 = 此权重*SQL正确性 + (1-此权重)*召回质量
+    judge_sample_rows: int = 20             # 喂给裁判的结果行样本上限(控 token)
+
     # ── 知识库检索(schema linking)──
     retrieval_enabled: bool = True          # 总开关:关掉则始终用整库 DDL(旧行为)
     # 检索后端:"local" = 进程内(numpy 向量 + rank_bm25);"server" = Milvus + Elasticsearch。

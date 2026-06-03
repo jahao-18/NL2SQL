@@ -379,6 +379,19 @@ main{
 .sql-meta span.warn{
   color:#fcd34d;background:rgba(245,158,11,0.12);
 }
+/* AI 准确率徽章:按高/中/低分段变色,悬停 title 看分项+理由 */
+.sql-meta span.confidence{
+  margin-left:auto;font-weight:600;cursor:help;
+}
+.sql-meta span.confidence.conf-high{
+  color:#6ee7b7;background:rgba(16,185,129,0.14);
+}
+.sql-meta span.confidence.conf-mid{
+  color:#fcd34d;background:rgba(245,158,11,0.14);
+}
+.sql-meta span.confidence.conf-low{
+  color:#fca5a5;background:rgba(239,68,68,0.14);
+}
 
 .result-table-wrap{
   background:rgba(15,15,40,0.5);

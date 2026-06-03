@@ -105,21 +105,26 @@ def _is_multimodal_model(name: str) -> bool:
     return n.startswith("qwen3") or "-vl" in n or "vl-" in n
 
 
-@lru_cache(maxsize=1)
-def _llm() -> BaseChatModel:
+def make_llm(model: str) -> BaseChatModel:
+    """按模型名构建 chat 模型(qwen3.x/vl 走多模态 endpoint,其余走 ChatTongyi)。生成与裁判共用。"""
     if not settings.dashscope_api_key:
         raise RuntimeError("DASHSCOPE_API_KEY 未配置,请在 .env 中填入")
-    if _is_multimodal_model(settings.qwen_model):
+    if _is_multimodal_model(model):
         return ChatQwenMultiModal(
-            model=settings.qwen_model,
+            model=model,
             dashscope_api_key=settings.dashscope_api_key,
             temperature=0,
         )
     return ChatTongyi(
-        model=settings.qwen_model,
+        model=model,
         dashscope_api_key=settings.dashscope_api_key,
         temperature=0,
     )
+
+
+@lru_cache(maxsize=1)
+def _llm() -> BaseChatModel:
+    return make_llm(settings.qwen_model)
 
 
 def _strip_sql(raw: str) -> str:

@@ -12,6 +12,7 @@ from app.core.chain import generate_sql, repair_sql
 from app.core.data_sources import get_source
 from app.core.executor import SQLExecutionError, execute
 from app.core.formatter import format_clarify, format_error, format_success
+from app.core.judge import judge
 from app.core.retrieval import retrieve_context
 from app.core.schema import load_schema
 from app.core.source_router import route
@@ -29,34 +30,43 @@ def ask(
     question: str,
     history: list[Turn] | None = None,
     source: str | None = None,
+    current_source: str | None = None,
 ) -> dict[str, Any]:
     trimmed_history = (history or [])[-MAX_HISTORY_TURNS:]
     # 上一轮就是 clarify => 本轮是用户的回答,禁止再次 clarify(兼顾路由反问与生成澄清)
     last_turn_was_clarify = bool(trimmed_history) and trimmed_history[-1].kind == "clarify"
 
-    # source 为空 => 系统按问题自动路由到最匹配的数据源(仅会话首轮;追问由前端回传 source)
+    # source 给了 => 用户手动锁库,跳过路由。
+    # source 为空 => 自动模式:**每轮**都按"问题 + 历史 + 当前库"重新路由,
+    #   让追问留在原库、换话题切到新库(修复了过去"首轮路由后整会话粘死一个库"的问题)。
     auto_routed = False
     if not source:
         try:
-            routed = route(question)
+            routed = route(question, trimmed_history, current_source)
         except Exception as e:
             logger.exception("数据源路由失败")
             return format_error(f"数据源路由失败: {e}")
 
         if routed is None:
-            # 实在没匹配上:第一次反问用户;若已反问过一次仍无法判断,引导手动选库(防死循环)
-            if last_turn_was_clarify:
+            # 路由拿不准:若会话已在某个库里,保持不动(别把追问踢飞);否则反问/引导手动选库。
+            if current_source:
+                logger.info("路由无匹配,保持当前会话库 | q=%s | current=%s", question, current_source)
+                source = current_source
+                auto_routed = True
+            elif last_turn_was_clarify:
                 logger.warning("路由反问后仍无法判断数据源 | q=%s", question)
                 return format_error(
                     "仍无法确定要查询哪个数据库,请在上方「数据源」下拉中手动选择后再试。"
                 )
-            logger.info("路由无匹配,反问用户 | q=%s", question)
-            return format_clarify(
-                "没能判断这个问题该查哪个数据库。请补充说明你要查的数据涉及哪类业务或实体,"
-                "或在上方「数据源」下拉中手动选择数据源。"
-            )
-        source = routed
-        auto_routed = True
+            else:
+                logger.info("路由无匹配,反问用户 | q=%s", question)
+                return format_clarify(
+                    "没能判断这个问题该查哪个数据库。请补充说明你要查的数据涉及哪类业务或实体,"
+                    "或在上方「数据源」下拉中手动选择数据源。"
+                )
+        else:
+            source = routed
+            auto_routed = True
 
     try:
         ds = get_source(source)
@@ -75,11 +85,13 @@ def ask(
     # 检索 query 带上历史问题,让"按城市拆分"这类追问也能召回上一轮涉及的表。
     # 失败/库太小返回 None,此处回退整库 DDL;validator 仍用全量 schema_info.tables。
     schema_text = schema_info.ddl_text
+    retrieval_used = False
     try:
         retrieval_query = " ".join([t.question for t in trimmed_history] + [question])
         rc = retrieve_context(retrieval_query, ds.name, schema_info.ddl_text)
         if rc is not None:
             schema_text = rc.context_text
+            retrieval_used = True
     except Exception:
         logger.exception("schema 检索异常,回退整库 DDL")
 
@@ -135,9 +147,21 @@ def ask(
             "ask ok | source=%s | q=%s | history=%d | sql=%s | rows=%d | %dms | truncated=%s",
             ds.name, question, len(trimmed_history), safe_sql, len(rows), elapsed_ms, truncated,
         )
+
+        # 答案准确率评估(另一个 LLM 当裁判,合成一个准确率给用户参考)。best-effort,失败返回 None。
+        # 「无法回答」占位结果(单列名为 error)是模型主动声明答不了,不评分。
+        is_placeholder = columns == ["error"]
+        jr = None if is_placeholder else judge(
+            question, schema_text, safe_sql, columns, rows, len(rows), ds.dialect, retrieval_used)
+        confidence = jr.final if jr else None
+        confidence_detail = (
+            {"retrieval": jr.retrieval, "correctness": jr.correctness, "reason": jr.reason}
+            if jr else None
+        )
         return format_success(
             safe_sql, columns, rows, elapsed_ms,
-            truncated=truncated, column_sources=column_sources, **src_kw,
+            truncated=truncated, column_sources=column_sources,
+            confidence=confidence, confidence_detail=confidence_detail, **src_kw,
         )
 
     return format_error(f"经过 {MAX_REPAIR_ROUNDS + 1} 次尝试仍失败: {last_err}", sql=last_sql, **src_kw)

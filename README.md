@@ -16,6 +16,7 @@
 - 前端表头**双行显示**:别名(`product_name`) + 源字段(`p.name`),你能一眼看出每列来自哪个表
 - 结果超 200 行**显式提示"已截断"**,避免误判
 - 模糊提问主动推导("最贵的用户" → 按消费总额排序),不存在的字段才回退
+- **AI 准确率评估**:每次查询后用另一个 LLM 当裁判,对「召回质量 + SQL 正确性」打分合成一个 0-100% 准确率,前端按高/中/低变色展示,供用户判断结果可信度(AI 估算,非真值)
 
 ## 它不会做什么(设计边界)
 
@@ -239,9 +240,13 @@ uvicorn app.main:app --reload
 | **vector** | 语义相似(列描述/自然名)| Milvus | 进程内 numpy 余弦 |
 | **keyword** | BM25 精确词(中文走 IK 分词)| Elasticsearch + analysis-ik | 进程内 rank_bm25 |
 | **glossary** | 业务术语/规则(取值映射、JOIN 口径)| PostgreSQL + pgvector | —(仅 server)|
-| **graph** | 表关系 / JOIN 路径(补桥接表)| networkx(进程内,两后端共用)||
+| **graph** | **表结构相关性**(PPR 沿 FK 扩散)+ JOIN 路径 | networkx + numpy PPR(进程内,两后端共用)||
 
-前三路命中经 **RRF 倒数排名融合**选出相关表,graph 再补连通桥接表与 JOIN 条件。任一后端连不上会**自动跳过该路**,最差回退整库 DDL,不会崩。
+前三路召回(内容路)**并行执行**(线程池,都是嵌入 HTTP + 检索服务网络往返的 I/O,墙钟≈最慢一路而非三路之和,实测约 2×),经 **RRF 倒数排名融合**得到表分。
+
+graph 是**第 4 路检索**,但需要种子,故为二阶段:以前三路融合的 top 表为**种子**,跑 **Personalized PageRank** 沿外键扩散,把结构上相关(枢纽/桥接)、但内容路没捞到的表打分产出 → 并入**再融合一次**。这是内容相似度给不出的纯结构信号。选表定下后,再用 FK 最短路径补桥接表 + 输出 JOIN 条件喂 LLM。
+
+任一后端连不上会**自动跳过该路**,最差回退整库 DDL,不会崩。
 
 ### 两种后端
 
@@ -468,6 +473,11 @@ curl -X POST http://127.0.0.1:8000/api/ask `
 | `DB_PATH` | `data/app.db` | SQLite 路径(相对项目根目录)|
 | `MAX_ROWS` | `200` | 单次查询最大返回行数(同时也是 LIMIT 上限)|
 | `QUERY_TIMEOUT_SECONDS` | `5` | SQLite 连接/锁超时秒数 |
+| `JUDGE_ENABLED` | `true` | 是否启用 AI 准确率评估(关掉则响应 `confidence` 为 null,省一次 LLM 调用)|
+| `JUDGE_MODEL` | `qwen-plus` | 裁判模型,与生成模型 `QWEN_MODEL` 分开(另一个 LLM)|
+| `JUDGE_WEIGHT_CORRECTNESS` | `0.7` | 最终准确率 = 此权重×SQL正确性 +(1-此权重)×召回质量 |
+
+> **AI 准确率评估**:查询成功后,裁判 LLM 基于「问题 + 喂给生成器的 schema 上下文 + SQL + 结果预览」给召回质量、SQL 正确性各打 0-100,代码按权重合成一个 `confidence`(0-100)。它**没有标准答案、不碰数据库**,是 AI 估算的可信度参考,非真值;best-effort,裁判失败不影响查询。响应里 `confidence` 是合成分,`confidence_detail` 含分项 + 理由(前端 tooltip)。
 
 代码侧常量(改完需重启):
 

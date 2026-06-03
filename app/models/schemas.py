@@ -16,7 +16,8 @@ class Turn(BaseModel):
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500, description="用户的自然语言问题")
     history: list[Turn] = Field(default_factory=list, description="历史对话,最近 N 轮,无状态由前端持有")
-    source: str | None = Field(None, description="数据源名称,None 表示用默认(配置里的第一个)")
+    source: str | None = Field(None, description="手动选定的数据源(硬锁,跳过自动路由);None=自动路由")
+    current_source: str | None = Field(None, description="本会话当前所在数据源,自动路由时作为提示,让追问留在原库、换话题再切库")
 
 
 class SourceInfo(BaseModel):
@@ -43,6 +44,15 @@ class AskResponse(BaseModel):
     source: str | None = Field(None, description="本次实际使用的数据源 name")
     source_label: str | None = Field(None, description="数据源显示名")
     auto_routed: bool = Field(False, description="数据源是否由系统按问题自动选择")
+    confidence: int | None = Field(None, description="AI 评估的答案准确率 0-100(召回质量+SQL正确性合成),None=未评估")
+    confidence_detail: ConfidenceDetail | None = Field(None, description="准确率分项明细")
+
+
+class ConfidenceDetail(BaseModel):
+    """准确率评估的分项,供前端 tooltip 展示。"""
+    retrieval: int = Field(..., description="召回质量 0-100")
+    correctness: int = Field(..., description="SQL 正确性 0-100")
+    reason: str = Field("", description="裁判 LLM 给的一句话理由")
 
 
 class SchemaResponse(BaseModel):
