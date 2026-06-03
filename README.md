@@ -20,8 +20,10 @@
 ## 它不会做什么(设计边界)
 
 - 只跑 `SELECT`。`INSERT/UPDATE/DELETE/DROP/...` 一律在 prompt + 校验器 + 只读连接三层拦截
-- 不支持自定义函数注册、不调用外部 API、不做向量检索(纯 prompt 工程 + 规则校验)
+- 不支持自定义函数注册、不调用外部 API
 - 不保存服务端会话:历史轮次由前端 localStorage 持有,后端无状态
+
+> 注:大库可选开启**四路 schema linking 检索**(向量 + 关键字 + 业务术语 + 关系图谱),见下文「知识库检索」一节。默认 `local` 后端纯进程内,无外部依赖。
 
 ---
 
@@ -123,8 +125,10 @@
 | Web 框架 | FastAPI + Uvicorn |
 | LLM 链路 | LangChain + langchain-community(`ChatTongyi`)|
 | LLM 模型 | 通义千问 `qwen-plus`(DashScope)|
-| 数据库 | SQLite(只读模式) |
+| 数据库 | SQLite / PostgreSQL(只读模式) |
 | SQL 解析 | sqlparse |
+| 知识库检索(可选)| 向量 + 关键字 + 业务术语 + 关系图谱四路;`local` 进程内(numpy / rank_bm25 / networkx)或 `server`(Milvus + Elasticsearch+IK + PostgreSQL/pgvector)|
+| 嵌入 | DashScope `text-embedding-v3` |
 | 配置 | pydantic-settings + `.env` |
 | 前端 | 原生 HTML/JS + Pico.css(CDN) |
 
@@ -218,6 +222,79 @@ uvicorn app.main:app --reload
 - 前端页面:<http://127.0.0.1:8000/>
 - API 文档(Swagger UI):<http://127.0.0.1:8000/docs>
 - 健康检查:<http://127.0.0.1:8000/api/health>
+
+> 到这一步就能用了 —— 默认 `RETRIEVAL_BACKEND=local`,纯进程内,不需要 docker。
+> 想开启大库的高精度检索(下一节)再起 docker。
+
+---
+
+## 知识库检索(四路 schema linking,可选)
+
+大库整库 DDL 又费 token 又稀释信号。开启后,系统针对每个问题**只召回相关的表/列 + 业务规则**喂给 LLM(schema linking),小库自动跳过(整库 DDL 更省事)。
+
+### 四路召回
+
+| 路 | 召回信号 | 后端(server) | 后端(local) |
+|---|---|---|---|
+| **vector** | 语义相似(列描述/自然名)| Milvus | 进程内 numpy 余弦 |
+| **keyword** | BM25 精确词(中文走 IK 分词)| Elasticsearch + analysis-ik | 进程内 rank_bm25 |
+| **glossary** | 业务术语/规则(取值映射、JOIN 口径)| PostgreSQL + pgvector | —(仅 server)|
+| **graph** | 表关系 / JOIN 路径(补桥接表)| networkx(进程内,两后端共用)||
+
+前三路命中经 **RRF 倒数排名融合**选出相关表,graph 再补连通桥接表与 JOIN 条件。任一后端连不上会**自动跳过该路**,最差回退整库 DDL,不会崩。
+
+### 两种后端
+
+- **`local`(默认)**:全进程内,零外部依赖,开箱即用。向量/关键字用 numpy + rank_bm25。
+- **`server`**:接真组件(Milvus + ES + PG),适合大库 / 生产。`glossary` 路仅在此模式启用。
+
+切换:`.env` 里设 `RETRIEVAL_BACKEND=server`。
+
+### 启用 server 后端
+
+1. **装依赖**(`requirements.txt` 已含,`pip install -r` 即可):`pymilvus` / `elasticsearch` / `pgvector`。
+
+2. **起 docker 检索服务**(ES 是含中文分词插件的自定义镜像,**必须带 `--build`**):
+
+   ```powershell
+   docker compose up -d --build
+   ```
+
+   起的服务:Elasticsearch(`:9200`,含 IK)、Milvus(`:19530`,自带 etcd+minio)、PostgreSQL+pgvector(host **`:5433`**,避开本机已装的 PG)。
+
+3. **`.env` 开开关**:
+
+   ```env
+   RETRIEVAL_BACKEND=server
+   # 以下均有默认值,一般不用改
+   # ES_URL=http://localhost:9200
+   # MILVUS_URI=http://localhost:19530
+   # PG_DSN=postgresql://nl2sql:nl2sql@localhost:5433/nl2sql_retrieval
+   # ES_ANALYZER=ik_max_word          # 索引分词器(搜索用 ik_smart)
+   ```
+
+4. **重启 uvicorn** 即可。首次查询某库会建索引(嵌入 + 入库),之后按内容签名命中缓存。
+
+> docker 那层起一次就常驻,平时开发只跑 `uvicorn`。改了 `docker/es/Dockerfile` 才需要再 `--build`。
+
+### 验证真组件生效
+
+```powershell
+python scripts/verify_server_backend.py superhero "哪个出版商旗下的超级英雄最多"
+```
+
+看输出 `retrievers_used` 里出现 `vector / keyword / glossary / graph`、日志有「…索引已重建/命中缓存」即生效。
+(注:BIRD 库 schema 是英文、问题是中文,跨语言 BM25 几乎不命中,`keyword` 常缺席,属正常。)
+
+### 相关配置项
+
+| 环境变量 | 默认值 | 说明 |
+|---|---|---|
+| `RETRIEVAL_ENABLED` | `true` | 总开关,关掉则始终用整库 DDL |
+| `RETRIEVAL_BACKEND` | `local` | `local` 进程内 / `server` 真组件 |
+| `RETRIEVAL_MIN_DDL_CHARS` | `1500` | 整库 DDL 短于此值不检索(小库全量喂)|
+| `RETRIEVAL_TOP_TABLES` | `8` | 融合后保留的相关表数上限(表数 ≤ 此值的库直接跳过检索)|
+| `GLOSSARY_TOP_K` | `5` | 术语路每次召回的业务规则条数 |
 
 ---
 

@@ -20,6 +20,20 @@ class Settings(BaseSettings):
 
     # ── 知识库检索(schema linking)──
     retrieval_enabled: bool = True          # 总开关:关掉则始终用整库 DDL(旧行为)
+    # 检索后端:"local" = 进程内(numpy 向量 + rank_bm25);"server" = Milvus + Elasticsearch。
+    # server 模式下若服务连不上,各检索器 available() 返回 False,自动回退整库 DDL,不会崩。
+    retrieval_backend: str = "local"
+    es_url: str = "http://localhost:9200"
+    # ES 分词器:中文用 IK(需镜像装 analysis-ik 插件,见 docker/es/Dockerfile)。
+    # 索引用 ik_max_word(最细粒度,多切词,提召回);搜索用 ik_smart(粗粒度,少切词,提精度)。
+    # 插件没装时建索引会被 ES 拒,es_keyword 自动回退 standard(按字切),不影响可用性。
+    es_analyzer: str = "ik_max_word"
+    es_search_analyzer: str = "ik_smart"
+    milvus_uri: str = "http://localhost:19530"
+    # 业务术语词表检索(第 4 路)的存储库:PostgreSQL + pgvector(docker-compose 的 postgres 服务)。
+    # 注意这是检索存储库,与 data_sources.yaml 里被查询的业务 PG 数据源无关。连不上则该路 available()=False。
+    pg_dsn: str = "postgresql://nl2sql:nl2sql@localhost:5433/nl2sql_retrieval"
+    glossary_top_k: int = 5                 # glossary 路按问题召回的术语条目数上限
     embedding_model: str = "text-embedding-v3"
     retrieval_min_ddl_chars: int = 1500     # 整库 DDL 短于此值就不检索,直接全量喂(小库无需 schema linking)
     retrieval_top_tables: int = 8           # 融合后保留的相关表数量上限
