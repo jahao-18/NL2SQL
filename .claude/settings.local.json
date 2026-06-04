@@ -70,7 +70,9 @@
       "Bash(taskkill //PID 12120 //F)",
       "Bash(curl -s -X POST http://127.0.0.1:8000/api/ask -H \"Content-Type: application/json; charset=utf-8\" --data-binary @scripts/_q.json --max-time 180 -w \"\\\\n[http=%{http_code} t=%{time_total}s]\")",
       "Bash(curl -s -X POST http://127.0.0.1:8000/api/ask -H \"Content-Type: application/json; charset=utf-8\" --data-binary @scripts/_q2.json --max-time 120 -w \"\\\\n[http=%{http_code} t=%{time_total}s]\")",
-      "Bash(curl -s -X POST http://127.0.0.1:8000/api/ask -H \"Content-Type: application/json; charset=utf-8\" --data-binary @scripts/_q.json --max-time 120 -w \"\\\\n[http=%{http_code} t=%{time_total}s]\")"
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/ask -H \"Content-Type: application/json; charset=utf-8\" --data-binary @scripts/_q.json --max-time 120 -w \"\\\\n[http=%{http_code} t=%{time_total}s]\")",
+      "Bash(find . -iname \"high_risk_test_AB.md\")",
+      "Bash(ls tests/)"
     ]
   }
 }

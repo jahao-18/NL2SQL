@@ -28,8 +28,9 @@ ENUM_DISCOVER_TEXT_LEN_LIMIT = 32  # 取值文本太长(可能是评论/详情)�
 
 @dataclass
 class SchemaInfo:
-    ddl_text: str                          # 拼接给 LLM 的文本(含注释 + 发现的取值 + 词表)
+    ddl_text: str                          # 拼接给 LLM 的文本(含注释 + 发现的取值 + 词表 + 派生指标)
     tables: dict[str, list[str]] = field(default_factory=dict)  # 表名 -> 列名列表(白名单)
+    pure_ddl: str = ""                      # 仅表结构(CREATE TABLE),供前端「查看表结构」展示,不含 enum/词表/指标
 
 
 _COL_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+", re.MULTILINE)
@@ -166,7 +167,9 @@ def load_schema(source_name: str | None = None) -> SchemaInfo:
     if glossary:
         parts.append(glossary)
 
-    return SchemaInfo(ddl_text="\n\n".join(parts), tables=tables)
+    # ddl_text 是喂 LLM 的完整上下文(表 + 取值发现 + 词表 + 派生指标);
+    # pure_ddl 只含 CREATE TABLE,供前端「查看表结构」展示——业务说明那些不该露给用户看。
+    return SchemaInfo(ddl_text="\n\n".join(parts), tables=tables, pure_ddl=ddl_text)
 
 
 @lru_cache(maxsize=32)

@@ -144,11 +144,14 @@ def ask(
             continue
 
         try:
-            columns, rows, elapsed_ms = execute(safe_sql, source_name=ds.name)
+            columns, rows, elapsed_ms, capped = execute(safe_sql, source_name=ds.name)
         except SQLExecutionError as e:
             last_sql, last_err = safe_sql, str(e)
             logger.warning("SQL 执行失败 attempt=%s err=%s sql=%s", attempt, e, safe_sql)
             continue
+        # 兜底:实际结果撞到行上限就算截断,不依赖 LLM 是否守规矩(它可能擅自写了 LIMIT MAX_ROWS,
+        # 校验器看不出超限 → truncated 漏标。这里以真实行数为准,补上提示)。
+        truncated = truncated or capped
 
         column_sources = extract_column_sources(safe_sql)
         if len(column_sources) != len(columns):
