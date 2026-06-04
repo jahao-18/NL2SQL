@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     judge_weight_correctness: float = 0.7   # 最终分 = 此权重*SQL正确性 + (1-此权重)*召回质量
     judge_sample_rows: int = 20             # 喂给裁判的结果行样本上限(控 token)
 
+
     # ── 知识库检索(schema linking)──
     retrieval_enabled: bool = True          # 总开关:关掉则始终用整库 DDL(旧行为)
     # 检索后端:"local" = 进程内(numpy 向量 + rank_bm25);"server" = Milvus + Elasticsearch。
@@ -59,6 +60,20 @@ class Settings(BaseSettings):
     # 查询侧术语扩展:用快模型把中文问题的关键实体/属性抽出来 + 补英文列名别名,缓解
     # "中文问题 vs 英文列名"的跨语言召回短板。关掉则用原问题(省一次 router 模型往返)。
     retrieval_query_expansion: bool = True
+    # ── RRF 融合每路权重 ── 默认全 1.0 = 等权(原行为)。可调高某路:
+    #   keyword 精确命中列名/枚举值(高精度) → 想更信任精确匹配可调高;
+    #   glossary 业务术语命中表 → 想强化业务规则导向可调高。改这些不影响其它逻辑。
+    rrf_weight_vector: float = 1.0
+    rrf_weight_keyword: float = 1.0
+    rrf_weight_glossary: float = 1.0
+    rrf_weight_graph: float = 1.0
+    # 选表打分聚合衰减:把"列分求和"改成"最强命中主导 + 其余命中按 decay 几何衰减加成"。
+    # decay=1.0 → 退回纯求和(宽表靠列多占便宜);decay=0 → 纯取最强单列命中;
+    # 0.5(默认) → 单张表的相关度由其最匹配的列主导,多个相关列仍加分但边际递减,削弱宽表偏置。
+    table_score_decay: float = 0.5
+    # 构建检索 query 时纳入的最近历史提问条数(当前问题始终在内)。历史太多会稀释当前问题语义;
+    # 追问("按城市拆分")又需要上一两轮上下文 → 默认只带最近 2 条,兼顾追问与抗稀释。
+    retrieval_history_turns: int = 2
     # 启动时后台预热:提前为"会真正走检索的大库"建好原子/检索器/图/术语索引(含嵌入全部原子),
     # 消除每个库首次查询的冷启动延迟。后台线程跑,不阻塞启动;小库/检索关闭时自动跳过。
     prewarm_enabled: bool = True

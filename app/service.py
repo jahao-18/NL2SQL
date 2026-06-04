@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from app.core.chain import generate_sql, repair_sql
+from app.core.config import settings
 from app.core.data_sources import get_source
 from app.core.executor import SQLExecutionError, execute
 from app.core.formatter import format_clarify, format_error, format_success
@@ -83,12 +84,14 @@ def ask(
         return format_error(str(e), **src_kw)
 
     # 知识库检索:针对问题召回精简 schema 上下文(替代整库 DDL 喂给模型)。
-    # 检索 query 带上历史问题,让"按城市拆分"这类追问也能召回上一轮涉及的表。
-    # 失败/库太小返回 None,此处回退整库 DDL;validator 仍用全量 schema_info.tables。
+    # 检索 query 以当前问题为主,只带最近 N 条历史提问(让"按城市拆分"这类追问能召回上一轮的表,
+    # 同时避免 5 轮老话题稀释当前语义)。失败/库太小返回 None,回退整库 DDL;validator 仍用全量表。
     schema_text = schema_info.ddl_text
     retrieval_used = False
     try:
-        retrieval_query = " ".join([t.question for t in trimmed_history] + [question])
+        n_hist = max(0, settings.retrieval_history_turns)
+        recent_q = [t.question for t in trimmed_history][-n_hist:] if n_hist else []
+        retrieval_query = " ".join([question] + recent_q)   # 当前问题前置主导
         rc = retrieve_context(retrieval_query, ds.name, schema_info.ddl_text)
         if rc is not None:
             schema_text = rc.context_text
