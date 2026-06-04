@@ -181,9 +181,29 @@ def list_table_names(source_name: str | None = None) -> tuple[str, ...]:
         return ()
 
 
+@lru_cache(maxsize=32)
+def count_columns(source_name: str | None = None) -> int:
+    """某数据源的总列数(不拼 DDL、不做 enum 发现),供检索触发判断"宽表库"用。失败返回 0。"""
+    source = get_source(source_name)
+    engine = get_engine(source)
+    insp = inspect(engine)
+    total = 0
+    try:
+        for t in insp.get_table_names():
+            try:
+                total += len(insp.get_columns(t))
+            except Exception:
+                continue
+    except Exception as e:
+        logger.warning("count_columns 失败 %s: %s", source.name, e)
+        return 0
+    return total
+
+
 def clear_cache() -> None:
     load_schema.cache_clear()
     list_table_names.cache_clear()
+    count_columns.cache_clear()
 
 
 def list_source_dialect(source_name: str | None = None) -> str:

@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     retrieval_top_tables: int = 8           # 融合后保留的相关表数量上限
     retrieval_top_k: int = 30               # 每路检索器返回的列命中数
     retrieval_max_bridge_tables: int = 3    # 关系图谱为连通选中表最多补的桥接表数
+    # 检索触发改按"schema 体量":表多(需选表)或总列数多(需裁列,哪怕表很少)都触发。
+    # 这样像 european_football_2(7 表但 Match 有 115 列)这种宽表库也能走 schema linking。
+    retrieval_min_columns: int = 40         # 总列数 > 此值即触发检索(即便表数 <= top_tables)
+    # 列级裁剪:选中一张表时,宽表只渲染"命中列 + 主键 + 外键列 + 少量补充",封顶此列数,
+    # 其余折叠成"还有 N 个字段"。窄表(列数 <= 此值)全列照常渲染。
+    retrieval_col_cap: int = 25
+    # 查询侧术语扩展:用快模型把中文问题的关键实体/属性抽出来 + 补英文列名别名,缓解
+    # "中文问题 vs 英文列名"的跨语言召回短板。关掉则用原问题(省一次 router 模型往返)。
+    retrieval_query_expansion: bool = True
     # 启动时后台预热:提前为"会真正走检索的大库"建好原子/检索器/图/术语索引(含嵌入全部原子),
     # 消除每个库首次查询的冷启动延迟。后台线程跑,不阻塞启动;小库/检索关闭时自动跳过。
     prewarm_enabled: bool = True
