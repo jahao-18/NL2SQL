@@ -4,8 +4,8 @@ from __future__ import annotations
 import re
 
 import sqlparse
-from sqlparse.sql import Statement
-from sqlparse.tokens import DML, Keyword
+from sqlparse.sql import Identifier, IdentifierList, Parenthesis, Statement, TokenList
+from sqlparse.tokens import DML, Keyword, Name
 
 from app.core.config import settings
 
@@ -49,7 +49,7 @@ def validate_and_fix(sql: str, allowed_tables: dict[str, list[str]]) -> tuple[st
 
     # 4) 强制 LIMIT,并记录是否截断
     truncated = False
-    limit_match = re.search(r"\blimit\s+(\d+)\b", sql, flags=re.IGNORECASE)
+    limit_match = re.search(r"\blimit\s+(\d+)(\s+offset\s+\d+)?\s*$", sql, flags=re.IGNORECASE)
     if not limit_match:
         sql = f"{sql} LIMIT {settings.max_rows}"
     else:
@@ -63,17 +63,93 @@ def validate_and_fix(sql: str, allowed_tables: dict[str, list[str]]) -> tuple[st
 
 def _check_tables_in_whitelist(sql: str, whitelist: set[str]) -> None:
     # 抓 FROM xxx / JOIN xxx 后的表名(忽略 schema 前缀和别名)
-    pattern = re.compile(r"\b(?:from|join)\s+([A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
-    found = {m.group(1) for m in pattern.finditer(sql)}
-    illegal = found - whitelist
+    statements = sqlparse.parse(sql)
+    if not statements:
+        raise SQLValidationError("SQL 解析失败")
+    ctes = _cte_names(statements[0])
+    illegal = (_table_refs(statements[0]) - ctes) - whitelist
     if illegal:
         raise SQLValidationError(f"引用了未授权的表: {', '.join(sorted(illegal))}")
+
+
+def _meaningful(tokens: TokenList) -> list:
+    return [t for t in tokens.tokens if not t.is_whitespace and not t.match(Keyword, ",")]
+
+
+def _contains_select(token) -> bool:
+    return isinstance(token, TokenList) and any(
+        t.ttype is DML and t.normalized.upper() == "SELECT" for t in token.flatten()
+    )
+
+
+def _clean_name(name: str | None) -> str | None:
+    return name.strip('"`[]') if name else None
+
+
+def _identifier_names(token) -> set[str]:
+    names: set[str] = set()
+    if isinstance(token, IdentifierList):
+        for ident in token.get_identifiers():
+            names |= _identifier_names(ident)
+        return names
+    if isinstance(token, Identifier):
+        if _contains_select(token):
+            return _table_refs(token)
+        real = _clean_name(token.get_real_name())
+        if real:
+            names.add(real)
+        return names
+    if token.ttype is Name:
+        name = _clean_name(token.value)
+        if name:
+            names.add(name)
+    return names
+
+
+def _cte_names(stmt: Statement) -> set[str]:
+    tokens = _meaningful(stmt)
+    if not tokens or tokens[0].normalized.upper() != "WITH":
+        return set()
+    names: set[str] = set()
+    for tok in tokens[1:]:
+        if tok.ttype is DML and tok.normalized.upper() == "SELECT":
+            break
+        if isinstance(tok, IdentifierList):
+            for ident in tok.get_identifiers():
+                name = _clean_name(ident.get_name())
+                if name:
+                    names.add(name)
+        elif isinstance(tok, Identifier):
+            name = _clean_name(tok.get_name())
+            if name:
+                names.add(name)
+    return names
+
+
+def _table_refs(token_list: TokenList) -> set[str]:
+    refs: set[str] = set()
+    tokens = _meaningful(token_list)
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        norm = tok.normalized.upper() if hasattr(tok, "normalized") else ""
+        if norm == "FROM" or norm.endswith(" JOIN"):
+            if i + 1 < len(tokens):
+                refs |= _identifier_names(tokens[i + 1])
+            i += 2
+            continue
+        if isinstance(tok, Parenthesis) and _contains_select(tok):
+            refs |= _table_refs(tok)
+        elif isinstance(tok, TokenList) and not isinstance(tok, Identifier):
+            refs |= _table_refs(tok)
+        i += 1
+    return refs
 
 
 def _cap_limit(sql: str, cap: int) -> str:
     """如果 LIMIT 超过 cap,强制收紧到 cap;只处理简单的 LIMIT N 形式。"""
     def replace(m: re.Match[str]) -> str:
         n = int(m.group(1))
-        return f"LIMIT {min(n, cap)}"
+        return f"LIMIT {min(n, cap)}{m.group(2) or ''}"
 
-    return re.sub(r"\blimit\s+(\d+)\b", replace, sql, flags=re.IGNORECASE)
+    return re.sub(r"\blimit\s+(\d+)(\s+offset\s+\d+)?\s*$", replace, sql, flags=re.IGNORECASE)

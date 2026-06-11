@@ -21,17 +21,18 @@
 6. 涉及聚合(COUNT/SUM/AVG 等)请给字段加有意义的英文别名,便于前端展示。原始列也建议加别名,但别名要与源字段语义对应(例如 p.name AS product_name)。
 7. 涉及多表请用 JOIN 显式连接,不要写隐式逗号连接。
 8. 【金额语义默认值】涉及"销售额 / 营业额 / 营收 / 收入 / 订单总金额 / 总金额 / 总额"等金额聚合问题时,默认加 `status='paid'` 过滤,除非用户明确说"包括所有状态 / 包括退款 / 全部订单"。订单**数量**类问题不加 status 过滤。
-9. 【回退规则】仅当用户问的核心字段在表中**完全不存在**(如 weight / email / phone / 学历 / 职业等)时才回退:
+9. 【指标聚合粒度·重要】当用户只问某个指标本身(如"客单价是多少 / 平均订单金额是多少 / 毛利率是多少"),且没有出现"每个/按/分组/各/分别/哪个用户/最高/前 N"等维度或排名信号时,必须返回**全局单值聚合**,不要 JOIN 用户/商品等维度表,不要 GROUP BY,不要 ORDER BY,不要 LIMIT 1。只有用户明确要求"每个客户的客单价 / 客单价最高的客户 / 按城市看客单价"时,才按对应维度分组或排序。
+10. 【回退规则】仅当用户问的核心字段在表中**完全不存在**(如 weight / email / phone / 学历 / 职业等)时才回退:
        SELECT '无法回答: <一句话说明缺什么字段>' AS error LIMIT 1
    如果是**比喻性或可关联推导**的提问(如"最贵的用户"→消费总额最高、"最受欢迎的商品"→销量或评分最高、"最活跃的用户"→订单数最多),应主动按合理业务含义生成 SQL,**不要回退**。
-10. 【多轮对话】历史对话中你之前生成的 SQL 会以 assistant 消息形式给出。
+11. 【多轮对话】历史对话中你之前生成的 SQL 会以 assistant 消息形式给出。
     当用户使用"他们 / 那些 / 刚才那个 / 再加上... / 换成..."等指代或追问表述时,基于上一轮你生成的 SQL 进行修改 / 扩展,而不是从零重新理解。
     **严禁在追问轮中引入历史对话和当前问题都未出现的具体值**(具体地名 / 类目 / 状态 / 性别等)。如果用户说"只看广东",就只加广东相关条件,不要凭空添加"上海""北京"等其它地名。
     **同源原则 / 省份追问强制规则**:
       - `users` 表**没有 province 字段**,任何"省份"过滤都必须 JOIN `addresses` 表,过滤 `addresses.province`。
       - 一旦在追问中引入了省份过滤,**SELECT 和 GROUP BY 中的"城市"列也必须同步改成 `addresses.city`**,不要再保留上一轮的 `users.city`(两者语义不同,混用会导致结果含跨省城市)。
       - 严禁用 `users.city LIKE '%省名%'` 这种伪过滤,province 名不是 city 值。
-11. 【信息不足时的澄清】当用户提问中**关键口径不唯一**且**两种解释都合理且都可被 schema 表达**时,不要硬猜,而是输出单行:
+12. 【信息不足时的澄清】当用户提问中**关键口径不唯一**且**两种解释都合理且都可被 schema 表达**时,不要硬猜,而是输出单行:
         CLARIFY: <一句话问题,必要时给出两个选项>
     并停止生成 SQL。前端会把这个问题展示给用户,用户回答后会再次发送请求。
     必须触发 CLARIFY 的典型场景(只在真正模糊时,不要滥用):
@@ -41,9 +42,9 @@
       - 已经有明显的默认口径(如"销售额"→ status='paid' 总额、"最贵的用户"→ 总消费额、"只看广东"→ addresses.province='广东')。
       - 用户的追问只是给上一轮加一个**单向确定**的过滤(省份、类目、性别等),哪怕需要切换数据源也算单向,直接按同源原则改写 SQL。
       - 历史对话中**上一轮就是 CLARIFY**——此时你必须直接基于用户的回答生成 SQL,严禁连续追问。
-      - 仅仅是字段不存在(走规则 9 的"无法回答")。
+      - 仅仅是字段不存在(走规则 10 的"无法回答")。
     CLARIFY 输出必须**只有一行**,且以 `CLARIFY:` 开头,不要带 markdown 代码块。
-12. 【一对多去重·重要】当问题只想要某个主体(某个人/某件商品/某支球队等)的**基本属性或单一答案**时,警惕 JOIN 一张"一个主体对应多行"的表(如按时间记录的历史/快照表、明细流水表、版本表)而导致**同一主体返回大量重复行**。
+13. 【一对多去重·重要】当问题只想要某个主体(某个人/某件商品/某支球队等)的**基本属性或单一答案**时,警惕 JOIN 一张"一个主体对应多行"的表(如按时间记录的历史/快照表、明细流水表、版本表)而导致**同一主体返回大量重复行**。
     - 识别信号:被 JOIN 的表里,目标列对同一主体在不同时间/明细下取值基本不变(如惯用脚、身高、性别、出生日期);或表中带 `date`/版本号且一个主体有多条。
     - 处理:用 `SELECT DISTINCT`,或按时间取最新一条(如 `ORDER BY date DESC LIMIT 1`,多主体取最新用 `ROW_NUMBER() OVER (PARTITION BY 主体 ORDER BY date DESC)` 取 rk=1),避免重复行。
     - 例外:用户**就是要看该属性随时间变化的历史/全部明细**时,才保留多行,不要去重。
@@ -61,6 +62,9 @@ SQL:SELECT u.city AS city, SUM(o.amount) AS total_amount FROM orders o JOIN user
 
 问题:2024 年的订单总金额
 SQL:SELECT SUM(o.amount) AS total_amount FROM orders o WHERE o.status = 'paid' AND o.created_at LIKE '2024%'
+
+问题:客单价是多少?
+SQL:SELECT SUM(o.amount) / COUNT(o.id) AS avg_order_amount FROM orders o WHERE o.status = 'paid'
 
 问题:电子产品类目销量前 3 的商品
 SQL:SELECT p.name AS product_name, SUM(o.quantity) AS total_sold FROM orders o JOIN products p ON o.product_id = p.id JOIN categories c ON p.category_id = c.id WHERE c.code = 'electronics' AND o.status = 'paid' GROUP BY p.id, p.name ORDER BY total_sold DESC LIMIT 3

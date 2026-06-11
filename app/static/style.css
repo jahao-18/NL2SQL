@@ -279,6 +279,78 @@ main{
   white-space:nowrap;
 }
 
+.suggestion-panel{
+  margin:0 0 24px;
+  padding:18px 20px;
+  background:rgba(15,15,40,0.42);
+  border:1px solid rgba(100,100,255,0.1);
+  border-radius:12px;
+}
+.query-wrapper .suggestion-panel{margin:18px 0 0;padding:0;background:transparent;border:0}
+.suggestion-title{
+  margin-bottom:10px;
+  font-size:.72rem;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:rgba(255,255,255,0.3);
+}
+.suggestion-list{display:flex;gap:8px;flex-wrap:wrap}
+.suggestion-chip{
+  padding:8px 12px;
+  border:1px solid rgba(100,100,255,0.14);
+  border-radius:8px;
+  background:rgba(255,255,255,0.04);
+  color:rgba(255,255,255,0.68);
+  font:inherit;
+  font-size:.82rem;
+  cursor:pointer;
+  transition:all .15s;
+}
+.suggestion-chip:hover{
+  color:#fff;
+  border-color:rgba(139,92,246,0.45);
+  background:rgba(139,92,246,0.14);
+}
+
+.history-panel{
+  margin-bottom:24px;
+  padding:20px;
+  background:rgba(15,15,40,0.42);
+  border:1px solid rgba(100,100,255,0.1);
+  border-radius:12px;
+}
+.panel-head{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:16px;margin-bottom:14px;
+}
+.panel-kicker{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;
+  color:rgba(255,255,255,0.25);margin-bottom:4px;
+}
+.panel-head h2{font-size:1rem;font-weight:700;color:rgba(255,255,255,0.82)}
+.panel-action{
+  padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);
+  background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.5);
+  font:inherit;font-size:.78rem;cursor:pointer;
+}
+.panel-action:hover{color:#fff;background:rgba(255,255,255,0.08)}
+.history-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.history-item{
+  display:flex;flex-direction:column;gap:5px;text-align:left;
+  padding:10px 12px;border-radius:8px;border:1px solid rgba(100,100,255,0.1);
+  background:rgba(0,0,0,0.16);color:inherit;font:inherit;cursor:pointer;
+}
+.history-item:hover{border-color:rgba(139,92,246,0.4);background:rgba(139,92,246,0.1)}
+.history-question{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:rgba(255,255,255,0.78);font-size:.84rem;
+}
+.history-meta{
+  color:rgba(255,255,255,0.32);font-size:.7rem;font-family:'JetBrains Mono',monospace;
+}
+.history-empty{font-size:.82rem;color:rgba(255,255,255,0.32)}
+
 /* ===== ROUTED SOURCE ===== */
 .routed-source{
   display:flex;align-items:center;gap:10px;
@@ -379,7 +451,7 @@ main{
 .sql-meta span.warn{
   color:#fcd34d;background:rgba(245,158,11,0.12);
 }
-/* AI 准确率徽章:按高/中/低分段变色,悬停 title 看分项+理由 */
+/* 结果可信度徽章:按高/中/低分段变色,悬停 title 看分项+理由 */
 .sql-meta span.confidence{
   margin-left:auto;font-weight:600;cursor:help;
 }
@@ -448,6 +520,24 @@ main{
   font-size:.7rem;color:rgba(255,255,255,0.25);
   text-transform:uppercase;letter-spacing:.08em;
   background:rgba(0,0,0,0.2);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  flex-wrap:wrap;
+}
+.result-actions{display:flex;gap:8px;flex-wrap:wrap}
+.result-actions button{
+  padding:6px 10px;border-radius:7px;border:1px solid rgba(255,255,255,0.08);
+  background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.55);
+  font:inherit;font-size:.68rem;cursor:pointer;text-transform:none;letter-spacing:0;
+}
+.result-actions button:hover{color:#fff;background:rgba(99,102,241,0.16);border-color:rgba(99,102,241,0.35)}
+.chart-panel{
+  padding:18px 24px;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  background:rgba(0,0,0,0.16);
+}
+.chart-panel canvas{width:100%;display:block}
+.chart-empty{
+  padding:24px;text-align:center;color:rgba(255,255,255,0.34);font-size:.84rem;
 }
 .result-table-scroll{overflow-x:auto}
 .result-table{
@@ -579,4 +669,9 @@ main{
   .hero-title{font-size:2.2rem}
   .header-nav{gap:12px}
   .nav-link{display:none}
+  .history-list{grid-template-columns:1fr}
+  .panel-head{align-items:flex-start;flex-direction:column}
+  .result-table-header{align-items:flex-start;flex-direction:column}
+  .result-actions{width:100%}
+  .result-actions button{flex:1}
 }

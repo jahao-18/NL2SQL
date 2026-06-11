@@ -17,6 +17,7 @@ from pathlib import Path
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
+from app.core.config import settings
 from app.core.data_sources import DataSource, get_engine, get_source
 
 logger = logging.getLogger("nl2sql.schema")
@@ -103,7 +104,18 @@ def _discover_enums(engine: Engine, tables: dict[str, list[str]], dialect: str) 
 
     用 SQLAlchemy inspect 拿列类型(是否文本),避免硬编码方言判断。
     """
+    if not settings.enum_discovery_enabled:
+        return ""
+    if len(tables) > settings.enum_discovery_max_tables:
+        logger.info("enum discover skipped: too many tables (%d)", len(tables))
+        return ""
+    total_columns = sum(len(cols) for cols in tables.values())
+    if total_columns > settings.enum_discovery_max_columns:
+        logger.info("enum discover skipped: too many columns (%d)", total_columns)
+        return ""
+
     insp = inspect(engine)
+    preparer = engine.dialect.identifier_preparer
     discovered: list[str] = []
     for tbl, _ in tables.items():
         try:
@@ -117,9 +129,11 @@ def _discover_enums(engine: Engine, tables: dict[str, list[str]], dialect: str) 
             col_name = c["name"]
             try:
                 with engine.connect() as conn:
+                    q_tbl = preparer.quote(tbl)
+                    q_col = preparer.quote(col_name)
                     rows = conn.execute(text(
-                        f"SELECT DISTINCT {col_name} FROM {tbl} "
-                        f"WHERE {col_name} IS NOT NULL LIMIT {ENUM_DISCOVER_MAX + 1}"
+                        f"SELECT DISTINCT {q_col} FROM {q_tbl} "
+                        f"WHERE {q_col} IS NOT NULL LIMIT {ENUM_DISCOVER_MAX + 1}"
                     )).all()
             except Exception as e:
                 logger.debug("enum discover skip %s.%s: %s", tbl, col_name, e)

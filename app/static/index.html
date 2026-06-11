@@ -97,6 +97,23 @@ WHERE a.city = '北京'</div>
     </div>
   </section>
 
+  <section class="suggestion-panel">
+    <div class="suggestion-title">推荐问法</div>
+    <div class="suggestion-list" id="suggestion-list"></div>
+  </section>
+
+  <section class="history-panel" id="history-panel">
+    <div class="panel-head">
+      <div>
+        <div class="panel-kicker">Query History</div>
+        <h2>最近查询</h2>
+      </div>
+      <button class="panel-action" id="history-clear-btn" type="button">清空记录</button>
+    </div>
+    <div class="history-list" id="history-list"></div>
+    <div class="history-empty" id="history-empty">还没有查询记录。完成一次查询后会显示在这里。</div>
+  </section>
+
   <!-- Routed source (auto-routing transparency) -->
   <div class="routed-source" id="routed-source" hidden>
     <span class="routed-icon">🗄️</span>
@@ -140,7 +157,19 @@ WHERE a.city = '北京'</div>
 
     <!-- 查询结果 -->
     <div class="result-table-wrap" id="result-table-wrap">
-      <div class="result-table-header" id="result-table-header">查询结果</div>
+      <div class="result-table-header">
+        <span id="result-table-title">查询结果</span>
+        <div class="result-actions">
+          <button id="copy-table-btn" type="button">复制表格</button>
+          <button id="download-csv-btn" type="button">下载 CSV</button>
+          <button id="save-query-btn" type="button">保存查询</button>
+          <button id="chart-toggle-btn" type="button">图表</button>
+        </div>
+      </div>
+      <div class="chart-panel" id="chart-panel" hidden>
+        <canvas id="result-chart" height="220"></canvas>
+        <div class="chart-empty" id="chart-empty" hidden>当前结果缺少可绘制的文本列和数值列。</div>
+      </div>
       <div class="result-table-scroll">
         <table class="result-table">
           <thead id="result-thead"></thead>

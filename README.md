@@ -14,13 +14,14 @@
 - **四路知识库检索(schema linking)**:大库/宽表只把**相关的表与字段 + 业务规则**喂给 LLM,而不是整库 DDL —— 提准确率、省 token(向量 + 关键字 + 业务术语 + 关系图谱四路融合)
 - **查询侧术语扩展**:中文问题自动补英文列名别名(惯用脚 → `preferred_foot`),缓解"中文问题对英文列名"的跨语言召回短板
 - **多轮追问**:"北京有多少用户?" → "他们里 60 岁以上的呢?" → "再按性别分组",指代/省略自动理解
-- **AI 准确率评估(异步)**:每次查询后另一个 LLM 当裁判,给「数据完整度 + 结果匹配度」打分,合成 0-100% 可信度勋章。**结果先返回、勋章随后异步补上**,不阻塞看结果;评语用**业务语言**(不堆表名列名),面向不懂 SQL 的业务用户
+- **结果可信度评估(后台异步)**:每次查询后另一个 LLM 当裁判,给「数据完整度 + 结果匹配度」打分,合成 0-100% 可信度勋章。**结果先返回、后台线程评估、前端短轮询补上勋章**,不阻塞看结果;评语用**业务语言**(不堆表名列名),面向不懂 SQL 的业务用户
 - **查询进度条**:点击查询后按真实流水线阶段(判断数据源 → 检索 → 生成 SQL → 执行)显示进度
+- **推荐问法 / 查询历史 / 结果操作**:前端提供按数据源切换的推荐问法、可见查询历史;结果表支持复制、下载 CSV、保存查询和简单柱状图预览
 - **我的术语表**:用户可给每个库补充「业务术语 / 取值映射」(如 `交易后出账 = frequency 的 'POPLATEK PO OBRATU'`),按库存浏览器、提问自动带上 —— 解决模型猜不出加密取值的问题
 - **派生指标 / 计算口径**:业务方用**纯自然语言**定义指标(`客单价 = 总消费金额 / 订单数量`,不写任何列名),用户问"客单价是多少"时,LLM 自动把概念匹配到字段、按公式计算;大库走检索时还会把公式操作数对应的列主动召回进上下文(详见下文)
 - **失败自动回修**:校验/执行报错时把"上次 SQL + 错误"丢回 LLM,最多重试 2 轮
 - **信息不足主动澄清**:口径二义("最有价值的客户")时反问一次,而非硬猜
-- **三层安全**:prompt + sqlparse 校验器 + 只读连接,只跑 `SELECT`
+- **多层安全与资源保护**:prompt 约束 + sqlparse 递归表白名单 + 只读连接 + 强制/收紧 LIMIT + 查询超时;只跑 `SELECT`
 
 ## 它不会做什么(设计边界)
 
@@ -53,17 +54,17 @@
 │                            system prompt 注入 {schema}+{dialect}+{date}       │
 │                            history 作为 Human/AI 消息序列;可输出 CLARIFY     │
 │                                                                              │
-│  ⑤ validator.validate_and_fix()  单条/只读/黑名单/表白名单/强制 LIMIT        │
+│  ⑤ validator.validate_and_fix()  单条/只读/黑名单/递归表白名单/强制 LIMIT  │
 │                                                                              │
-│  ⑥ executor.execute()      只读连接执行,fetchmany(MAX_ROWS)                 │
+│  ⑥ executor.execute()      只读连接执行,DB 侧超时保护,fetchmany(MAX_ROWS)   │
 │                                                                              │
-│  ⑦ judge.stash()           暂存评估输入、返回 judge_id(评估异步化,见下)    │
+│  ⑦ judge.stash()           入队后台评估、立即返回 judge_id(见下)           │
 │                                                                              │
 │  ↻ 失败回到 ④:chain.repair_sql() 带"上次 SQL + 错误"再试,最多 2 轮         │
 └────────────────────────────────────────────────────────────────────────────┘
    │ JSON(含 sql / 结果 / 实际数据源 / judge_id)
    ▼
-浏览器:进度条补满 → 渲染 SQL + 结果表 → 凭 judge_id 异步 POST /api/judge 补可信度勋章
+浏览器:进度条补满 → 渲染 SQL + 结果表/图表 → 凭 judge_id 轮询 /api/judge 补可信度勋章
 ```
 
 ---
@@ -115,13 +116,26 @@
 
 ---
 
-## AI 准确率评估(异步裁判)
+## 结果可信度评估(后台异步裁判)
 
 查询成功后,裁判 LLM(`JUDGE_MODEL`,与主生成分开)基于「问题 + 喂给生成器的 schema 上下文 + SQL + 结果预览」给**召回质量**和**SQL/结果正确性**各打 0-100,代码按 `JUDGE_WEIGHT_CORRECTNESS` 合成一个 `confidence`(0-100)。
 
-- **异步化**:评估是纯信息性的(不影响 SQL/结果),却要一次完整 LLM 往返。所以 `/api/ask` **只暂存输入、返回 `judge_id`**,结果先到;前端拿到结果后再 `POST /api/judge` 补勋章。用户**早一次往返**看到表格。
+- **后台异步化**:评估是纯信息性的(不影响 SQL/结果),却要一次完整 LLM 往返。所以 `/api/ask` **只入队后台评估、返回 `judge_id`**,结果先到;前端拿到结果后短轮询 `POST /api/judge` 读取已完成的勋章。用户无需等待裁判模型即可看到表格。
 - **业务语言评语**:裁判 prompt 要求评语面向不懂 SQL 的业务用户,**禁止出现表名/列名/JOIN 等技术词**,用"系统找到了订单和客户数据…"这类说法。前端 tooltip 也用「数据完整度 / 结果匹配度」而非「召回质量 / SQL 正确性」。
-- best-effort:裁判失败/关闭则 `confidence` 为 null,不影响查询。`JUDGE_ENABLED=false` 可整体关掉。
+- **best-effort**:裁判失败/关闭/超时轮询未取到,勋章会消失或保持为空,不影响查询。`JUDGE_ENABLED=false` 可整体关掉。
+
+---
+
+## 前端工作台能力
+
+前端不是只展示 SQL 和表格,还提供面向业务用户的轻量工作台能力:
+
+- **推荐问法**:按当前数据源 / 自动模式切换问题模板,帮助用户从空输入框起步。
+- **最近查询**:浏览器本地保存最近查询记录,可点击回填问题;服务端仍保持无状态。
+- **结果操作**:结果表支持复制、下载 CSV、保存查询到本地、以及基于「文本列 + 数值列」的简单柱状图预览。
+- **CSV 安全**:导出/复制时会对 `= + - @` 开头的单元格加前缀,降低 Excel 公式注入风险。
+
+这些信息都保存在浏览器 `localStorage`,不会写入服务端。
 
 ---
 
@@ -173,13 +187,13 @@
 | `app/core/schema.py` | 读 DDL + 业务词表 + 自动发现字段取值;`count_columns` 供检索触发判断 |
 | `app/core/chain.py` | LangChain 链:`generate_sql` / `repair_sql`;`_llm`(主)/`_router_llm`(快)/`make_llm` |
 | `app/core/retrieval/` | 四路检索子系统(见下表) |
-| `app/core/validator.py` | SQL 安全校验 + LIMIT 强制/收紧 |
-| `app/core/executor.py` | 只读执行,返回 `(columns, rows, elapsed_ms)` |
-| `app/core/judge.py` | 准确率评估 + 异步暂存区(`stash` / `run_stashed`) |
+| `app/core/validator.py` | SQL 安全校验:单条 SELECT、黑名单、递归表白名单、LIMIT 强制/收紧 |
+| `app/core/executor.py` | 只读执行 + 查询超时保护,返回 `(columns, rows, elapsed_ms)` |
+| `app/core/judge.py` | 结果可信度评估 + 后台异步评估队列(`stash` / `run_stashed`) |
 | `app/core/sql_meta.py` | sqlparse 抽 SELECT 列源表达式,服务于前端双行表头 |
 | `app/core/formatter.py` | 统一响应字典格式 |
 | `app/models/schemas.py` | Pydantic 请求/响应模型 |
-| `app/static/` | 单页前端:`index.html` + `app.js` + `style.css`(进度条 / 异步勋章 / 术语表面板) |
+| `app/static/` | 单页前端:`index.html` + `app.js` + `style.css`(推荐问法 / 查询历史 / 结果操作 / 进度条 / 异步勋章 / 术语表面板) |
 | `prompts/*.txt` | 外置 prompt:`sql_prompt`(12 条规则)/ `sql_repair` / `router` / `judge` / `query_expand` |
 
 ### `app/core/retrieval/` 子模块
@@ -207,7 +221,7 @@
 | LLM 链路 | LangChain + langchain-community(`ChatTongyi` / 多模态封装)|
 | LLM 模型 | 生成 `qwen3.7-plus` · 裁判 `qwen3.6-plus` · 路由/查询扩展 `qwen-turbo`(均 DashScope,可配)|
 | 数据库 | SQLite / PostgreSQL(只读模式) |
-| SQL 解析 | sqlparse |
+| SQL 解析 | sqlparse(递归提取表引用,含 quoted/schema/子查询/CTE 场景) |
 | 检索 | 四路:`local`(numpy / rank_bm25 / networkx)或 `server`(Milvus + Elasticsearch+IK + PostgreSQL/pgvector)|
 | 嵌入 | DashScope `text-embedding-v3` |
 | 配置 | pydantic-settings + `.env` + `data_sources.yaml` |
@@ -230,18 +244,18 @@ NL2SQL/
 │   │   ├── schema.py            # DDL + 业务词表 + 取值发现
 │   │   ├── chain.py             # LangChain 链:生成 / 回修;主/快模型
 │   │   ├── retrieval/           # 四路 schema linking 检索子系统
-│   │   ├── validator.py         # SQL 安全校验 + LIMIT 强制
-│   │   ├── executor.py          # 只读执行器
-│   │   ├── judge.py             # 准确率评估 + 异步暂存区
+│   │   ├── validator.py         # SQL 安全校验 + 表白名单 + LIMIT 强制
+│   │   ├── executor.py          # 只读执行器 + 查询超时
+│   │   ├── judge.py             # 结果可信度评估 + 后台异步队列
 │   │   ├── sql_meta.py          # 列源表达式解析
 │   │   └── formatter.py         # 响应格式化
 │   ├── models/schemas.py        # Pydantic 模型
-│   └── static/                  # 前端(进度条 / 异步勋章 / 术语表)
+│   └── static/                  # 前端(推荐问法 / 历史 / 结果操作 / 进度条 / 异步勋章 / 术语表)
 ├── prompts/
 │   ├── sql_prompt.txt           # 主 prompt(12 条规则 + 示例)
 │   ├── sql_repair_prompt.txt    # 失败回修
 │   ├── router_prompt.txt        # 数据源路由
-│   ├── judge_prompt.txt         # 准确率裁判(业务语言评语)
+│   ├── judge_prompt.txt         # 结果可信度裁判(业务语言评语)
 │   └── query_expand_prompt.txt  # 查询侧术语扩展
 ├── data_sources.yaml            # 数据源注册表
 ├── data/
@@ -365,6 +379,9 @@ sources:
 ### 安全
 
 - SQLite 走 `?mode=ro` URI;PostgreSQL 走会话级 `default_transaction_read_only=on` —— DB 账号层强制只读,即使校验器漏过也写不进去。
+- SQL 校验器只允许单条 `SELECT`,递归抽取 `FROM/JOIN` 表引用并做白名单校验,覆盖 quoted 表名、schema 前缀、子查询和 CTE 常见场景。
+- 执行器按 `QUERY_TIMEOUT_SECONDS` 做数据库侧超时保护:PostgreSQL 使用 `statement_timeout`,SQLite 使用 progress handler 中断长查询。
+- 前端 CSV/表格复制对公式起始字符做转义,降低本地打开导出文件时的公式注入风险。
 
 ---
 
@@ -373,7 +390,7 @@ sources:
 | 端点 | 说明 |
 |---|---|
 | `POST /api/ask` | 主查询。返回 sql / 结果 / 实际数据源 / `judge_id` |
-| `POST /api/judge` | 凭 `judge_id` 取异步评估结果(可信度勋章) |
+| `POST /api/judge` | 凭 `judge_id` 读取后台评估结果;未完成/失败时返回空 |
 | `GET /api/sources` | 数据源列表 + 默认源 |
 | `GET /api/schema?source=` | 某库 DDL + `{表名:[列名]}` 白名单 |
 | `GET /api/health` | `{"status":"ok"}` |
@@ -404,7 +421,7 @@ sources:
   "source": "european_football_2",
   "source_label": "BIRD: european_football_2",
   "auto_routed": true,
-  "confidence": null,             // 异步:首响应为 null,随后 /api/judge 补
+  "confidence": null,             // 首响应为 null,前端随后轮询 /api/judge 补
   "judge_id": "8bcdfcb3deeb44..."
 }
 ```
@@ -422,10 +439,13 @@ sources:
 | `JUDGE_MODEL` | `qwen-plus` | 裁判模型(设为 `qwen3.6-plus`)|
 | `ROUTER_MODEL` | `qwen-turbo` | 路由 + 查询扩展用的快模型 |
 | `MAX_ROWS` | `200` | 单次最大返回行数(同时是 LIMIT 上限)|
-| `QUERY_TIMEOUT_SECONDS` | `5` | 连接/锁超时秒数 |
-| `JUDGE_ENABLED` | `true` | 是否启用准确率评估 |
+| `QUERY_TIMEOUT_SECONDS` | `5` | 查询执行超时秒数(PostgreSQL `statement_timeout` / SQLite progress handler) |
+| `JUDGE_ENABLED` | `true` | 是否启用结果可信度评估 |
 | `JUDGE_WEIGHT_CORRECTNESS` | `0.7` | 最终分 = 此权重×正确性 +(1-此)×召回 |
 | `JUDGE_SAMPLE_ROWS` | `20` | 喂裁判的结果行样本上限 |
+| `ENUM_DISCOVERY_ENABLED` | `true` | 是否自动发现低基数 TEXT 列取值 |
+| `ENUM_DISCOVERY_MAX_TABLES` | `20` | 表数超过此值时跳过自动取值发现 |
+| `ENUM_DISCOVERY_MAX_COLUMNS` | `120` | 总列数超过此值时跳过自动取值发现 |
 | **检索** | | |
 | `RETRIEVAL_ENABLED` | `true` | 总开关 |
 | `RETRIEVAL_BACKEND` | `local` | `local` 进程内 / `server` 真组件 |
@@ -453,7 +473,7 @@ sources:
 | 让 LLM 学会一类新提问 | `prompts/sql_prompt.txt` 加一条**示例**,通常比改规则有效 |
 | 改业务默认值(如"金额默认 paid")| `prompts/sql_prompt.txt` 硬性规则段 |
 | 调路由判库行为 | `prompts/router_prompt.txt` |
-| 改评估评语口吻 | `prompts/judge_prompt.txt` |
+| 改可信度评语口吻 | `prompts/judge_prompt.txt` |
 | 调查询扩展的别名风格 | `prompts/query_expand_prompt.txt` |
 | 加/换数据源 | `data_sources.yaml`(改完重启)|
 | 给某库补业务规则/取值映射 | `data/glossaries/<name>.md`(用 `- ` 条目)|
@@ -462,7 +482,7 @@ sources:
 | 换模型 | `.env` 的 `QWEN_MODEL` / `JUDGE_MODEL` / `ROUTER_MODEL` |
 | 允许/禁止某 SQL 关键字 | `app/core/validator.py` 的 `FORBIDDEN_KEYWORDS` |
 | 加 API 字段 | `app/models/schemas.py` + `formatter.py` + `service.py` 三处 |
-| 改前端表格/进度条/勋章 | `app/static/app.js` + `style.css` |
+| 改前端推荐问法/历史/结果操作/进度条/勋章 | `app/static/app.js` + `style.css` |
 
 ---
 
@@ -473,7 +493,8 @@ sources:
 - 列级裁剪有极小漏列风险:既没被任一路命中、又非主外键的列可能被折叠 —— 已用查询扩展提命中率 + 主外键强制保留 + 折叠提示缓解;必要时调高 `RETRIEVAL_COL_CAP`
 - 查询扩展在检索路径上加一次快模型往返(可 `RETRIEVAL_QUERY_EXPANSION=false` 关闭做 A/B)
 - 跨语言 BM25:BIRD 库 schema 英文、问题中文,`keyword` 路命中有限(查询扩展已大幅缓解)
-- CTE / `WITH` 子句别名暂未被表白名单显式识别;`REPLACE` 字符串函数与 `INSERT OR REPLACE` 共享关键字被一刀切禁
+- `REPLACE` 字符串函数与 `INSERT OR REPLACE` 共享关键字,当前仍被一刀切禁用;如确需字符串替换函数,需在 `validator.py` 中做函数级放行。
+- 自动取值发现为了稳定性有表数/列数上限;大库可能需要更多依赖手写 glossary 来补充枚举映射。
 
 ---
 
@@ -485,9 +506,9 @@ sources:
 
 **Q: 自动路由选错库?** 调 `prompts/router_prompt.txt`,或前端下拉手动锁库。
 
-**Q: 准确率勋章一直"评估中"?** 看后端 `/api/judge` 是否报错;裁判 best-effort,失败则勋章消失,不影响结果。
+**Q: 结果可信度勋章一直"评估中"?** 可信度由后台线程 best-effort 计算;如果裁判模型失败、关闭或前端轮询超时,勋章会消失/为空,不影响结果。
 
-**Q: 想关检索 / 评估?** `.env` 设 `RETRIEVAL_ENABLED=false` / `JUDGE_ENABLED=false`。
+**Q: 想关检索 / 可信度评估 / 自动取值发现?** `.env` 设 `RETRIEVAL_ENABLED=false` / `JUDGE_ENABLED=false` / `ENUM_DISCOVERY_ENABLED=false`。
 
 **Q: 想看生成了什么 SQL / 失败原因?** 看终端日志(`ask ok` / 校验失败 / 执行失败),或前端「生成的 SQL」框。
 

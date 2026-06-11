@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     router_model: str = "qwen-turbo"
     max_rows: int = 200
     query_timeout_seconds: int = 5
+    enum_discovery_enabled: bool = True
+    enum_discovery_max_tables: int = 20
+    enum_discovery_max_columns: int = 120
 
     # ── 答案准确率评估(用另一个 LLM 当裁判,给用户参考)──
     # 成功执行后,裁判模型对「召回质量」+「SQL/结果正确性」各打 0-100,合成一个最终准确率展示。

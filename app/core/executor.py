@@ -33,14 +33,42 @@ def execute(sql: str, source_name: str | None = None) -> tuple[list[str], list[l
     cap = settings.max_rows
 
     # 仅当"末尾 LIMIT == 系统上限"时抬一行探测;末尾是更小的用户 LIMIT 则原样执行,不探测。
-    exec_sql = re.sub(rf"(?i)\blimit\s+{cap}\s*$", f"LIMIT {cap + 1}", sql.strip())
+    exec_sql = re.sub(
+        rf"(?i)\blimit\s+{cap}(\s+offset\s+\d+)?\s*$",
+        lambda m: f"LIMIT {cap + 1}{m.group(1) or ''}",
+        sql.strip(),
+    )
 
     start = time.perf_counter()
     try:
         with engine.connect() as conn:
-            cur = conn.execute(text(exec_sql))
-            columns = list(cur.keys())
-            rows = cur.fetchmany(cap + 1)
+            if source.dialect == "postgresql" and settings.query_timeout_seconds > 0:
+                ms = max(1, int(settings.query_timeout_seconds * 1000))
+                with conn.begin():
+                    conn.execute(text(f"SET LOCAL statement_timeout = {ms}"))
+                    cur = conn.execute(text(exec_sql))
+                    columns = list(cur.keys())
+                    rows = cur.fetchmany(cap + 1)
+            elif source.dialect == "sqlite" and settings.query_timeout_seconds > 0:
+                raw = getattr(conn.connection, "driver_connection", None)
+                deadline = time.perf_counter() + settings.query_timeout_seconds
+
+                def _abort_if_timeout() -> int:
+                    return 1 if time.perf_counter() > deadline else 0
+
+                if raw is not None and hasattr(raw, "set_progress_handler"):
+                    raw.set_progress_handler(_abort_if_timeout, 10000)
+                try:
+                    cur = conn.execute(text(exec_sql))
+                    columns = list(cur.keys())
+                    rows = cur.fetchmany(cap + 1)
+                finally:
+                    if raw is not None and hasattr(raw, "set_progress_handler"):
+                        raw.set_progress_handler(None, 0)
+            else:
+                cur = conn.execute(text(exec_sql))
+                columns = list(cur.keys())
+                rows = cur.fetchmany(cap + 1)
     except SQLAlchemyError as e:
         # SQLAlchemy 把驱动错误包一层,取 orig 更清晰
         orig = getattr(e, "orig", None)

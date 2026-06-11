@@ -114,10 +114,22 @@
   const sqlCopy = $("sql-copy");
 
   const resultWrap = $("result-table-wrap");
-  const resultHeader = $("result-table-header");
+  const resultTitle = $("result-table-title");
+  const copyTableBtn = $("copy-table-btn");
+  const downloadCsvBtn = $("download-csv-btn");
+  const saveQueryBtn = $("save-query-btn");
+  const chartToggleBtn = $("chart-toggle-btn");
+  const chartPanel = $("chart-panel");
+  const chartCanvas = $("result-chart");
+  const chartEmpty = $("chart-empty");
   const thead = $("result-thead");
   const tbody = $("result-tbody");
   const emptyHint = $("empty-hint");
+
+  const suggestionList = $("suggestion-list");
+  const historyList = $("history-list");
+  const historyEmpty = $("history-empty");
+  const historyClearBtn = $("history-clear-btn");
 
   const schemaToggle = $("schema-toggle");
   const schemaToggleLabel = $("schema-toggle-label");
@@ -133,14 +145,19 @@
   const glossarySourceName = $("glossary-source-name");
 
   const HISTORY_KEY = "nl2sql.history.v1";
+  const QUERY_LOG_KEY = "nl2sql.queryLog.v1";
+  const SAVED_QUERY_KEY = "nl2sql.savedQueries.v1";
   const GLOSSARY_KEY = "nl2sql.glossary.v1";  // 后接 .<source>
   const MAX_HISTORY_TURNS = 5;
   const MAX_GLOSSARY = 50;
+  const MAX_QUERY_LOG = 20;
 
   // 会话首轮路由选定的数据源;多轮追问复用它,避免串库。新会话/手动切换时重置。
   let conversationSource = null;
   // 下拉/标签显式选择的库(为空表示「自动识别」)
   let selectedSource = "";
+  let currentResult = null;
+  let availableSources = [];
 
   /* ---------------- helpers ---------------- */
 
@@ -234,6 +251,109 @@
       : `已记 ${n} 轮 · 发送最近 ${Math.min(n, MAX_HISTORY_TURNS)} 轮`;
   }
 
+  function readJsonList(key) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function writeJsonList(key, list) {
+    localStorage.setItem(key, JSON.stringify(list));
+  }
+
+  function loadQueryLog() {
+    return readJsonList(QUERY_LOG_KEY);
+  }
+
+  function saveQueryLogItem(item) {
+    const next = [item, ...loadQueryLog().filter((x) => x.id !== item.id)];
+    writeJsonList(QUERY_LOG_KEY, next.slice(0, MAX_QUERY_LOG));
+    renderQueryLog();
+  }
+
+  function renderQueryLog() {
+    if (!historyList || !historyEmpty) return;
+    const items = loadQueryLog();
+    historyList.innerHTML = "";
+    historyEmpty.hidden = items.length !== 0;
+    items.forEach((item) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "history-item";
+      const question = document.createElement("span");
+      question.className = "history-question";
+      question.textContent = item.question || "";
+      const meta = document.createElement("span");
+      meta.className = "history-meta";
+      meta.textContent = `${item.source_label || item.source || "自动识别"} · ${item.row_count || 0} 行 · ${item.elapsed_ms || 0} ms`;
+      row.appendChild(question);
+      row.appendChild(meta);
+      row.addEventListener("click", () => {
+        input.value = item.question || "";
+        input.focus();
+      });
+      historyList.appendChild(row);
+    });
+  }
+
+  const SUGGESTIONS = {
+    demo_sqlite: [
+      "2025 年订单总金额是多少？",
+      "销量前 5 的商品有哪些？",
+      "按城市拆分 2025 年订单金额",
+      "平均评分最高的 5 个商品，至少 10 条评价",
+    ],
+    financial: [
+      "交易后才出对账单的账户有多少个？",
+      "按地区统计客户数量",
+      "平均工资大于 8000 的地区有哪些？",
+    ],
+    superhero: [
+      "拥有 Super Strength 且身高超过 200cm 的超级英雄有多少个？",
+      "列出蓝眼睛且金色头发的超级英雄名字",
+      "Marvel Comics 旗下英雄按身高排名",
+    ],
+    european_football_2: [
+      "2016 赛季进球总数最多的联赛是哪一个？",
+      "苏格兰超级联赛 2010 赛季客场胜场最多的球队是哪支？",
+    ],
+    formula_1: [
+      "第 592 场比赛中完赛车手里年龄最大的是谁？",
+      "按车队统计完赛次数",
+    ],
+    auto: [
+      "2025 年销售额最高的 5 个商品是什么？",
+      "按地区统计用户数量",
+      "最近一年每个月的订单金额趋势",
+      "数量最多的是哪一个？",
+    ],
+  };
+
+  function suggestionSource() {
+    return manualSource() || conversationSource || "auto";
+  }
+
+  function renderSuggestions() {
+    if (!suggestionList) return;
+    const src = suggestionSource();
+    const list = SUGGESTIONS[src] || SUGGESTIONS.auto;
+    suggestionList.innerHTML = "";
+    list.forEach((text) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "suggestion-chip";
+      btn.textContent = text;
+      btn.addEventListener("click", () => {
+        input.value = text;
+        input.focus();
+      });
+      suggestionList.appendChild(btn);
+    });
+  }
+
   /* ---------------- routed source ---------------- */
 
   function showRoutedSource(data) {
@@ -308,7 +428,7 @@
     let tip = "AI 对本次回答可信度的估算,仅供参考";
     if (d) tip = `数据完整度 ${d.retrieval}% · 结果匹配度 ${d.correctness}%${d.reason ? " — " + d.reason : ""}(AI 估算,仅供参考)`;
     const tipAttr = tip.replace(/"/g, "&quot;");
-    return `<span class="confidence ${cls}" title="${tipAttr}">AI 准确率 ${c}%</span>`;
+    return `<span class="confidence ${cls}" title="${tipAttr}">结果可信度 ${c}%</span>`;
   }
 
   function renderMeta(data) {
@@ -322,31 +442,135 @@
     sqlMeta.innerHTML = html;
   }
 
-  // 异步补准确率勋章:结果已先渲染,这里凭 judge_id 请求评估,先挂"评估中"占位,回来后替换为真实勋章。
   async function fetchConfidence(data) {
     if (!data.judge_id) return;
     const pending = document.createElement("span");
     pending.className = "confidence conf-pending";
-    pending.title = "正在评估本次回答的可信度…";
-    pending.textContent = "AI 准确率 评估中…";
+    pending.title = "正在评估本次回答的可信度";
+    pending.textContent = "结果可信度评估中";
     sqlMeta.appendChild(pending);
     try {
-      const resp = await fetch("/api/judge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ judge_id: data.judge_id }),
-      });
-      const jd = await resp.json();
-      // 期间用户可能又发了新查询,sqlMeta 已被刷新,此时占位已脱离文档 -> 不再回填。
-      if (!pending.isConnected) return;
-      if (typeof jd.confidence === "number") {
-        pending.outerHTML = confidenceBadge(jd.confidence, jd.confidence_detail);
-      } else {
-        pending.remove();
+      for (let attempt = 0; attempt < 25; attempt++) {
+        const resp = await fetch("/api/judge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ judge_id: data.judge_id }),
+        });
+        const jd = await resp.json();
+        if (!pending.isConnected) return;
+        if (typeof jd.confidence === "number") {
+          pending.outerHTML = confidenceBadge(jd.confidence, jd.confidence_detail);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1200));
       }
+      pending.className = "confidence conf-pending";
+      pending.title = "可信度评估未在预期时间内完成,不影响本次查询结果";
+      pending.textContent = "可信度评估超时";
     } catch (e) {
-      pending.remove();
+      if (!pending.isConnected) return;
+      pending.className = "confidence conf-pending";
+      pending.title = "可信度评估请求失败,不影响本次查询结果";
+      pending.textContent = "可信度评估失败";
     }
+  }
+
+  function tableToText(data, sep) {
+    if (!data || !Array.isArray(data.columns)) return "";
+    const esc = (value) => {
+      let text = value == null ? "" : String(value);
+      if (/^[=+\-@]/.test(text)) text = "'" + text;
+      if (sep === "," && /[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+      return text;
+    };
+    const lines = [data.columns.map(esc).join(sep)];
+    (data.rows || []).forEach((row) => lines.push(row.map(esc).join(sep)));
+    return lines.join("\n");
+  }
+
+  function downloadCsv() {
+    if (!currentResult) return;
+    const blob = new Blob(["\ufeff" + tableToText(currentResult, ",")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nl2sql-result-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function copyTable() {
+    if (!currentResult) return;
+    navigator.clipboard.writeText(tableToText(currentResult, "\t")).catch(() => {});
+  }
+
+  function saveCurrentQuery() {
+    if (!currentResult) return;
+    const saved = readJsonList(SAVED_QUERY_KEY);
+    const item = {
+      id: currentResult.id || String(Date.now()),
+      question: currentResult.question,
+      sql: currentResult.sql,
+      source: currentResult.source,
+      source_label: currentResult.source_label,
+      saved_at: new Date().toISOString(),
+    };
+    writeJsonList(SAVED_QUERY_KEY, [item, ...saved.filter((x) => x.id !== item.id)].slice(0, 50));
+    if (saveQueryBtn) {
+      const old = saveQueryBtn.textContent;
+      saveQueryBtn.textContent = "已保存";
+      setTimeout(() => { saveQueryBtn.textContent = old; }, 1200);
+    }
+  }
+
+  function drawChart() {
+    if (!chartCanvas || !chartEmpty || !currentResult) return;
+    const columns = currentResult.columns || [];
+    const rows = (currentResult.rows || []).slice(0, 12);
+    const numericIndex = columns.findIndex((_, idx) => rows.some((r) => isNumeric(r[idx])));
+    const labelIndex = columns.findIndex((_, idx) => idx !== numericIndex && rows.some((r) => r[idx] != null && !isNumeric(r[idx])));
+    const ctx = chartCanvas.getContext("2d");
+    ctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+    if (numericIndex < 0 || labelIndex < 0 || rows.length === 0) {
+      chartCanvas.hidden = true;
+      chartEmpty.hidden = false;
+      return;
+    }
+    chartCanvas.hidden = false;
+    chartEmpty.hidden = true;
+    const width = chartCanvas.width = chartCanvas.clientWidth || chartCanvas.parentElement.clientWidth;
+    const height = chartCanvas.height = 220;
+    const values = rows.map((r) => Number(r[numericIndex]) || 0);
+    const max = Math.max(...values.map((v) => Math.abs(v)), 1);
+    const pad = 34;
+    const gap = 8;
+    const barW = Math.max(12, (width - pad * 2 - gap * (rows.length - 1)) / rows.length);
+    ctx.font = "12px JetBrains Mono, monospace";
+    ctx.fillStyle = "rgba(255,255,255,0.42)";
+    ctx.fillText(`${columns[numericIndex]} by ${columns[labelIndex]}`, pad, 18);
+    rows.forEach((row, i) => {
+      const value = Number(row[numericIndex]) || 0;
+      const h = Math.max(2, Math.abs(value) / max * 140);
+      const x = pad + i * (barW + gap);
+      const y = height - 44 - h;
+      const grad = ctx.createLinearGradient(0, y, 0, height - 44);
+      grad.addColorStop(0, "#a78bfa");
+      grad.addColorStop(1, "#6366f1");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, barW, h);
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.fillText(String(value).slice(0, 8), x, y - 6);
+      ctx.fillStyle = "rgba(255,255,255,0.36)";
+      ctx.fillText(String(row[labelIndex]).slice(0, 8), x, height - 20);
+    });
+  }
+
+  function toggleChart() {
+    if (!chartPanel) return;
+    chartPanel.hidden = !chartPanel.hidden;
+    if (!chartPanel.hidden) drawChart();
   }
 
   /* ---------------- data fetching ---------------- */
@@ -393,6 +617,7 @@
         hide(routedSource);
         hideAllStateCards();
         loadSchema();
+        renderSuggestions();
         renderGlossary();   // 切到该库的术语表(选「自动识别」时 src 为空,显示提示)
       });
     });
@@ -403,7 +628,9 @@
       const resp = await fetch("/api/sources");
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
-      renderSourceTags(data.sources || []);
+      availableSources = data.sources || [];
+      renderSourceTags(availableSources);
+      renderSuggestions();
     } catch {
       sourceTags.innerHTML = '<span class="source-tag active">（数据源加载失败）</span>';
     }
@@ -509,6 +736,7 @@
         }
         conversationSource = data.source;
         loadSchema(data.source);
+        renderSuggestions();
         renderGlossary();   // 数据源确定/切换后,刷新术语表面板到对应库
       }
 
@@ -541,7 +769,9 @@
       } else {
         renderMeta(data);
         const rowCount = typeof data.row_count === "number" ? data.row_count : (data.rows || []).length;
-        resultHeader.textContent = `查询结果 · ${rowCount} 行`;
+        if (resultTitle) resultTitle.textContent = `查询结果 · ${rowCount} 行`;
+        currentResult = { ...data, question, id: String(Date.now()) };
+        if (chartPanel) chartPanel.hidden = true;
         renderTable(data.columns, data.rows, data.column_sources);
         resultWrap.classList.add("visible");
         fetchConfidence(data);   // 结果已出,异步补准确率勋章(不阻塞结果显示)
@@ -552,6 +782,16 @@
           next.push({ question, sql: data.sql, kind: "sql" });
           saveHistory(next.slice(-MAX_HISTORY_TURNS * 2));
           updateHistoryBadge();
+          saveQueryLogItem({
+            id: currentResult.id,
+            question,
+            sql: data.sql,
+            source: data.source,
+            source_label: data.source_label,
+            row_count: rowCount,
+            elapsed_ms: data.elapsed_ms,
+            created_at: new Date().toISOString(),
+          });
         }
       }
     } catch (err) {
@@ -579,6 +819,7 @@
     hide(routedSource);
     hideAllStateCards();
     loadSchema();
+    renderSuggestions();
   });
 
   sqlCopy.addEventListener("click", () => {
@@ -589,6 +830,17 @@
       setTimeout(() => { sqlCopy.textContent = "复制"; sqlCopy.classList.remove("copied"); }, 1500);
     }).catch(() => {});
   });
+
+  if (copyTableBtn) copyTableBtn.addEventListener("click", copyTable);
+  if (downloadCsvBtn) downloadCsvBtn.addEventListener("click", downloadCsv);
+  if (saveQueryBtn) saveQueryBtn.addEventListener("click", saveCurrentQuery);
+  if (chartToggleBtn) chartToggleBtn.addEventListener("click", toggleChart);
+  if (historyClearBtn) {
+    historyClearBtn.addEventListener("click", () => {
+      localStorage.removeItem(QUERY_LOG_KEY);
+      renderQueryLog();
+    });
+  }
 
   schemaToggle.addEventListener("click", () => {
     schemaBody.classList.toggle("visible");
@@ -610,6 +862,8 @@
     await loadSources();
     await loadSchema();
     updateHistoryBadge();
+    renderQueryLog();
+    renderSuggestions();
     renderGlossary();
   })();
 })();

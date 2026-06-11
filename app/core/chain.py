@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import date
 from functools import lru_cache
+import time
 from typing import Literal
 
 from langchain_community.chat_models.tongyi import ChatTongyi
@@ -82,12 +83,25 @@ class ChatQwenMultiModal(BaseChatModel):
 
         # qwen3.x 在国内主站的多模态 endpoint;显式指定避免 SDK 默认到国际站导致 url error
         dashscope.base_http_api_url = "https://dashscope.aliyuncs.com/api/v1"
-        resp = dashscope.MultiModalConversation.call(
-            api_key=self.dashscope_api_key,
-            model=self.model,
-            messages=self._to_dashscope(messages),
-            temperature=self.temperature,
-        )
+        resp = None
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                resp = dashscope.MultiModalConversation.call(
+                    api_key=self.dashscope_api_key,
+                    model=self.model,
+                    messages=self._to_dashscope(messages),
+                    temperature=self.temperature,
+                )
+                if resp.status_code == 200:
+                    break
+                last_error = RuntimeError(f"{resp.code} {resp.message}")
+            except Exception as e:
+                last_error = e
+            if attempt < 2:
+                time.sleep(0.5 * (2 ** attempt))
+        if resp is None:
+            raise RuntimeError(f"Qwen multimodal call failed: {last_error}")
         if resp.status_code != 200:
             raise RuntimeError(f"Qwen 多模态调用失败: {resp.code} {resp.message}")
         content = resp.output.choices[0].message.content
