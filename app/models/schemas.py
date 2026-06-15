@@ -13,6 +13,14 @@ class Turn(BaseModel):
     kind: Literal["sql", "clarify"] = Field("sql", description="本轮模型输出类型")
 
 
+class FewShotExample(BaseModel):
+    """用户收藏的问法-SQL 样例,用于按数据源注入 few-shot。"""
+    question: str = Field(..., min_length=1, max_length=500)
+    sql: str = Field(..., min_length=1, max_length=3000)
+    source: str | None = Field(None, max_length=100)
+    source_label: str | None = Field(None, max_length=100)
+
+
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500, description="用户的自然语言问题")
     history: list[Turn] = Field(default_factory=list, description="历史对话,最近 N 轮,无状态由前端持有")
@@ -20,6 +28,8 @@ class AskRequest(BaseModel):
     current_source: str | None = Field(None, description="本会话当前所在数据源,自动路由时作为提示,让追问留在原库、换话题再切库")
     user_glossary: list[str] = Field(default_factory=list, max_length=50,
                                      description="用户为当前数据源补充的术语/取值映射,逐条拼进 schema 喂模型(前端按库存 localStorage)")
+    few_shots: list[FewShotExample] = Field(default_factory=list, max_length=20,
+                                            description="用户收藏的样例 SQL,后端按本次数据源筛选后作为 few-shot 注入")
 
 
 class SourceInfo(BaseModel):
@@ -46,6 +56,7 @@ class AskResponse(BaseModel):
     source: str | None = Field(None, description="本次实际使用的数据源 name")
     source_label: str | None = Field(None, description="数据源显示名")
     auto_routed: bool = Field(False, description="数据源是否由系统按问题自动选择")
+    route_reason: str | None = Field(None, description="数据源选择原因说明")
     confidence: int | None = Field(None, description="AI 评估的答案准确率 0-100(召回质量+SQL正确性合成),None=未评估")
     confidence_detail: ConfidenceDetail | None = Field(None, description="准确率分项明细")
     judge_id: str | None = Field(None, description="异步准确率评估的取件号;非空时前端用它请求 /api/judge 补勋章")
@@ -67,6 +78,9 @@ class JudgeResponse(BaseModel):
     """异步准确率评估结果;judge_id 过期或评估失败时 confidence 为 None。"""
     confidence: int | None = Field(None, description="最终准确率 0-100,None=未评估/已过期")
     confidence_detail: ConfidenceDetail | None = Field(None, description="准确率分项明细")
+    status: Literal["pending", "done", "failed", "missing"] = Field(
+        "done", description="裁判任务状态: pending=仍在评估,done=已完成,failed=评估失败,missing=无此任务"
+    )
 
 
 class SchemaResponse(BaseModel):

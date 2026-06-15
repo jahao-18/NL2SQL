@@ -118,10 +118,13 @@
   const copyTableBtn = $("copy-table-btn");
   const downloadCsvBtn = $("download-csv-btn");
   const saveQueryBtn = $("save-query-btn");
+  const confirmGoodBtn = $("confirm-good-btn");
+  const reportBadBtn = $("report-bad-btn");
   const chartToggleBtn = $("chart-toggle-btn");
   const chartPanel = $("chart-panel");
   const chartCanvas = $("result-chart");
   const chartEmpty = $("chart-empty");
+  const resultSummary = $("result-summary");
   const thead = $("result-thead");
   const tbody = $("result-tbody");
   const emptyHint = $("empty-hint");
@@ -144,10 +147,40 @@
   const glossaryEmpty = $("glossary-empty");
   const glossarySourceName = $("glossary-source-name");
 
+  const pageTitle = $("page-title");
+  const breadcrumb = $("breadcrumb");
+  const navTargets = Array.from(document.querySelectorAll("[data-view-target]"));
+  const workViews = Array.from(document.querySelectorAll(".work-view"));
+  const kbTableBody = $("kb-table-body");
+  const kbSearch = $("kb-search");
+  const kbRefreshBtn = $("kb-refresh-btn");
+  const kbStatGrid = $("kb-stat-grid");
+  const kbCurrentTitle = $("kb-current-title");
+  const kbCurrentDesc = $("kb-current-desc");
+  const healthList = $("health-list");
+  const activityList = $("activity-list");
+  const savedExampleList = $("saved-example-list");
+  const feedbackList = $("feedback-list");
+  const schemaTree = $("schema-tree");
+  const schemaEditorTitle = $("schema-editor-title");
+  const fieldTableBody = $("field-table-body");
+  const metricList = $("metric-list");
+  const termList = $("term-list");
+  const relationInput = $("relation-input");
+  const relationAddBtn = $("relation-add-btn");
+  const relationList = $("relation-list");
+  const debugQuestion = $("debug-question");
+  const debugRunBtn = $("debug-run-btn");
+  const debugSteps = $("debug-steps");
+
   const HISTORY_KEY = "nl2sql.history.v1";
   const QUERY_LOG_KEY = "nl2sql.queryLog.v1";
   const SAVED_QUERY_KEY = "nl2sql.savedQueries.v1";
   const GLOSSARY_KEY = "nl2sql.glossary.v1";  // 后接 .<source>
+  const METRIC_KEY = "nl2sql.metrics.v1";  // 后接 .<source>
+  const FIELD_META_KEY = "nl2sql.fieldMeta.v1";  // 后接 .<source>
+  const RELATION_KEY = "nl2sql.relations.v1";  // 后接 .<source>
+  const FEEDBACK_KEY = "nl2sql.feedback.v1";
   const MAX_HISTORY_TURNS = 5;
   const MAX_GLOSSARY = 50;
   const MAX_QUERY_LOG = 20;
@@ -158,6 +191,11 @@
   let selectedSource = "";
   let currentResult = null;
   let availableSources = [];
+  let schemaCache = {};
+  let schemaLoading = new Set();
+  let selectedKb = "auto";
+  let lastTrace = null;
+  let activeSchemaTable = "";
 
   /* ---------------- helpers ---------------- */
 
@@ -174,6 +212,459 @@
 
   function manualSource() { return selectedSource || null; }
 
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function showView(id) {
+    workViews.forEach((view) => view.classList.toggle("active", view.id === id));
+    navTargets.forEach((btn) => {
+      if (!btn.classList.contains("side-nav-item")) return;
+      btn.classList.toggle("active", btn.dataset.viewTarget === id);
+    });
+    const view = workViews.find((v) => v.id === id);
+    if (view) {
+      pageTitle.textContent = view.dataset.pageTitle || "问数工作台";
+      breadcrumb.textContent = view.dataset.breadcrumb || "智能问数";
+    }
+    if (id === "kb-list-view") renderKbList();
+    if (id === "kb-overview-view") renderKbOverview();
+    if (id === "schema-console-view") renderSchemaConsole();
+    if (id === "debug-view") renderDebugSteps();
+  }
+
+  function sourceByName(name) {
+    return availableSources.find((s) => s.name === name);
+  }
+
+  function sourceLabel(name) {
+    if (!name) return "自动识别";
+    const s = sourceByName(name);
+    return s ? s.label : name;
+  }
+
+  function activeSourceName() {
+    return selectedKb === "auto" ? "" : selectedKb;
+  }
+
+  function setManualSource(src) {
+    selectedSource = src || "";
+    selectedKb = selectedSource || "auto";
+    sourceTags.querySelectorAll(".source-tag").forEach((t) => {
+      t.classList.toggle("active", (t.dataset.src || "") === selectedSource);
+    });
+    conversationSource = null;
+    if (loadHistory().length > 0) clearHistory();
+    hide(routedSource);
+    hideAllStateCards();
+    loadSchema(selectedSource || undefined);
+    renderSuggestions();
+    renderGlossary();
+    renderKbOverview();
+    renderSchemaConsole();
+  }
+
+  function schemaKey(src) {
+    return src || "__auto__";
+  }
+
+  function currentKbSource() {
+    if (selectedKb !== "auto") return selectedKb;
+    return conversationSource || selectedSource || (availableSources[0] && availableSources[0].name) || "";
+  }
+
+  function schemaSummary(src) {
+    const data = schemaCache[schemaKey(src)] || {};
+    const tables = data.tables || {};
+    const tableNames = Object.keys(tables);
+    const fieldCount = tableNames.reduce((sum, name) => sum + ((tables[name] || []).length), 0);
+    return { data, tables, tableNames, fieldCount };
+  }
+
+  function inferFieldRole(name) {
+    const n = String(name || "").toLowerCase();
+    if (/(date|time|created|updated|year|month|day)/.test(n)) return "时间";
+    if (/(amount|price|count|num|total|score|salary|height|weight|rate|avg|sum)/.test(n)) return "指标";
+    if (/(id|key|code)/.test(n)) return "主键/关联";
+    return "维度";
+  }
+
+  function makeKbRows() {
+    const queryLog = loadQueryLog();
+    const saved = readJsonList(SAVED_QUERY_KEY);
+    const rows = availableSources.map((s) => {
+      const summary = schemaSummary(s.name);
+      const logs = queryLog.filter((item) => item.source === s.name);
+      const loading = schemaLoading.has(schemaKey(s.name));
+      return {
+        id: s.name,
+        name: s.name,
+        label: s.label || s.name,
+        dialect: s.dialect || "SQL",
+        desc: summary.tableNames.length
+          ? `${summary.tableNames.length} 张表 / ${summary.fieldCount} 个字段`
+          : (loading ? "Schema 加载中" : "Schema 待加载"),
+        status: "已接入",
+        recall: summary.tableNames.length ? `${Math.min(96, 78 + summary.tableNames.length * 3)}%` : (loading ? "加载中" : "待加载"),
+        owner: "Data Team",
+        queries: logs.length,
+        saved: saved.filter((item) => item.source === s.name).length,
+      };
+    });
+    return [{
+      id: "auto",
+      name: "",
+      label: "自动识别",
+      dialect: "Router",
+      desc: "按问题语义自动选择知识库",
+      status: availableSources.length ? "运行中" : "待连接",
+      recall: availableSources.length ? "90%" : "待连接",
+      owner: "System",
+      queries: queryLog.length,
+      saved: saved.length,
+    }, ...rows];
+  }
+
+  function renderKbList() {
+    if (!kbTableBody) return;
+    const keyword = (kbSearch && kbSearch.value || "").trim().toLowerCase();
+    const rows = makeKbRows().filter((row) => {
+      if (!keyword) return true;
+      return [row.label, row.id, row.dialect, row.status, row.owner].some((v) => String(v || "").toLowerCase().includes(keyword));
+    });
+    kbTableBody.innerHTML = "";
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>
+          <div class="kb-name-cell">
+            <span class="kb-icon">${escapeHtml(row.id === "auto" ? "A" : row.label.slice(0, 1).toUpperCase())}</span>
+            <span><b>${escapeHtml(row.label)}</b><small>${escapeHtml(row.id || "auto")} · ${escapeHtml(row.dialect)}</small></span>
+          </div>
+        </td>
+        <td><span class="status-badge">${row.status}</span></td>
+        <td>${escapeHtml(row.desc)}</td>
+        <td><span class="quality-pill">${escapeHtml(row.recall)}</span></td>
+        <td>${row.queries} / ${row.saved}</td>
+        <td class="row-actions"></td>
+      `;
+      const actions = tr.querySelector(".row-actions");
+      const openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.textContent = "打开";
+      openBtn.addEventListener("click", () => {
+        selectedKb = row.id || "auto";
+        selectedSource = row.name || "";
+        loadSchema(selectedSource || undefined);
+        showView("kb-overview-view");
+      });
+      const askBtn = document.createElement("button");
+      askBtn.type = "button";
+      askBtn.textContent = "问数";
+      askBtn.addEventListener("click", () => {
+        setManualSource(row.name || "");
+        showView("assistant-view");
+        input.focus();
+      });
+      actions.appendChild(openBtn);
+      actions.appendChild(askBtn);
+      kbTableBody.appendChild(tr);
+    });
+  }
+
+  function renderStatPill(label, value, sub) {
+    const div = document.createElement("div");
+    div.className = "stat-pill";
+    div.innerHTML = `<span>${label}</span><b>${value}</b><small>${sub || ""}</small>`;
+    return div;
+  }
+
+  function renderKbOverview() {
+    if (!kbStatGrid || !healthList || !activityList) return;
+    const src = currentKbSource();
+    const summary = schemaSummary(src);
+    const label = selectedKb === "auto" ? "自动识别知识库" : sourceLabel(src);
+    if (kbCurrentTitle) kbCurrentTitle.textContent = label;
+    if (kbCurrentDesc) {
+      kbCurrentDesc.textContent = selectedKb === "auto"
+        ? "系统会根据问题语义在已连接的数据源中自动路由，并保留每次查询的过程证据。"
+        : `${src || "当前"} 数据源的 Schema、术语、样例问法和查询行为概览。`;
+    }
+    const logs = loadQueryLog().filter((item) => !src || item.source === src);
+    const saved = readJsonList(SAVED_QUERY_KEY).filter((item) => !src || item.source === src);
+    const feedback = readJsonList(FEEDBACK_KEY).filter((item) => !src || item.source === src);
+    kbStatGrid.innerHTML = "";
+    kbStatGrid.appendChild(renderStatPill("数据表", summary.tableNames.length, "已读取 Schema"));
+    kbStatGrid.appendChild(renderStatPill("字段", summary.fieldCount, "可被问数召回"));
+    kbStatGrid.appendChild(renderStatPill("查询", logs.length, "最近本地记录"));
+    kbStatGrid.appendChild(renderStatPill("收藏", saved.length, "沉淀为样例"));
+    if (feedback.length) kbStatGrid.appendChild(renderStatPill("反馈", feedback.length, "待治理线索"));
+
+    const healthItems = [
+      ["Schema 完整度", summary.tableNames.length ? 88 : 45],
+      ["术语覆盖", Math.min(96, 52 + (loadGlossary(src).length + loadMetrics(src).length) * 8)],
+      ["召回稳定性", logs.length ? 86 : 70],
+      ["结果可信度", lastTrace && (!src || lastTrace.source === src) ? 82 : 74],
+    ];
+    healthList.innerHTML = "";
+    healthItems.forEach(([name, value]) => {
+      const row = document.createElement("div");
+      row.className = "health-row";
+      row.innerHTML = `<div><b>${name}</b><span>${value >= 80 ? "健康" : "需补充"}</span></div><div class="health-track"><i style="width:${value}%"></i></div><em>${value}%</em>`;
+      healthList.appendChild(row);
+    });
+
+    activityList.innerHTML = "";
+    const activity = logs.slice(0, 6);
+    if (!activity.length) {
+      activityList.innerHTML = '<div class="empty-note">还没有查询活动。完成一次问数后，这里会显示问题、数据源、耗时和行数。</div>';
+      renderSavedExamples(src);
+      renderFeedbackList(src);
+      return;
+    }
+    activity.forEach((item) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "activity-row";
+      row.innerHTML = `<span>${escapeHtml(item.question || "")}</span><small>${escapeHtml(item.source_label || item.source || "自动识别")} · ${escapeHtml(item.row_count || 0)} 行 · ${escapeHtml(item.elapsed_ms || 0)} ms</small>`;
+      row.addEventListener("click", () => {
+        input.value = item.question || "";
+        setManualSource(item.source || "");
+        showView("assistant-view");
+      });
+      activityList.appendChild(row);
+    });
+
+    renderSavedExamples(src);
+    renderFeedbackList(src);
+  }
+
+  function renderFeedbackList(source) {
+    if (!feedbackList) return;
+    const items = readJsonList(FEEDBACK_KEY).filter((item) => !source || item.source === source).slice(0, 12);
+    feedbackList.innerHTML = "";
+    if (!items.length) {
+      feedbackList.innerHTML = '<div class="empty-note">暂无反馈。用户点击「结果正确」或「反馈错误」后会出现在这里。</div>';
+      return;
+    }
+    items.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = `feedback-row ${item.kind === "correct" ? "is-correct" : "is-incorrect"}`;
+      row.innerHTML = `
+        <div><b>${item.kind === "correct" ? "正确" : "错误"}</b><span>${escapeHtml(item.question || "")}</span></div>
+        <small>${escapeHtml(item.reason || "无说明")} · ${escapeHtml(item.source_label || item.source || "自动识别")}</small>
+      `;
+      feedbackList.appendChild(row);
+    });
+  }
+
+  function savedExamplesForSource(source) {
+    return readJsonList(SAVED_QUERY_KEY).filter((item) => !source || item.source === source);
+  }
+
+  function renderSavedExamples(source) {
+    if (!savedExampleList) return;
+    const examples = savedExamplesForSource(source);
+    savedExampleList.innerHTML = "";
+    if (!examples.length) {
+      savedExampleList.innerHTML = '<div class="empty-note">还没有收藏样例。在问数结果中点击「保存查询」后，这里会展示可复用的 few-shot。</div>';
+      return;
+    }
+    examples.slice(0, 12).forEach((item) => {
+      const card = document.createElement("div");
+      card.className = "saved-example-card";
+      card.innerHTML = `
+        <div class="saved-example-head">
+          <span>${escapeHtml(item.source_label || item.source || "自动识别")}</span>
+          <label><input type="checkbox" class="saved-example-fewshot" ${item.use_few_shot === false ? "" : "checked"} /> 用于 few-shot</label>
+        </div>
+        <textarea class="saved-example-question-input" rows="2">${escapeHtml(item.question || "")}</textarea>
+        <textarea class="saved-example-sql-input" rows="5">${escapeHtml(item.sql || "")}</textarea>
+        <div class="saved-example-actions">
+          <button class="saved-example-use" type="button">带入提问</button>
+          <button class="saved-example-save" type="button">保存修改</button>
+          <button class="saved-example-delete" type="button">删除</button>
+        </div>
+      `;
+      const questionInput = card.querySelector(".saved-example-question-input");
+      const sqlInput = card.querySelector(".saved-example-sql-input");
+      const fewshotInput = card.querySelector(".saved-example-fewshot");
+      function persistExample() {
+        const next = readJsonList(SAVED_QUERY_KEY).map((x) => x.id === item.id ? {
+          ...x,
+          question: questionInput.value.trim(),
+          sql: sqlInput.value.trim(),
+          use_few_shot: fewshotInput.checked,
+        } : x);
+        writeJsonList(SAVED_QUERY_KEY, next);
+      }
+      card.querySelector(".saved-example-use").addEventListener("click", () => {
+        input.value = questionInput.value.trim() || item.question || "";
+        setManualSource(item.source || "");
+        showView("assistant-view");
+        input.focus();
+      });
+      card.querySelector(".saved-example-save").addEventListener("click", () => {
+        persistExample();
+        renderSavedExamples(source);
+      });
+      fewshotInput.addEventListener("change", () => {
+        persistExample();
+        renderKbOverview();
+      });
+      card.querySelector(".saved-example-delete").addEventListener("click", () => {
+        const next = readJsonList(SAVED_QUERY_KEY).filter((x) => x.id !== item.id);
+        writeJsonList(SAVED_QUERY_KEY, next);
+        renderKbList();
+        renderKbOverview();
+      });
+      savedExampleList.appendChild(card);
+    });
+  }
+
+  function renderSchemaConsole() {
+    if (!schemaTree || !fieldTableBody || !schemaEditorTitle) return;
+    const src = currentKbSource();
+    const summary = schemaSummary(src);
+    const tables = summary.tables;
+    const names = summary.tableNames;
+    if (!names.includes(activeSchemaTable)) activeSchemaTable = names[0] || "";
+    schemaTree.innerHTML = "";
+    if (!names.length) {
+      schemaTree.innerHTML = '<div class="empty-note">暂无 Schema。请先选择知识库或刷新数据源。</div>';
+    } else {
+      names.forEach((name) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "schema-tree-btn";
+        btn.classList.toggle("active", name === activeSchemaTable);
+        btn.innerHTML = `<b>${escapeHtml(name)}</b><span>${(tables[name] || []).length} fields</span>`;
+        btn.addEventListener("click", () => {
+          activeSchemaTable = name;
+          renderSchemaConsole();
+        });
+        schemaTree.appendChild(btn);
+      });
+    }
+
+    schemaEditorTitle.textContent = activeSchemaTable ? `${activeSchemaTable} 字段配置` : "字段配置";
+    fieldTableBody.innerHTML = "";
+    const fieldMeta = loadFieldMeta(src);
+    (tables[activeSchemaTable] || []).forEach((field) => {
+      const tr = document.createElement("tr");
+      const role = inferFieldRole(field);
+      const id = fieldMetaId(activeSchemaTable, field);
+      const meta = fieldMeta[id] || {};
+      tr.innerHTML = `
+        <td><b>${escapeHtml(field)}</b></td>
+        <td><input class="field-meta-input" data-meta-field="alias" value="${escapeHtml(meta.alias || "")}" placeholder="中文名/别名" /></td>
+        <td>${escapeHtml(role)} · ${role === "指标" ? "可聚合" : "可筛选"}</td>
+        <td><input class="field-meta-input" data-meta-field="desc" value="${escapeHtml(meta.desc || "")}" placeholder="业务口径说明" /></td>
+        <td><input class="field-meta-input" data-meta-field="enums" value="${escapeHtml(meta.enums || "")}" placeholder="如 paid=已支付" /></td>
+        <td><button class="field-meta-save" type="button">保存</button></td>
+      `;
+      tr.querySelectorAll(".field-meta-input").forEach((el) => {
+        el.addEventListener("change", () => {
+          const next = loadFieldMeta(src);
+          next[id] = next[id] || {};
+          next[id][el.dataset.metaField] = el.value.trim();
+          saveFieldMeta(src, next);
+        });
+      });
+      tr.querySelector(".field-meta-save").addEventListener("click", () => {
+        tr.querySelectorAll(".field-meta-input").forEach((el) => el.dispatchEvent(new Event("change")));
+        renderSchemaConsole();
+      });
+      fieldTableBody.appendChild(tr);
+    });
+    if (!fieldTableBody.children.length) {
+      fieldTableBody.innerHTML = '<tr><td colspan="6">暂无字段</td></tr>';
+    }
+
+    if (metricList) {
+      const metricSeeds = ["销售额 = 金额字段求和", "订单量 = 订单主键计数", "平均值 = 数值字段 AVG", "占比 = 分组值 / 总量"];
+      const metrics = [...loadMetrics(src), ...metricSeeds].slice(0, 10);
+      metricList.innerHTML = "";
+      metrics.forEach((text) => {
+        const li = document.createElement("li");
+        li.className = "tag-chip";
+        li.textContent = text;
+        metricList.appendChild(li);
+      });
+    }
+    if (termList) {
+      const terms = [...loadGlossary(src), "最近一年 = 当前日期向前 12 个月", "TOP N = 按指标倒序取前 N 条"].slice(0, 10);
+      termList.innerHTML = "";
+      terms.forEach((text) => {
+        const li = document.createElement("li");
+        li.className = "tag-chip";
+        li.textContent = text;
+        termList.appendChild(li);
+      });
+    }
+    renderRelations(src);
+  }
+
+  function renderRelations(source) {
+    if (!relationList) return;
+    const list = loadRelations(source);
+    relationList.innerHTML = "";
+    if (!list.length) {
+      relationList.innerHTML = '<div class="empty-note">暂无表关系。添加后会注入问数上下文。</div>';
+      return;
+    }
+    list.forEach((text, index) => {
+      const row = document.createElement("div");
+      row.className = "relation-row";
+      row.innerHTML = `<span>${escapeHtml(text)}</span><button type="button">删除</button>`;
+      row.querySelector("button").addEventListener("click", () => {
+        const next = loadRelations(source);
+        next.splice(index, 1);
+        saveRelations(source, next);
+        renderRelations(source);
+      });
+      relationList.appendChild(row);
+    });
+  }
+
+  function addRelationEntry() {
+    const src = currentKbSource();
+    const text = (relationInput && relationInput.value || "").trim();
+    if (!src || !text) return;
+    const list = loadRelations(src);
+    if (!list.includes(text)) list.unshift(text);
+    saveRelations(src, list);
+    relationInput.value = "";
+    renderRelations(src);
+  }
+
+  function renderDebugSteps() {
+    if (!debugSteps) return;
+    debugSteps.innerHTML = "";
+    if (!lastTrace) {
+      debugSteps.innerHTML = '<div class="empty-note">执行一次问数后，这里会展示路由、召回、SQL、安全校验和可信度评估链路。</div>';
+      return;
+    }
+    const steps = [
+      ["数据源路由", lastTrace.source_label || lastTrace.source || "自动识别", lastTrace.route_reason || (lastTrace.auto_routed ? "系统自动选择最相关的数据源。" : "使用当前锁定的数据源。")],
+      ["Schema 召回", `${lastTrace.columns || 0} 个结果字段`, "结合问题、术语表和表结构选择候选字段。"],
+      ["SQL 生成", lastTrace.sql ? lastTrace.sql.slice(0, 160) : "无 SQL", "生成只读查询并保留可复制 SQL。"],
+      ["执行结果", `${lastTrace.row_count || 0} 行 · ${lastTrace.elapsed_ms || 0} ms`, "结果表、CSV 下载和图表预览共用同一份返回数据。"],
+      ["可信度评估", lastTrace.judge_id ? "后台异步评估" : "未触发", "评估结果会补充到 SQL 元信息区域。"],
+    ];
+    steps.forEach(([title, value, desc], i) => {
+      const div = document.createElement("div");
+      div.className = "debug-step";
+      div.innerHTML = `<span class="debug-step-no">${i + 1}</span><div><b>${escapeHtml(title)}</b><strong>${escapeHtml(value)}</strong><p>${escapeHtml(desc)}</p></div>`;
+      debugSteps.appendChild(div);
+    });
+  }
+
   /* ---------------- 我的术语表(按库存 localStorage) ---------------- */
 
   // 当前术语表归属的库:手动选的优先,否则会话当前库
@@ -184,31 +675,68 @@
     try { return JSON.parse(localStorage.getItem(GLOSSARY_KEY + "." + source)) || []; }
     catch { return []; }
   }
+  function loadMetrics(source) {
+    if (!source) return [];
+    try { return JSON.parse(localStorage.getItem(METRIC_KEY + "." + source)) || []; }
+    catch { return []; }
+  }
   function saveGlossary(source, arr) {
     if (!source) return;
     localStorage.setItem(GLOSSARY_KEY + "." + source, JSON.stringify(arr.slice(0, MAX_GLOSSARY)));
+  }
+  function saveMetrics(source, arr) {
+    if (!source) return;
+    localStorage.setItem(METRIC_KEY + "." + source, JSON.stringify(arr.slice(0, MAX_GLOSSARY)));
+  }
+
+  function isMetricEntry(text) {
+    const parts = String(text || "").split(/=|＝/);
+    if (parts.length < 2) return false;
+    const expr = parts.slice(1).join("=");
+    return /[+\-*/()]/.test(expr) || /\b(SUM|AVG|COUNT|MAX|MIN|ROUND|CASE|WHEN)\b/i.test(expr);
+  }
+
+  function customContext(source) {
+    return [
+      ...loadGlossary(source).map((item) => `业务术语: ${item}`),
+      ...loadMetrics(source).map((item) => `计算指标: ${item}`),
+      ...relationContext(source),
+      ...fieldMetaContext(source),
+    ].slice(0, 50);
   }
 
   function renderGlossary() {
     const src = glossarySource();
     glossarySourceName.textContent = src || "当前数据源";
-    const entries = loadGlossary(src);
+    const terms = loadGlossary(src);
+    const metrics = loadMetrics(src);
+    const entries = [
+      ...metrics.map((text, i) => ({ text, type: "metric", index: i })),
+      ...terms.map((text, i) => ({ text, type: "term", index: i })),
+    ];
     glossaryList.innerHTML = "";
     if (!src || entries.length === 0) {
       glossaryEmpty.hidden = false;
       glossaryEmpty.textContent = src
-        ? "当前数据源还没有自定义术语,在上面输入框添加。"
-        : "当前数据源还没有自定义术语。提问一次确定数据源后,或在上方手动选库,即可添加。";
+        ? "当前数据源还没有自定义术语或计算指标,在上面输入框添加。"
+        : "当前数据源还没有自定义术语或计算指标。提问一次确定数据源后,或在上方手动选库,即可添加。";
     } else {
       glossaryEmpty.hidden = true;
-      entries.forEach((text, i) => {
+      entries.forEach((entry) => {
         const li = document.createElement("li");
         const span = document.createElement("span");
-        span.textContent = text;
+        span.textContent = `${entry.type === "metric" ? "计算指标" : "业务术语"} · ${entry.text}`;
         const del = document.createElement("button");
         del.type = "button"; del.textContent = "×"; del.title = "删除";
         del.addEventListener("click", () => {
-          const arr = loadGlossary(src); arr.splice(i, 1); saveGlossary(src, arr); renderGlossary();
+          if (entry.type === "metric") {
+            const arr = loadMetrics(src); arr.splice(entry.index, 1); saveMetrics(src, arr);
+          } else {
+            const arr = loadGlossary(src); arr.splice(entry.index, 1); saveGlossary(src, arr);
+          }
+          renderGlossary();
+          renderSchemaConsole();
+          renderKbOverview();
         });
         li.appendChild(span); li.appendChild(del);
         glossaryList.appendChild(li);
@@ -224,11 +752,16 @@
     const src = glossarySource();
     const text = glossaryInput.value.trim();
     if (!src || !text) return;
-    const arr = loadGlossary(src);
-    if (arr.length >= MAX_GLOSSARY) { alert(`每个库最多 ${MAX_GLOSSARY} 条术语`); return; }
-    arr.push(text); saveGlossary(src, arr);
+    const metric = isMetricEntry(text);
+    const arr = metric ? loadMetrics(src) : loadGlossary(src);
+    if (arr.length >= MAX_GLOSSARY) { alert(`每个库最多 ${MAX_GLOSSARY} 条${metric ? "计算指标" : "术语"}`); return; }
+    arr.push(text);
+    if (metric) saveMetrics(src, arr);
+    else saveGlossary(src, arr);
     glossaryInput.value = "";
     renderGlossary();
+    renderSchemaConsole();
+    renderKbOverview();
   }
 
   /* ---------------- history ---------------- */
@@ -262,6 +795,56 @@
 
   function writeJsonList(key, list) {
     localStorage.setItem(key, JSON.stringify(list));
+  }
+
+  function fieldMetaKey(source) {
+    return FIELD_META_KEY + "." + (source || "__auto__");
+  }
+
+  function loadFieldMeta(source) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(fieldMetaKey(source)) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveFieldMeta(source, meta) {
+    localStorage.setItem(fieldMetaKey(source), JSON.stringify(meta || {}));
+  }
+
+  function fieldMetaId(table, field) {
+    return `${table || ""}.${field || ""}`;
+  }
+
+  function fieldMetaContext(source) {
+    const meta = loadFieldMeta(source);
+    return Object.entries(meta)
+      .filter(([, item]) => item && (item.alias || item.desc || item.enums))
+      .map(([key, item]) => {
+        const parts = [`字段治理: ${key}`];
+        if (item.alias) parts.push(`别名=${item.alias}`);
+        if (item.desc) parts.push(`描述=${item.desc}`);
+        if (item.enums) parts.push(`取值=${item.enums}`);
+        return parts.join("；");
+      });
+  }
+
+  function relationKey(source) {
+    return RELATION_KEY + "." + (source || "__auto__");
+  }
+
+  function loadRelations(source) {
+    return readJsonList(relationKey(source));
+  }
+
+  function saveRelations(source, list) {
+    localStorage.setItem(relationKey(source), JSON.stringify((list || []).slice(0, 50)));
+  }
+
+  function relationContext(source) {
+    return loadRelations(source).map((item) => `表关系: ${item}`);
   }
 
   function loadQueryLog() {
@@ -360,8 +943,8 @@
     if (!data || !data.source) { hide(routedSource); return; }
     const label = data.source_label || data.source;
     routedText.textContent = data.auto_routed
-      ? `数据源:${label} · 系统自动识别`
-      : `数据源:${label}`;
+      ? `已自动识别并使用「${label}」${data.route_reason ? " · " + data.route_reason : ""}`
+      : `当前使用「${label}」${data.route_reason ? " · " + data.route_reason : ""}`;
     show(routedSource);
   }
 
@@ -410,7 +993,7 @@
         const td = document.createElement("td");
         if (cell === null) {
           td.textContent = "NULL";
-          td.style.color = "rgba(255,255,255,0.25)";
+          td.style.color = "#95a1b2";
         } else {
           td.textContent = String(cell);
           if (isNumeric(cell)) td.className = "num";
@@ -442,6 +1025,34 @@
     sqlMeta.innerHTML = html;
   }
 
+  function renderResultSummary(data) {
+    if (!resultSummary) return;
+    const columns = data.columns || [];
+    const rows = data.rows || [];
+    if (!columns.length) {
+      resultSummary.innerHTML = "";
+      return;
+    }
+    const rowCount = typeof data.row_count === "number" ? data.row_count : rows.length;
+    const bits = [`共返回 ${rowCount} 行、${columns.length} 列`];
+    if (data.truncated) bits.push("结果已按安全上限截断");
+    const first = rows[0] || [];
+    const numericIndex = columns.findIndex((_, idx) => rows.some((r) => isNumeric(r[idx])));
+    if (numericIndex >= 0) {
+      const values = rows.map((r) => Number(r[numericIndex])).filter((v) => Number.isFinite(v));
+      if (values.length) {
+        const max = Math.max(...values);
+        const min = Math.min(...values);
+        bits.push(`${columns[numericIndex]} 范围 ${min} - ${max}`);
+      }
+    }
+    if (first.length) {
+      const preview = columns.slice(0, 3).map((c, i) => `${c}: ${first[i] == null ? "NULL" : first[i]}`).join("；");
+      bits.push(`首行 ${preview}`);
+    }
+    resultSummary.innerHTML = bits.map((x) => `<span>${escapeHtml(x)}</span>`).join("");
+  }
+
   async function fetchConfidence(data) {
     if (!data.judge_id) return;
     const pending = document.createElement("span");
@@ -450,7 +1061,7 @@
     pending.textContent = "结果可信度评估中";
     sqlMeta.appendChild(pending);
     try {
-      for (let attempt = 0; attempt < 25; attempt++) {
+      for (let attempt = 0; attempt < 45; attempt++) {
         const resp = await fetch("/api/judge", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -462,11 +1073,23 @@
           pending.outerHTML = confidenceBadge(jd.confidence, jd.confidence_detail);
           return;
         }
-        await new Promise((resolve) => setTimeout(resolve, 1200));
+        if (jd.status === "failed") {
+          pending.className = "confidence conf-pending";
+          pending.title = "裁判模型调用失败或输出无法解析,不影响本次查询结果";
+          pending.textContent = "可信度评估失败";
+          return;
+        }
+        if (jd.status === "missing") {
+          pending.className = "confidence conf-pending";
+          pending.title = "评估任务已过期或服务重启后丢失,不影响本次查询结果";
+          pending.textContent = "可信度评估过期";
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
       }
       pending.className = "confidence conf-pending";
-      pending.title = "可信度评估未在预期时间内完成,不影响本次查询结果";
-      pending.textContent = "可信度评估超时";
+      pending.title = "裁判模型仍未返回,可能是模型响应慢或网络较慢;不影响本次查询结果";
+      pending.textContent = "可信度评估仍在后台运行";
     } catch (e) {
       if (!pending.isConnected) return;
       pending.className = "confidence conf-pending";
@@ -507,7 +1130,7 @@
   }
 
   function saveCurrentQuery() {
-    if (!currentResult) return;
+    if (!currentResult) return null;
     const saved = readJsonList(SAVED_QUERY_KEY);
     const item = {
       id: currentResult.id || String(Date.now()),
@@ -515,14 +1138,92 @@
       sql: currentResult.sql,
       source: currentResult.source,
       source_label: currentResult.source_label,
+      use_few_shot: true,
       saved_at: new Date().toISOString(),
     };
     writeJsonList(SAVED_QUERY_KEY, [item, ...saved.filter((x) => x.id !== item.id)].slice(0, 50));
+    renderKbList();
+    renderKbOverview();
     if (saveQueryBtn) {
       const old = saveQueryBtn.textContent;
       saveQueryBtn.textContent = "已保存";
       setTimeout(() => { saveQueryBtn.textContent = old; }, 1200);
     }
+    return item;
+  }
+
+  function saveFeedback(kind, reason) {
+    if (!currentResult) return;
+    const item = {
+      id: String(Date.now()),
+      kind,
+      reason: reason || "",
+      question: currentResult.question,
+      sql: currentResult.sql,
+      source: currentResult.source,
+      source_label: currentResult.source_label,
+      created_at: new Date().toISOString(),
+    };
+    writeJsonList(FEEDBACK_KEY, [item, ...readJsonList(FEEDBACK_KEY)].slice(0, 100));
+    renderKbOverview();
+  }
+
+  function confirmCurrentResult() {
+    if (!currentResult) return;
+    const item = saveCurrentQuery();
+    saveFeedback("correct", "用户确认结果正确");
+    if (confirmGoodBtn) {
+      const old = confirmGoodBtn.textContent;
+      confirmGoodBtn.textContent = item ? "已沉淀为样例" : "已确认";
+      setTimeout(() => { confirmGoodBtn.textContent = old; }, 1500);
+    }
+  }
+
+  function reportCurrentResult() {
+    if (!currentResult) return;
+    const reason = prompt("请简要说明哪里不对: 口径不对 / 字段选错 / 过滤条件错 / 数据源错 / 其他", "");
+    if (reason == null) return;
+    saveFeedback("incorrect", reason.trim());
+    if (reportBadBtn) {
+      const old = reportBadBtn.textContent;
+      reportBadBtn.textContent = "已记录";
+      setTimeout(() => { reportBadBtn.textContent = old; }, 1500);
+    }
+  }
+
+  function textTokens(text) {
+    const s = String(text || "").toLowerCase();
+    const words = s.match(/[a-z0-9_]+|[\u4e00-\u9fa5]/g) || [];
+    const grams = [];
+    for (let i = 0; i < s.length - 1; i++) {
+      const g = s.slice(i, i + 2).trim();
+      if (/[\u4e00-\u9fa5]{2}/.test(g)) grams.push(g);
+    }
+    return new Set([...words, ...grams]);
+  }
+
+  function similarityScore(a, b) {
+    const ta = textTokens(a);
+    const tb = textTokens(b);
+    if (!ta.size || !tb.size) return 0;
+    let hit = 0;
+    ta.forEach((x) => { if (tb.has(x)) hit += 1; });
+    return hit / Math.sqrt(ta.size * tb.size);
+  }
+
+  function savedFewShotsForRequest(question) {
+    return readJsonList(SAVED_QUERY_KEY)
+      .filter((item) => item.question && item.sql && item.use_few_shot !== false)
+      .map((item) => ({ ...item, _score: similarityScore(question, item.question) }))
+      .sort((a, b) => b._score - a._score)
+      .filter((item, i) => item._score > 0 || i < 3)
+      .slice(0, 8)
+      .map((item) => ({
+        question: item.question,
+        sql: item.sql,
+        source: item.source || null,
+        source_label: item.source_label || null,
+      }));
   }
 
   function drawChart() {
@@ -548,7 +1249,7 @@
     const gap = 8;
     const barW = Math.max(12, (width - pad * 2 - gap * (rows.length - 1)) / rows.length);
     ctx.font = "12px JetBrains Mono, monospace";
-    ctx.fillStyle = "rgba(255,255,255,0.42)";
+    ctx.fillStyle = "#4a4540";
     ctx.fillText(`${columns[numericIndex]} by ${columns[labelIndex]}`, pad, 18);
     rows.forEach((row, i) => {
       const value = Number(row[numericIndex]) || 0;
@@ -556,13 +1257,13 @@
       const x = pad + i * (barW + gap);
       const y = height - 44 - h;
       const grad = ctx.createLinearGradient(0, y, 0, height - 44);
-      grad.addColorStop(0, "#a78bfa");
-      grad.addColorStop(1, "#6366f1");
+      grad.addColorStop(0, "#d97a66");
+      grad.addColorStop(1, "#c74e3a");
       ctx.fillStyle = grad;
       ctx.fillRect(x, y, barW, h);
-      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.fillStyle = "#141210";
       ctx.fillText(String(value).slice(0, 8), x, y - 6);
-      ctx.fillStyle = "rgba(255,255,255,0.36)";
+      ctx.fillStyle = "#a09890";
       ctx.fillText(String(row[labelIndex]).slice(0, 8), x, height - 20);
     });
   }
@@ -571,21 +1272,47 @@
     if (!chartPanel) return;
     chartPanel.hidden = !chartPanel.hidden;
     if (!chartPanel.hidden) drawChart();
+    if (chartToggleBtn) chartToggleBtn.textContent = chartPanel.hidden ? "图表视图" : "收起图表";
   }
 
   /* ---------------- data fetching ---------------- */
 
   async function loadSchema(forceSource) {
+    const src = forceSource || manualSource();
+    const key = schemaKey(src);
+    schemaLoading.add(key);
+    renderKbList();
     try {
-      const src = forceSource || manualSource();
       const url = src ? `/api/schema?source=${encodeURIComponent(src)}` : "/api/schema";
       const resp = await fetch(url);
-      if (!resp.ok) { schemaText.textContent = `(加载失败: HTTP ${resp.status})`; return; }
+      const shouldUpdateSchemaText = schemaKey(activeSourceName()) === key || (!activeSourceName() && key === "__auto__");
+      if (!resp.ok) {
+        if (shouldUpdateSchemaText) schemaText.textContent = `(加载失败: HTTP ${resp.status})`;
+        return;
+      }
       const data = await resp.json();
-      schemaText.textContent = data.ddl;
+      schemaCache[key] = data;
+      if (shouldUpdateSchemaText) {
+        schemaText.textContent = data.ddl;
+      }
+      renderKbList();
+      renderKbOverview();
+      renderSchemaConsole();
     } catch {
-      schemaText.textContent = "(加载失败)";
+      const shouldUpdateSchemaText = schemaKey(activeSourceName()) === key || (!activeSourceName() && key === "__auto__");
+      if (shouldUpdateSchemaText) schemaText.textContent = "(加载失败)";
+    } finally {
+      schemaLoading.delete(key);
+      renderKbList();
     }
+  }
+
+  async function loadAllSchemas() {
+    if (!availableSources.length) return;
+    const tasks = availableSources
+      .filter((s) => s && s.name && !schemaCache[schemaKey(s.name)] && !schemaLoading.has(schemaKey(s.name)))
+      .map((s) => loadSchema(s.name));
+    if (tasks.length) await Promise.allSettled(tasks);
   }
 
   function renderSourceTags(sources) {
@@ -608,6 +1335,8 @@
     sourceTags.querySelectorAll(".source-tag").forEach((tag) => {
       tag.addEventListener("click", () => {
         if (tag.classList.contains("active")) return;
+        setManualSource(tag.dataset.src || "");
+        return;
         sourceTags.querySelectorAll(".source-tag").forEach((t) => t.classList.remove("active"));
         tag.classList.add("active");
         selectedSource = tag.dataset.src || "";
@@ -631,6 +1360,10 @@
       availableSources = data.sources || [];
       renderSourceTags(availableSources);
       renderSuggestions();
+      renderKbList();
+      renderKbOverview();
+      renderSchemaConsole();
+      loadAllSchemas();
     } catch {
       sourceTags.innerHTML = '<span class="source-tag active">（数据源加载失败）</span>';
     }
@@ -711,7 +1444,8 @@
     // 让追问留在原库、换话题能切库)。自动模式下 source 为空,后端每轮按问题+历史重新路由。
     const source = manualSource();
     const currentSource = conversationSource;
-    const userGlossary = loadGlossary(glossarySource());  // 当前库的自定义术语,自动带上
+    const userGlossary = customContext(glossarySource());  // 当前库的自定义术语和计算指标,自动带上
+    const fewShots = savedFewShotsForRequest(question);
 
     startProgress(!source);   // 手动锁库时跳过"判断数据源"阶段
 
@@ -720,7 +1454,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question, history, source, current_source: currentSource,
-                               user_glossary: userGlossary }),
+                               user_glossary: userGlossary, few_shots: fewShots }),
       });
       const data = await resp.json();
       finishProgress();   // 网络往返结束,进度补满收起(后续分支只管渲染)
@@ -771,9 +1505,25 @@
         const rowCount = typeof data.row_count === "number" ? data.row_count : (data.rows || []).length;
         if (resultTitle) resultTitle.textContent = `查询结果 · ${rowCount} 行`;
         currentResult = { ...data, question, id: String(Date.now()) };
+        lastTrace = {
+          question,
+          source: data.source,
+          source_label: data.source_label,
+          auto_routed: data.auto_routed,
+          route_reason: data.route_reason,
+          sql: data.sql,
+          columns: (data.columns || []).length,
+          row_count: rowCount,
+          elapsed_ms: data.elapsed_ms,
+          judge_id: data.judge_id,
+        };
         if (chartPanel) chartPanel.hidden = true;
+        if (chartToggleBtn) chartToggleBtn.textContent = "图表视图";
+        renderResultSummary(data);
         renderTable(data.columns, data.rows, data.column_sources);
         resultWrap.classList.add("visible");
+        renderKbOverview();
+        renderDebugSteps();
         fetchConfidence(data);   // 结果已出,异步补准确率勋章(不阻塞结果显示)
 
         const isPlaceholder = data.columns.length === 1 && data.columns[0] === "error";
@@ -792,6 +1542,8 @@
             elapsed_ms: data.elapsed_ms,
             created_at: new Date().toISOString(),
           });
+          renderKbList();
+          renderKbOverview();
         }
       }
     } catch (err) {
@@ -805,6 +1557,31 @@
   }
 
   /* ---------------- events ---------------- */
+
+  navTargets.forEach((btn) => {
+    btn.addEventListener("click", () => showView(btn.dataset.viewTarget));
+  });
+  if (kbSearch) kbSearch.addEventListener("input", renderKbList);
+  if (kbRefreshBtn) {
+    kbRefreshBtn.addEventListener("click", async () => {
+      await loadSources();
+      await loadSchema(activeSourceName() || undefined);
+    });
+  }
+  if (debugRunBtn) {
+    debugRunBtn.addEventListener("click", () => {
+      const text = (debugQuestion && debugQuestion.value || "").trim();
+      if (text) input.value = text;
+      showView("assistant-view");
+      executeQuery();
+    });
+  }
+  if (relationAddBtn) relationAddBtn.addEventListener("click", addRelationEntry);
+  if (relationInput) {
+    relationInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); addRelationEntry(); }
+    });
+  }
 
   submit.addEventListener("click", executeQuery);
   input.addEventListener("keydown", (e) => {
@@ -834,6 +1611,8 @@
   if (copyTableBtn) copyTableBtn.addEventListener("click", copyTable);
   if (downloadCsvBtn) downloadCsvBtn.addEventListener("click", downloadCsv);
   if (saveQueryBtn) saveQueryBtn.addEventListener("click", saveCurrentQuery);
+  if (confirmGoodBtn) confirmGoodBtn.addEventListener("click", confirmCurrentResult);
+  if (reportBadBtn) reportBadBtn.addEventListener("click", reportCurrentResult);
   if (chartToggleBtn) chartToggleBtn.addEventListener("click", toggleChart);
   if (historyClearBtn) {
     historyClearBtn.addEventListener("click", () => {
@@ -865,5 +1644,10 @@
     renderQueryLog();
     renderSuggestions();
     renderGlossary();
+    renderKbList();
+    renderKbOverview();
+    renderSchemaConsole();
+    renderDebugSteps();
+    showView("assistant-view");
   })();
 })();

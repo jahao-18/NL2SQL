@@ -15,16 +15,33 @@ from app.core.executor import SQLExecutionError, execute
 from app.core.formatter import format_clarify, format_error, format_success
 from app.core.judge import stash as stash_judge
 from app.core.retrieval import retrieve_context
-from app.core.schema import load_schema
+from app.core.schema import list_table_names, load_schema
 from app.core.source_router import route
 from app.core.sql_meta import extract_column_sources
 from app.core.validator import SQLValidationError, validate_and_fix
-from app.models.schemas import Turn
+from app.models.schemas import FewShotExample, Turn
 
 logger = logging.getLogger("nl2sql")
 
 MAX_REPAIR_ROUNDS = 2
 MAX_HISTORY_TURNS = 5  # 后端兜底截断,防止前端发太多
+
+
+def _route_reason(question: str, source: str, auto_routed: bool, current_source: str | None) -> str:
+    try:
+        tables = list_table_names(source)
+    except Exception:
+        tables = []
+    q = question.lower()
+    matched = [t for t in tables if t.lower() in q][:5]
+    if auto_routed:
+        parts = ["自动模式根据当前问题、最近对话和数据源目录选择该库"]
+        if current_source == source:
+            parts.append("并沿用当前会话数据源")
+        if matched:
+            parts.append("问题中命中表名: " + ", ".join(matched))
+        return "；".join(parts)
+    return "用户手动选择并锁定该数据源"
 
 
 def ask(
@@ -33,6 +50,7 @@ def ask(
     source: str | None = None,
     current_source: str | None = None,
     user_glossary: list[str] | None = None,
+    few_shots: list[FewShotExample] | None = None,
 ) -> dict[str, Any]:
     trimmed_history = (history or [])[-MAX_HISTORY_TURNS:]
     # 上一轮就是 clarify => 本轮是用户的回答,禁止再次 clarify(兼顾路由反问与生成澄清)
@@ -76,7 +94,12 @@ def ask(
         return format_error(str(e))
 
     # 之后所有响应都带上实际使用的数据源信息(透明展示给用户)
-    src_kw = {"source": ds.name, "source_label": ds.label, "auto_routed": auto_routed}
+    src_kw = {
+        "source": ds.name,
+        "source_label": ds.label,
+        "auto_routed": auto_routed,
+        "route_reason": _route_reason(question, ds.name, auto_routed, current_source),
+    }
 
     try:
         schema_info = load_schema(ds.name)
@@ -105,6 +128,18 @@ def ask(
     if clean_glossary:
         schema_text += ("\n\n【用户补充术语 / 取值映射(用户提供,写 SQL 时请优先采用)】\n"
                         + "\n".join(f"- {g[:200]}" for g in clean_glossary))
+
+    examples = [
+        ex for ex in (few_shots or [])
+        if ex.question.strip() and ex.sql.strip() and (not ex.source or ex.source == ds.name)
+    ][:8]
+    if examples:
+        schema_text += "\n\n【用户收藏的参考样例(few-shot,同类问题优先参考写法,不要照抄不相关条件)】\n"
+        for i, ex in enumerate(examples, 1):
+            schema_text += (
+                f"示例 {i} 问题:{ex.question.strip()[:300]}\n"
+                f"示例 {i} SQL:{ex.sql.strip()[:1200]}\n"
+            )
 
     last_sql: str | None = None
     last_err: str | None = None

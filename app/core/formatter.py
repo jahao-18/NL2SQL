@@ -5,13 +5,14 @@ from typing import Any
 
 
 def _source_fields(
-    source: str | None, source_label: str | None, auto_routed: bool
+    source: str | None, source_label: str | None, auto_routed: bool, route_reason: str | None = None
 ) -> dict[str, Any]:
     """本次实际使用的数据源信息,所有响应都带上,供前端透明展示。"""
     return {
         "source": source,
         "source_label": source_label,
         "auto_routed": auto_routed,
+        "route_reason": route_reason,
     }
 
 
@@ -25,6 +26,7 @@ def format_success(
     source: str | None = None,
     source_label: str | None = None,
     auto_routed: bool = False,
+    route_reason: str | None = None,
     confidence: int | None = None,
     confidence_detail: dict[str, Any] | None = None,
     judge_id: str | None = None,
@@ -42,7 +44,7 @@ def format_success(
         "confidence": confidence,
         "confidence_detail": confidence_detail,
         "judge_id": judge_id,
-        **_source_fields(source, source_label, auto_routed),
+        **_source_fields(source, source_label, auto_routed, route_reason),
     }
 
 
@@ -52,6 +54,7 @@ def format_error(
     source: str | None = None,
     source_label: str | None = None,
     auto_routed: bool = False,
+    route_reason: str | None = None,
 ) -> dict[str, Any]:
     return {
         "sql": sql,
@@ -63,7 +66,7 @@ def format_error(
         "truncated": False,
         "error": error,
         "clarify": None,
-        **_source_fields(source, source_label, auto_routed),
+        **_source_fields(source, source_label, auto_routed, route_reason),
     }
 
 
@@ -72,6 +75,7 @@ def format_clarify(
     source: str | None = None,
     source_label: str | None = None,
     auto_routed: bool = False,
+    route_reason: str | None = None,
 ) -> dict[str, Any]:
     """LLM 需要用户先回答澄清问题再生成 SQL。不走 validator/executor。"""
     return {
@@ -84,5 +88,5 @@ def format_clarify(
         "truncated": False,
         "error": None,
         "clarify": question,
-        **_source_fields(source, source_label, auto_routed),
+        **_source_fields(source, source_label, auto_routed, route_reason),
     }

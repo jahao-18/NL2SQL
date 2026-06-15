@@ -3,216 +3,308 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>智能问数 — 问你所想，数尽其用</title>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <title>智能问数工作台</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:opsz,wght@14..32,200;14..32,300;14..32,400;14..32,500;14..32,600&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-
 <canvas id="bg-canvas"></canvas>
 
-<main>
-  <header class="site-header">
-    <div class="brand">
+<div class="workspace-shell">
+  <aside class="app-sidebar">
+    <div class="sidebar-brand">
       <div class="brand-icon">&Sigma;</div>
-      <span class="brand-name">智能问数</span>
+      <div>
+        <div class="brand-name">智能问数</div>
+        <div class="brand-sub">NL2SQL Workspace</div>
+      </div>
     </div>
-    <nav class="header-nav">
-      <a href="#" class="nav-link active">首页</a>
-      <a href="#" class="nav-link">文档</a>
-      <a href="#" class="nav-link">API</a>
-      <button class="nav-btn" type="button" id="clear-btn">清空会话</button>
+    <nav class="side-nav">
+      <div class="nav-group-label">智能问数</div>
+      <button class="side-nav-item active" data-view-target="assistant-view" type="button"><span>⌕</span>问数助手</button>
+      <button class="side-nav-item" data-view-target="kb-list-view" type="button"><span>▦</span>知识库</button>
+      <button class="side-nav-item" data-view-target="kb-overview-view" type="button"><span>◫</span>知识库概览</button>
+      <button class="side-nav-item" data-view-target="schema-console-view" type="button"><span>▤</span>Schema 配置</button>
+      <button class="side-nav-item" data-view-target="debug-view" type="button"><span>✦</span>召回调试</button>
+      <div class="nav-group-label">治理</div>
+      <button class="side-nav-item muted" type="button"><span>✓</span>待审队列</button>
+      <button class="side-nav-item muted" type="button"><span>⚙</span>设置</button>
     </nav>
-  </header>
-
-  <!-- Hero -->
-  <section class="hero">
-    <div class="hero-left">
-      <div class="hero-badge">
-        <span class="dot"></span> 自然语言 · 自动路由数据源
-      </div>
-      <h1 class="hero-title">
-        用中文<span class="gradient-text">问数据</span><br>让AI<span class="gradient-text">写SQL</span>
-      </h1>
-      <p class="hero-desc">
-        自然语言转 SQL 查询引擎。你只需要用中文描述想要的结果，系统自动判断该查哪个库、生成 SQL、执行并返回答案。无需选库，也无需写一行代码。
-      </p>
-      <div class="hero-stats">
-        <div class="hero-stat">
-          <div class="hero-stat-val">多库</div>
-          <div class="hero-stat-label">自动路由</div>
-        </div>
-        <div class="hero-stat">
-          <div class="hero-stat-val">多轮</div>
-          <div class="hero-stat-label">上下文追问</div>
-        </div>
-        <div class="hero-stat">
-          <div class="hero-stat-val">只读</div>
-          <div class="hero-stat-label">安全沙箱</div>
-        </div>
+    <div class="sidebar-foot">
+      <div class="user-avatar">本</div>
+      <div>
+        <div class="user-name">本地工作区</div>
+        <div class="user-role">只读查询 · 开发模式</div>
       </div>
     </div>
-    <div class="hero-right">
-      <div class="floating-card">
-        <div class="result-glow"></div>
-        <div class="card-header">
-          <div class="dot-row"><span></span><span></span><span></span></div>
-          <span class="card-title-small">Live Demo</span>
+  </aside>
+
+  <div class="workspace-main">
+    <header class="topbar">
+      <div>
+        <div class="breadcrumb" id="breadcrumb">智能问数 / 问数助手</div>
+        <h1 id="page-title">问数助手</h1>
+      </div>
+      <div class="topbar-actions">
+        <button class="nav-btn secondary" type="button" id="clear-btn">清空会话</button>
+        <button class="nav-btn" type="button" data-view-target="kb-list-view">管理知识库</button>
+      </div>
+    </header>
+
+    <main class="content-area">
+      <section class="work-view active" id="assistant-view" data-page-title="问数助手" data-breadcrumb="智能问数 / 问数助手">
+        <div class="assistant-grid">
+          <section class="assistant-main">
+            <div class="query-wrapper" id="query-wrapper">
+              <div class="query-label">Ask with natural language</div>
+              <div class="query-input-row">
+                <textarea class="query-input" id="query-input"
+                  placeholder="例如：北京有多少用户？可以追问：他们里 60 岁以上有几个？"
+                  rows="2"></textarea>
+                <button class="query-submit" id="query-submit" type="button">
+                  查询 <span class="arrow">→</span>
+                </button>
+              </div>
+              <div class="source-row">
+                <div class="source-tags" id="source-tags">
+                  <span class="source-tag active" data-src="">自动识别</span>
+                </div>
+                <span class="history-badge" id="history-badge">未开始会话</span>
+              </div>
+            </div>
+
+            <section class="suggestion-panel">
+              <div class="suggestion-title">推荐问法</div>
+              <div class="suggestion-list" id="suggestion-list"></div>
+            </section>
+
+            <div class="routed-source" id="routed-source" hidden>
+              <span class="routed-icon">数据源路由</span>
+              <span class="routed-text" id="routed-text"></span>
+            </div>
+
+            <div class="progress-box" id="progress-box" hidden>
+              <div class="progress-stage" id="progress-stage">
+                <span class="progress-spinner"></span>
+                <span id="progress-stage-text">正在准备…</span>
+              </div>
+              <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+            </div>
+
+            <section class="result-area" id="result-area">
+              <div class="state-card is-clarify" id="clarify-box" hidden>
+                <div class="state-title"><span class="state-dot"></span>需要澄清</div>
+                <p class="state-body" id="clarify-msg"></p>
+                <p class="state-hint">在上方输入框中回答后再次点击「查询」即可继续</p>
+              </div>
+
+              <div class="state-card is-error" id="error-box" hidden>
+                <div class="state-title"><span class="state-dot"></span>出错了</div>
+                <p class="state-body" id="error-msg"></p>
+              </div>
+
+              <div class="sql-block" id="sql-block">
+                <div class="sql-header">
+                  <span class="sql-header-title">Generated SQL</span>
+                  <button class="sql-copy" id="sql-copy" type="button">复制</button>
+                </div>
+                <div class="sql-body"><pre id="sql-code"></pre></div>
+                <div class="sql-meta" id="sql-meta"></div>
+              </div>
+
+              <div class="result-table-wrap" id="result-table-wrap">
+                <div class="result-table-header">
+                  <span id="result-table-title">查询结果</span>
+                  <div class="result-actions">
+                    <button id="copy-table-btn" type="button">复制表格</button>
+                    <button id="download-csv-btn" type="button">下载 CSV</button>
+                    <button id="save-query-btn" type="button">保存查询</button>
+                    <button id="confirm-good-btn" type="button">结果正确</button>
+                    <button id="report-bad-btn" type="button">反馈错误</button>
+                    <button id="chart-toggle-btn" type="button">图表</button>
+                  </div>
+                </div>
+                <div class="chart-panel" id="chart-panel" hidden>
+                  <canvas id="result-chart" height="220"></canvas>
+                  <div class="chart-empty" id="chart-empty" hidden>当前结果缺少可绘制的文本列和数值列。</div>
+                </div>
+                <div class="result-summary" id="result-summary"></div>
+                <div class="result-table-scroll">
+                  <table class="result-table">
+                    <thead id="result-thead"></thead>
+                    <tbody id="result-tbody"></tbody>
+                  </table>
+                </div>
+                <div class="result-empty" id="empty-hint" hidden>无数据</div>
+              </div>
+            </section>
+          </section>
+
+          <aside class="assistant-side">
+            <section class="history-panel" id="history-panel">
+              <div class="panel-head">
+                <div>
+                  <div class="panel-kicker">Query History</div>
+                  <h2>最近查询</h2>
+                </div>
+                <button class="panel-action" id="history-clear-btn" type="button">清空</button>
+              </div>
+              <div class="history-list" id="history-list"></div>
+              <div class="history-empty" id="history-empty">还没有查询记录。</div>
+            </section>
+
+            <section class="schema-section compact">
+              <button class="schema-toggle" id="glossary-toggle" type="button">
+                <span class="arrow">▶</span> <span id="glossary-toggle-label">我的术语表</span>
+              </button>
+              <div class="schema-body" id="glossary-body">
+                <p class="glossary-hint">
+                  给 <b id="glossary-source-name">当前数据源</b> 补充业务术语、取值映射或计算指标。
+                </p>
+                <div class="glossary-add">
+                  <input type="text" id="glossary-input" maxlength="200"
+                    placeholder="例如:利润 = 营业额 - 成本；或 念力 = superpower.power_name 的 'Telekinesis'" />
+                  <button id="glossary-add-btn" type="button">添加</button>
+                </div>
+                <ul class="glossary-list" id="glossary-list"></ul>
+                <div class="glossary-empty" id="glossary-empty">
+                  当前数据源还没有自定义术语。
+                </div>
+              </div>
+            </section>
+
+            <section class="schema-section compact">
+              <button class="schema-toggle" id="schema-toggle" type="button">
+                <span class="arrow">▶</span> <span id="schema-toggle-label">查看数据库表结构</span>
+              </button>
+              <div class="schema-body" id="schema-body">
+                <pre class="schema-code"><code id="schema-text">加载中…</code></pre>
+              </div>
+            </section>
+          </aside>
         </div>
-        <div class="query-preview">
-          <span class="kw">问：</span>北京有多少用户？
-        </div>
-        <div class="sql-preview" style="white-space:pre">SELECT COUNT(*) AS user_count
-FROM users u
-JOIN addresses a ON u.id = a.user_id
-WHERE a.city = '北京'</div>
-        <div class="result-preview">
-          <div class="result-mini-table">
-            <div class="row header"><span>指标</span><span>数值</span></div>
-            <div class="row"><span>用户数</span><span class="val">47</span></div>
+      </section>
+
+      <section class="work-view" id="kb-list-view" data-page-title="知识库" data-breadcrumb="智能问数 / 知识库">
+        <div class="panel-card fill-card">
+          <div class="panel-toolbar">
+            <div>
+              <div class="panel-kicker">Knowledge Base</div>
+              <h2>问数知识库</h2>
+            </div>
+            <div class="toolbar-actions">
+              <input class="toolbar-input" id="kb-search" placeholder="搜索知识库名称 / 数据源" />
+              <button class="nav-btn" type="button" id="kb-refresh-btn">刷新</button>
+            </div>
+          </div>
+          <div class="kb-table-wrap">
+            <table class="kb-table">
+              <thead>
+                <tr><th>知识库</th><th>状态</th><th>规模</th><th>质量</th><th>最近使用</th><th>操作</th></tr>
+              </thead>
+              <tbody id="kb-table-body"></tbody>
+            </table>
           </div>
         </div>
-      </div>
-    </div>
-  </section>
+      </section>
 
-  <!-- Query -->
-  <section class="query-section">
-    <div class="query-wrapper" id="query-wrapper">
-      <div class="query-label">你想知道什么？</div>
-      <div class="query-input-row">
-        <textarea class="query-input" id="query-input"
-          placeholder="例如：北京有多少用户？可以追问：他们里 60 岁以上有几个？"
-          rows="2"></textarea>
-        <button class="query-submit" id="query-submit" type="button">
-          查询 <span class="arrow">→</span>
-        </button>
-      </div>
-      <div class="source-row">
-        <div class="source-tags" id="source-tags">
-          <span class="source-tag active" data-src="">🤖 自动识别</span>
+      <section class="work-view" id="kb-overview-view" data-page-title="知识库概览" data-breadcrumb="智能问数 / 知识库 / 概览">
+        <div class="kb-detail-head">
+          <div>
+            <div class="panel-kicker">Current KB</div>
+            <h2 id="kb-current-title">自动识别问数库</h2>
+            <p id="kb-current-desc">整合当前已注册数据源、Schema、术语、指标与查询样例。</p>
+          </div>
+          <button class="nav-btn" type="button" data-view-target="assistant-view">预览问答</button>
         </div>
-        <span class="history-badge" id="history-badge">未开始会话</span>
-      </div>
-    </div>
-  </section>
-
-  <section class="suggestion-panel">
-    <div class="suggestion-title">推荐问法</div>
-    <div class="suggestion-list" id="suggestion-list"></div>
-  </section>
-
-  <section class="history-panel" id="history-panel">
-    <div class="panel-head">
-      <div>
-        <div class="panel-kicker">Query History</div>
-        <h2>最近查询</h2>
-      </div>
-      <button class="panel-action" id="history-clear-btn" type="button">清空记录</button>
-    </div>
-    <div class="history-list" id="history-list"></div>
-    <div class="history-empty" id="history-empty">还没有查询记录。完成一次查询后会显示在这里。</div>
-  </section>
-
-  <!-- Routed source (auto-routing transparency) -->
-  <div class="routed-source" id="routed-source" hidden>
-    <span class="routed-icon">🗄️</span>
-    <span class="routed-text" id="routed-text"></span>
-  </div>
-
-  <!-- 查询进度 -->
-  <div class="progress-box" id="progress-box" hidden>
-    <div class="progress-stage" id="progress-stage">
-      <span class="progress-spinner"></span>
-      <span id="progress-stage-text">正在准备…</span>
-    </div>
-    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-  </div>
-
-  <!-- Results -->
-  <section class="result-area" id="result-area">
-
-    <!-- 需要澄清 -->
-    <div class="state-card is-clarify" id="clarify-box" hidden>
-      <div class="state-title"><span class="state-dot"></span>需要澄清</div>
-      <p class="state-body" id="clarify-msg"></p>
-      <p class="state-hint">在上方输入框中回答后再次点击「查询」即可继续</p>
-    </div>
-
-    <!-- 错误 -->
-    <div class="state-card is-error" id="error-box" hidden>
-      <div class="state-title"><span class="state-dot"></span>出错了</div>
-      <p class="state-body" id="error-msg"></p>
-    </div>
-
-    <!-- SQL -->
-    <div class="sql-block" id="sql-block">
-      <div class="sql-header">
-        <span class="sql-header-title">Generated SQL</span>
-        <button class="sql-copy" id="sql-copy" type="button">复制</button>
-      </div>
-      <div class="sql-body"><pre id="sql-code"></pre></div>
-      <div class="sql-meta" id="sql-meta"></div>
-    </div>
-
-    <!-- 查询结果 -->
-    <div class="result-table-wrap" id="result-table-wrap">
-      <div class="result-table-header">
-        <span id="result-table-title">查询结果</span>
-        <div class="result-actions">
-          <button id="copy-table-btn" type="button">复制表格</button>
-          <button id="download-csv-btn" type="button">下载 CSV</button>
-          <button id="save-query-btn" type="button">保存查询</button>
-          <button id="chart-toggle-btn" type="button">图表</button>
+        <div class="stat-grid" id="kb-stat-grid"></div>
+        <div class="overview-grid">
+          <section class="panel-card">
+            <div class="section-head">
+              <span class="section-icon">✓</span>
+              <div><h2>健康度</h2><p>用于判断问数库是否适合发布给业务用户。</p></div>
+            </div>
+            <div id="health-list" class="health-list"></div>
+          </section>
+          <section class="panel-card">
+            <div class="section-head">
+              <span class="section-icon">↺</span>
+              <div><h2>最近动态</h2><p>来自本地查询历史和当前配置状态。</p></div>
+            </div>
+            <div id="activity-list" class="activity-list"></div>
+          </section>
         </div>
-      </div>
-      <div class="chart-panel" id="chart-panel" hidden>
-        <canvas id="result-chart" height="220"></canvas>
-        <div class="chart-empty" id="chart-empty" hidden>当前结果缺少可绘制的文本列和数值列。</div>
-      </div>
-      <div class="result-table-scroll">
-        <table class="result-table">
-          <thead id="result-thead"></thead>
-          <tbody id="result-tbody"></tbody>
-        </table>
-      </div>
-      <div class="result-empty" id="empty-hint" hidden>无数据</div>
-    </div>
-  </section>
+        <section class="panel-card saved-examples-panel">
+          <div class="section-head">
+            <span class="section-icon">S</span>
+            <div><h2>收藏样例</h2><p>用户确认合理的问法与 SQL，会作为 few-shot 参考改善后续生成。</p></div>
+          </div>
+          <div id="saved-example-list" class="saved-example-list"></div>
+        </section>
+        <section class="panel-card feedback-panel">
+          <div class="section-head">
+            <span class="section-icon">F</span>
+            <div><h2>反馈记录</h2><p>用户确认正确或标记错误的查询，会作为后续治理线索。</p></div>
+          </div>
+          <div id="feedback-list" class="feedback-list"></div>
+        </section>
+      </section>
 
-  <!-- 我的术语表(用户自定义术语/取值映射,按库存浏览器 localStorage)-->
-  <section class="schema-section">
-    <button class="schema-toggle" id="glossary-toggle" type="button">
-      <span class="arrow">▶</span> <span id="glossary-toggle-label">我的术语表</span>
-    </button>
-    <div class="schema-body" id="glossary-body">
-      <p class="glossary-hint">
-        给 <b id="glossary-source-name">当前数据源</b> 补充「业务术语 / 取值映射」,提问时自动带上,
-        专治模型猜不出的加密取值。只存在你的浏览器,按数据源分开保存。
-        例如:<code>交易后出账 = frequency 列的 'POPLATEK PO OBRATU'</code>
-      </p>
-      <div class="glossary-add">
-        <input type="text" id="glossary-input" maxlength="200"
-          placeholder="例如:念力 = superpower.power_name 的 'Telekinesis'" />
-        <button id="glossary-add-btn" type="button">添加</button>
-      </div>
-      <ul class="glossary-list" id="glossary-list"></ul>
-      <div class="glossary-empty" id="glossary-empty">
-        当前数据源还没有自定义术语。提问一次确定数据源后,或在上方手动选库,即可添加。
-      </div>
-    </div>
-  </section>
+      <section class="work-view" id="schema-console-view" data-page-title="Schema 配置" data-breadcrumb="智能问数 / 知识库 / Schema">
+        <div class="schema-console">
+          <aside class="schema-tree" id="schema-tree"></aside>
+          <section class="panel-card schema-editor">
+            <div class="panel-toolbar">
+              <div>
+                <div class="panel-kicker">Schema Metadata</div>
+                <h2 id="schema-editor-title">表 / 字段</h2>
+              </div>
+              <button class="nav-btn secondary" type="button" id="llm-draft-btn">生成描述草稿</button>
+            </div>
+            <div class="field-table-wrap">
+              <table class="field-table">
+                <thead><tr><th>字段</th><th>别名</th><th>语义角色</th><th>业务描述</th><th>枚举/取值</th><th>操作</th></tr></thead>
+                <tbody id="field-table-body"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+        <div class="config-grid">
+          <section class="panel-card">
+            <div class="section-head"><span class="section-icon">R</span><div><h2>表关系</h2><p>明确 JOIN 关系，减少模型猜错连接路径。</p></div></div>
+            <div class="relation-add">
+              <input id="relation-input" class="toolbar-input" placeholder="例如: orders.user_id = users.id" />
+              <button class="nav-btn secondary" id="relation-add-btn" type="button">添加关系</button>
+            </div>
+            <div id="relation-list" class="relation-list"></div>
+          </section>
+          <section class="panel-card">
+            <div class="section-head"><span class="section-icon">#</span><div><h2>计算指标</h2><p>派生指标会注入问数上下文。</p></div></div>
+            <div id="metric-list" class="tag-list"></div>
+          </section>
+          <section class="panel-card">
+            <div class="section-head"><span class="section-icon">T</span><div><h2>业务术语</h2><p>来自词表和本地自定义术语。</p></div></div>
+            <div id="term-list" class="tag-list"></div>
+          </section>
+        </div>
+      </section>
 
-  <!-- Schema -->
-  <section class="schema-section">
-    <button class="schema-toggle" id="schema-toggle" type="button">
-      <span class="arrow">▶</span> <span id="schema-toggle-label">查看数据库表结构</span>
-    </button>
-    <div class="schema-body" id="schema-body">
-      <pre class="schema-code"><code id="schema-text">加载中…</code></pre>
-    </div>
-  </section>
-</main>
+      <section class="work-view" id="debug-view" data-page-title="召回调试" data-breadcrumb="智能问数 / 调试">
+        <div class="panel-card">
+          <div class="section-head">
+            <span class="section-icon">✦</span>
+            <div><h2>问数链路解释</h2><p>执行一次查询后，这里展示路由、召回、SQL、执行和可信度状态。</p></div>
+          </div>
+          <div class="debug-input-row">
+            <input id="debug-question" class="toolbar-input" placeholder="输入问题，复用问数助手链路调试…" />
+            <button class="nav-btn" id="debug-run-btn" type="button">试问</button>
+          </div>
+        </div>
+        <div class="debug-steps" id="debug-steps"></div>
+      </section>
+    </main>
+  </div>
+</div>
 
 <script src="/app.js"></script>
 </body>
