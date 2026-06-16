@@ -11,6 +11,7 @@ from typing import Any
 from app.core.chain import generate_sql, repair_sql
 from app.core.config import settings
 from app.core.data_sources import get_source
+from app.core.explain import explain_query
 from app.core.executor import SQLExecutionError, execute
 from app.core.formatter import format_clarify, format_error, format_success
 from app.core.judge import stash as stash_judge
@@ -111,6 +112,7 @@ def ask(
     # 同时避免 5 轮老话题稀释当前语义)。失败/库太小返回 None,回退整库 DDL;validator 仍用全量表。
     schema_text = schema_info.ddl_text
     retrieval_used = False
+    retrieval_trace: dict[str, Any] = {"retrieval_used": False}
     try:
         n_hist = max(0, settings.retrieval_history_turns)
         recent_q = [t.question for t in trimmed_history][-n_hist:] if n_hist else []
@@ -119,6 +121,12 @@ def ask(
         if rc is not None:
             schema_text = rc.context_text
             retrieval_used = True
+            retrieval_trace = {
+                "retrieval_used": True,
+                "tables": rc.tables,
+                "retrievers_used": rc.retrievers_used,
+                "context_preview": rc.context_text[:1200],
+            }
     except Exception:
         logger.exception("schema 检索异常,回退整库 DDL")
 
@@ -172,7 +180,7 @@ def ask(
 
         raw_sql = content
         try:
-            safe_sql, truncated = validate_and_fix(raw_sql, schema_info.tables)
+            safe_sql, truncated = validate_and_fix(raw_sql, schema_info.tables, schema_info.blocked_columns)
         except SQLValidationError as e:
             last_sql, last_err = raw_sql, str(e)
             logger.warning("SQL 校验失败 attempt=%s err=%s sql=%s", attempt, e, raw_sql)
@@ -203,10 +211,14 @@ def ask(
         is_placeholder = columns == ["error"]
         judge_id = None if is_placeholder else stash_judge(
             question, schema_text, safe_sql, columns, rows, len(rows), ds.dialect, retrieval_used)
+        explanation = explain_query(
+            question, ds.name, ds.label, safe_sql, auto_routed,
+            src_kw.get("route_reason"), retrieval_trace,
+        )
         return format_success(
             safe_sql, columns, rows, elapsed_ms,
             truncated=truncated, column_sources=column_sources,
-            judge_id=judge_id, **src_kw,
+            judge_id=judge_id, explanation=explanation, trace=retrieval_trace, **src_kw,
         )
 
     return format_error(f"经过 {MAX_REPAIR_ROUNDS + 1} 次尝试仍失败: {last_err}", sql=last_sql, **src_kw)

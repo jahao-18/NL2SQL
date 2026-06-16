@@ -30,6 +30,8 @@ def format_success(
     confidence: int | None = None,
     confidence_detail: dict[str, Any] | None = None,
     judge_id: str | None = None,
+    explanation: dict[str, Any] | None = None,
+    trace: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "sql": sql,
@@ -44,6 +46,8 @@ def format_success(
         "confidence": confidence,
         "confidence_detail": confidence_detail,
         "judge_id": judge_id,
+        "explanation": explanation or {},
+        "trace": trace or {},
         **_source_fields(source, source_label, auto_routed, route_reason),
     }
 
@@ -66,6 +70,8 @@ def format_error(
         "truncated": False,
         "error": error,
         "clarify": None,
+        "explanation": {},
+        "trace": {},
         **_source_fields(source, source_label, auto_routed, route_reason),
     }
 
@@ -88,5 +94,7 @@ def format_clarify(
         "truncated": False,
         "error": None,
         "clarify": question,
+        "explanation": {},
+        "trace": {},
         **_source_fields(source, source_label, auto_routed, route_reason),
     }

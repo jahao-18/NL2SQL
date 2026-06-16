@@ -21,7 +21,11 @@ class SQLValidationError(ValueError):
     """SQL 不满足安全约束。"""
 
 
-def validate_and_fix(sql: str, allowed_tables: dict[str, list[str]]) -> tuple[str, bool]:
+def validate_and_fix(
+    sql: str,
+    allowed_tables: dict[str, list[str]],
+    blocked_columns: set[str] | None = None,
+) -> tuple[str, bool]:
     """校验 SQL 并补 LIMIT,返回 (最终可执行 SQL, truncated)。truncated=True 表示用户请求的 LIMIT 被收紧到 MAX_ROWS。失败抛 SQLValidationError。"""
     sql = sql.strip().rstrip(";").strip()
     if not sql:
@@ -47,6 +51,11 @@ def validate_and_fix(sql: str, allowed_tables: dict[str, list[str]]) -> tuple[st
     # 3) 表名白名单(粗校验:FROM/JOIN 后第一个标识符)
     _check_tables_in_whitelist(sql, set(allowed_tables.keys()))
 
+    # 3.5) 字段治理黑名单:敏感/禁用/废弃字段不允许执行。
+    blocked_hit = _blocked_column_hit(sql, blocked_columns or set())
+    if blocked_hit:
+        raise SQLValidationError(f"引用了不可用于问数的字段: {blocked_hit}")
+
     # 4) 强制 LIMIT,并记录是否截断
     truncated = False
     limit_match = re.search(r"\blimit\s+(\d+)(\s+offset\s+\d+)?\s*$", sql, flags=re.IGNORECASE)
@@ -59,6 +68,23 @@ def validate_and_fix(sql: str, allowed_tables: dict[str, list[str]]) -> tuple[st
             sql = _cap_limit(sql, settings.max_rows)
 
     return sql, truncated
+
+
+def _blocked_column_hit(sql: str, blocked_columns: set[str]) -> str | None:
+    if not blocked_columns:
+        return None
+    lower_sql = sql.lower()
+    for full in sorted(blocked_columns):
+        if "." not in full:
+            continue
+        table, column = full.split(".", 1)
+        patterns = [
+            rf"\b{re.escape(table.lower())}\s*\.\s*{re.escape(column.lower())}\b",
+            rf"\b{re.escape(column.lower())}\b",
+        ]
+        if any(re.search(pattern, lower_sql) for pattern in patterns):
+            return full
+    return None
 
 
 def _check_tables_in_whitelist(sql: str, whitelist: set[str]) -> None:

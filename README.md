@@ -12,6 +12,7 @@
 - **中文提问直接出结果**:自然语言 → 生成 `SELECT` → 执行 → 行列表格,支持多表 JOIN 推理
 - **数据源自动路由**:挂多个数据库时,后端按问题(+ 会话上下文)自动判断该查哪个库,前端不用先选;也可手动锁库
 - **四路知识库检索(schema linking)**:大库/宽表只把**相关的表与字段 + 业务规则**喂给 LLM,而不是整库 DDL —— 提准确率、省 token(向量 + 关键字 + 业务术语 + 关系图谱四路融合)
+- **结构化 Schema 画像**:按库维护表粒度、默认过滤、人工 JOIN 关系、字段语义、指标口径和字段可用性;这些知识会同时进入 prompt、检索索引、关系图谱和安全校验
 - **查询侧术语扩展**:中文问题自动补英文列名别名(惯用脚 → `preferred_foot`),缓解"中文问题对英文列名"的跨语言召回短板
 - **多轮追问**:"北京有多少用户?" → "他们里 60 岁以上的呢?" → "再按性别分组",指代/省略自动理解
 - **结果可信度评估(后台异步)**:每次查询后另一个 LLM 当裁判,给「数据完整度 + 结果匹配度」打分,合成 0-100% 可信度勋章。**结果先返回、后台线程评估、前端短轮询补上勋章**,不阻塞看结果;评语用**业务语言**(不堆表名列名),面向不懂 SQL 的业务用户
@@ -44,7 +45,7 @@
 │  ① source_router.route()   未手动锁库时,快模型(qwen-turbo)按问题+历史+当前 │
 │                            库判断查哪个数据源(追问留原库 / 换话题切新库)   │
 │                                                                              │
-│  ② schema.load_schema()    读 DDL + 业务词表 + 自动发现的字段取值            │
+│  ② schema.load_schema()    读 DDL + 业务词表 + 结构化 schema 画像 + 字段取值 │
 │                                                                              │
 │  ③ retrieval.retrieve_context()  仅"宽/大库"触发:四路召回 → RRF 融合 →      │
 │                            选表 + 列级裁剪 → 精简 schema 上下文(替代整库DDL）│
@@ -78,6 +79,79 @@
 - 路由用独立的快模型 `ROUTER_MODEL`(默认 `qwen-turbo`),与主生成分开 —— 选库是分类小任务,无需主力模型,降低延迟。**路由只决定查哪个库,不影响库内的表/列召回。**
 
 切库会清空前端历史(跨库历史 SQL 无意义),并刷新该库的 schema 面板与术语表。
+
+---
+
+## 结构化 Schema 画像(P0/P1 知识层)
+
+除数据库 DDL 和自由文本词表外,系统还支持给每个数据源配置一个结构化 `schema_profile`。它面向产品和数据治理,把最容易影响 SQL 正确率的知识显式沉淀下来:
+
+- **表粒度(P0)**:说明一行代表什么,避免 JOIN 后重复计数。例如 `orders` 一行是一笔订单,`addresses` 一行是一条地址且用户一对多。
+- **默认过滤(P0)**:把业务默认口径写清楚。例如销售额/销量默认 `orders.status = 'paid'`,默认地址默认 `addresses.is_default = 1`。
+- **人工 JOIN 关系(P0)**:生产库常常没有外键,可以手工声明 `orders.user_id = users.id` 这类关系,供关系图谱和 JOIN 渲染使用。
+- **字段业务语义(P1)**:中文名、描述、枚举值、单位、语义类型、默认聚合方式,用于前端展示、召回索引和 prompt。
+- **字段可用性(P1)**:可标记 `sensitive / deprecated / enabled=false`;敏感/禁用/废弃字段不会进检索索引,即使模型写进 SQL 也会被校验器拒绝。
+- **结构化指标(P1)**:把客单价、件单价、复购用户数等指标按公式、默认过滤、默认时间字段维护,比散落在 prompt 里更可治理。
+
+数据源通过 `data_sources.yaml` 关联 profile:
+
+```yaml
+sources:
+  - name: demo_sqlite
+    label: 示例电商 (SQLite)
+    url: sqlite:///data/app.db
+    glossary: data/glossaries/demo_sqlite.md
+    schema_profile: data/schema_profiles/demo_sqlite.yaml
+```
+
+profile 示例:
+
+```yaml
+tables:
+  orders:
+    business_name: 订单
+    grain: 一行代表一笔订单,包含一个商品和购买数量。
+    default_time_column: created_at
+    default_filters:
+      - status = 'paid'
+
+columns:
+  orders:
+    amount:
+      business_name: 订单金额
+      semantic_type: metric
+      default_aggregation: sum
+      unit: 元
+    status:
+      business_name: 订单状态
+      semantic_type: dimension
+      enum_values:
+        - pending=待支付
+        - paid=已支付
+        - cancelled=已取消
+        - refunded=已退款
+      default_filter: status = 'paid'
+
+relations:
+  - left: orders.user_id
+    right: users.id
+    type: many_to_one
+    description: 每笔订单属于一个用户。
+
+metrics:
+  客单价:
+    formula: 已支付订单的订单金额求和 / 已支付订单数量
+    default_filters:
+      - orders.status = 'paid'
+    default_time_column: orders.created_at
+```
+
+运行时影响:
+
+- `schema.py` 会把 profile 渲染进 LLM 上下文,并合并到 `/api/schema` 的字段元数据。
+- `retrieval/atoms.py` 会把字段中文名、描述、枚举、语义类型纳入向量/关键词索引;敏感/禁用字段直接排除。
+- `retrieval/graph.py` 会把人工关系并入关系图,用于结构召回和 JOIN 路径提示。
+- `validator.py` 会拦截 profile 中标记不可用于问数的字段。
 
 ---
 
@@ -182,12 +256,13 @@
 | `app/api/routes.py` | `/health` `/sources` `/schema` `/ask` `/judge` 端点 |
 | `app/service.py` | **业务编排核心**:路由 → schema → 检索 → 生成 → 校验 → 执行 → 暂存评估 → 回修 |
 | `app/core/config.py` | pydantic-settings 读 `.env`,所有可调项与路径常量 |
-| `app/core/data_sources.py` | 读 `data_sources.yaml`,建/缓存 SQLAlchemy 引擎(只读) |
+| `app/core/data_sources.py` | 读 `data_sources.yaml`,建/缓存 SQLAlchemy 引擎(只读),解析词表/profile 路径 |
 | `app/core/source_router.py` | 数据源自动路由(快模型按问题选库) |
-| `app/core/schema.py` | 读 DDL + 业务词表 + 自动发现字段取值;`count_columns` 供检索触发判断 |
+| `app/core/schema.py` | 读 DDL + 业务词表 + schema profile + 自动发现字段取值;`count_columns` 供检索触发判断 |
+| `app/core/schema_profile.py` | 结构化 schema 画像:表粒度、默认过滤、字段语义、人工关系、指标口径、字段可用性 |
 | `app/core/chain.py` | LangChain 链:`generate_sql` / `repair_sql`;`_llm`(主)/`_router_llm`(快)/`make_llm` |
 | `app/core/retrieval/` | 四路检索子系统(见下表) |
-| `app/core/validator.py` | SQL 安全校验:单条 SELECT、黑名单、递归表白名单、LIMIT 强制/收紧 |
+| `app/core/validator.py` | SQL 安全校验:单条 SELECT、黑名单、递归表白名单、禁用字段拦截、LIMIT 强制/收紧 |
 | `app/core/executor.py` | 只读执行 + 查询超时保护,返回 `(columns, rows, elapsed_ms)` |
 | `app/core/judge.py` | 结果可信度评估 + 后台异步评估队列(`stash` / `run_stashed`) |
 | `app/core/sql_meta.py` | sqlparse 抽 SELECT 列源表达式,服务于前端双行表头 |
@@ -209,7 +284,7 @@
 | `vector.py` / `keyword.py` | local 后端:numpy 余弦 / rank_bm25 |
 | `milvus_vector.py` / `es_keyword.py` | server 后端:Milvus / Elasticsearch |
 | `glossary_vector.py` | 业务术语路(PG + pgvector),`parse_glossary` 拆条目 |
-| `graph.py` | 关系图谱:PPR 结构检索 + FK 最短路径 JOIN 渲染 |
+| `graph.py` | 关系图谱:PPR 结构检索 + FK/人工关系最短路径 JOIN 渲染 |
 
 ---
 
@@ -241,7 +316,8 @@ NL2SQL/
 │   │   ├── config.py            # 所有可调项与路径常量
 │   │   ├── data_sources.py      # 多数据源注册 + 只读引擎
 │   │   ├── source_router.py     # 数据源自动路由
-│   │   ├── schema.py            # DDL + 业务词表 + 取值发现
+│   │   ├── schema.py            # DDL + 业务词表 + schema profile + 取值发现
+│   │   ├── schema_profile.py    # 结构化 schema 画像(P0/P1 知识层)
 │   │   ├── chain.py             # LangChain 链:生成 / 回修;主/快模型
 │   │   ├── retrieval/           # 四路 schema linking 检索子系统
 │   │   ├── validator.py         # SQL 安全校验 + 表白名单 + LIMIT 强制
@@ -261,6 +337,7 @@ NL2SQL/
 ├── data/
 │   ├── app.db                   # 示例 SQLite(seed 后生成)
 │   ├── glossaries/              # 各库业务词表
+│   ├── schema_profiles/         # 各库结构化 schema 画像
 │   ├── bird/                    # BIRD 基准库的词表/源配置
 │   └── retrieval_index/         # 检索索引缓存(向量/签名)
 ├── docker-compose.yml + docker/ # server 后端组件(ES+IK / Milvus / pgvector)
@@ -363,16 +440,26 @@ sources:
     label: 示例电商 (SQLite)                    # 下拉显示名
     url: sqlite:///data/app.db                 # SQLAlchemy 连接串
     glossary: data/glossaries/demo_sqlite.md   # 可选,业务词表
+    schema_profile: data/schema_profiles/demo_sqlite.yaml  # 可选,结构化 schema 画像
 
   - name: prod_pg
     label: 生产库 (PostgreSQL)
     url: postgresql+psycopg://readonly_user:password@127.0.0.1:5432/mydb
     glossary: data/glossaries/prod_pg.md
+    schema_profile: data/schema_profiles/prod_pg.yaml
 ```
 
 **业务词表**(`data/glossaries/<name>.md`,可选)写枚举映射、跨表语义、字段口径、**派生指标**(`- 客单价 = 总消费金额 / 订单数量`,见上文「派生指标」一节)等。系统会自动发现低基数 TEXT 列的取值;手写词表补充自动发现不到的内容。
 
 > ⚠️ 词表里的业务规则一律用 `- ` 开头的条目写。`parse_glossary` 只解析 `- ` 项与 `## 表 X` 分节,**`>` 引用块 / 纯标题不会被检索到**(走检索的库尤其要注意)。
+
+**结构化 schema 画像**(`data/schema_profiles/<name>.yaml`,可选)写表粒度、默认过滤、人工 JOIN 关系、字段中文名/枚举/默认聚合、敏感/禁用字段和结构化指标。建议真实业务库优先补齐:
+
+1. 表粒度:每张事实表一行代表什么。
+2. 默认过滤:有效/已支付/未删除等默认口径。
+3. 人工关系:没有外键的生产库必须补 JOIN 关系。
+4. 字段语义:中文名、枚举含义、指标/维度/时间/ID 类型。
+5. 字段可用性:敏感、废弃、临时字段标记为不可用于问数。
 
 `data_sources.yaml` 启动时加载,改完重启 `uvicorn`。
 
@@ -392,7 +479,7 @@ sources:
 | `POST /api/ask` | 主查询。返回 sql / 结果 / 实际数据源 / `judge_id` |
 | `POST /api/judge` | 凭 `judge_id` 读取后台评估结果;未完成/失败时返回空 |
 | `GET /api/sources` | 数据源列表 + 默认源 |
-| `GET /api/schema?source=` | 某库 DDL + `{表名:[列名]}` 白名单 |
+| `GET /api/schema?source=` | 某库 DDL + `{表名:[列名]}` 白名单 + 字段治理元数据 |
 | `GET /api/health` | `{"status":"ok"}` |
 
 **`POST /api/ask` 请求:**
@@ -477,6 +564,7 @@ sources:
 | 调查询扩展的别名风格 | `prompts/query_expand_prompt.txt` |
 | 加/换数据源 | `data_sources.yaml`(改完重启)|
 | 给某库补业务规则/取值映射 | `data/glossaries/<name>.md`(用 `- ` 条目)|
+| 给某库补表粒度/默认过滤/JOIN/字段语义/敏感字段 | `data/schema_profiles/<name>.yaml`,并在 `data_sources.yaml` 配 `schema_profile` |
 | 加派生指标(客单价、毛利率等)| `data/glossaries/<name>.md` 写 `- 名称 = 公式`(纯自然语言);逻辑在 `app/core/retrieval/metrics.py` |
 | 调检索召回(触发/裁列/权重)| `.env` 的 `RETRIEVAL_*` / `RRF_*` / `TABLE_SCORE_DECAY` |
 | 换模型 | `.env` 的 `QWEN_MODEL` / `JUDGE_MODEL` / `ROUTER_MODEL` |
@@ -495,6 +583,7 @@ sources:
 - 跨语言 BM25:BIRD 库 schema 英文、问题中文,`keyword` 路命中有限(查询扩展已大幅缓解)
 - `REPLACE` 字符串函数与 `INSERT OR REPLACE` 共享关键字,当前仍被一刀切禁用;如确需字符串替换函数,需在 `validator.py` 中做函数级放行。
 - 自动取值发现为了稳定性有表数/列数上限;大库可能需要更多依赖手写 glossary 来补充枚举映射。
+- `schema_profile` 目前是文件级发布,改完需要重启服务清缓存;多人协作/审核发布还未做成服务端工作流。
 
 ---
 
@@ -502,7 +591,7 @@ sources:
 
 **Q: 启动报 `DASHSCOPE_API_KEY 未配置`?** 在根目录建 `.env` 填 key。
 
-**Q: 改了 schema / 词表 / prompt 后没生效?** schema 与部分 prompt 有进程级缓存,检索器索引也按签名缓存;**重启 uvicorn** 即可(`sql_prompt` 被 lru_cache,词表内容变更也需重启清 `_get` 缓存)。
+**Q: 改了 schema / 词表 / schema profile / prompt 后没生效?** schema、profile 与部分 prompt 有进程级缓存,检索器索引也按签名缓存;**重启 uvicorn** 即可(`sql_prompt` 被 lru_cache,词表/profile 内容变更也需重启清 `_get` 缓存)。
 
 **Q: 自动路由选错库?** 调 `prompts/router_prompt.txt`,或前端下拉手动锁库。
 

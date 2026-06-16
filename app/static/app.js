@@ -192,6 +192,8 @@
   let currentResult = null;
   let availableSources = [];
   let schemaCache = {};
+  let profileCache = {};
+  let feedbackCache = [];
   let schemaLoading = new Set();
   let selectedKb = "auto";
   let lastTrace = null;
@@ -233,7 +235,10 @@
       breadcrumb.textContent = view.dataset.breadcrumb || "智能问数";
     }
     if (id === "kb-list-view") renderKbList();
-    if (id === "kb-overview-view") renderKbOverview();
+    if (id === "kb-overview-view") {
+      loadFeedback(currentKbSource()).then(() => renderKbOverview());
+      renderKbOverview();
+    }
     if (id === "schema-console-view") renderSchemaConsole();
     if (id === "debug-view") renderDebugSteps();
   }
@@ -290,6 +295,36 @@
     const data = schemaCache[schemaKey(src)] || {};
     const columns = (data.columns && data.columns[table]) || [];
     return columns.find((item) => item.column_name === field) || {};
+  }
+
+  function profileKey(src) {
+    return src || "__auto__";
+  }
+
+  function emptyProfile() {
+    return { tables: {}, columns: {}, relations: [], metrics: {} };
+  }
+
+  function currentProfile(source) {
+    return profileCache[profileKey(source)] || emptyProfile();
+  }
+
+  function profileColumn(source, table, field) {
+    const p = currentProfile(source);
+    return (((p.columns || {})[table] || {})[field]) || {};
+  }
+
+  function ensureProfileColumn(profile, table, field) {
+    profile.columns = profile.columns || {};
+    profile.columns[table] = profile.columns[table] || {};
+    profile.columns[table][field] = profile.columns[table][field] || {};
+    return profile.columns[table][field];
+  }
+
+  function ensureProfileTable(profile, table) {
+    profile.tables = profile.tables || {};
+    profile.tables[table] = profile.tables[table] || {};
+    return profile.tables[table];
   }
 
   function fieldRoleLabel(meta, fallbackName) {
@@ -416,7 +451,12 @@
     }
     const logs = loadQueryLog().filter((item) => !src || item.source === src);
     const saved = readJsonList(SAVED_QUERY_KEY).filter((item) => !src || item.source === src);
-    const feedback = readJsonList(FEEDBACK_KEY).filter((item) => !src || item.source === src);
+    const feedback = feedbackCache.filter((item) => !src || item.source === src);
+    const profile = currentProfile(src);
+    const governedFields = Object.values(profile.columns || {}).reduce((sum, cols) => {
+      return sum + Object.values(cols || {}).filter((x) => x && (x.business_name || x.description || x.semantic_type)).length;
+    }, 0);
+    const relationCount = (profile.relations || []).length;
     kbStatGrid.innerHTML = "";
     kbStatGrid.appendChild(renderStatPill("数据表", summary.tableNames.length, "已读取 Schema"));
     kbStatGrid.appendChild(renderStatPill("字段", summary.fieldCount, "可被问数召回"));
@@ -426,6 +466,8 @@
 
     const healthItems = [
       ["Schema 完整度", summary.tableNames.length ? 88 : 45],
+      ["字段治理", summary.fieldCount ? Math.min(96, Math.round(governedFields / summary.fieldCount * 100)) : 0],
+      ["关系治理", relationCount ? Math.min(96, 60 + relationCount * 6) : 35],
       ["术语覆盖", Math.min(96, 52 + (loadGlossary(src).length + loadMetrics(src).length) * 8)],
       ["召回稳定性", logs.length ? 86 : 70],
       ["结果可信度", lastTrace && (!src || lastTrace.source === src) ? 82 : 74],
@@ -465,7 +507,7 @@
 
   function renderFeedbackList(source) {
     if (!feedbackList) return;
-    const items = readJsonList(FEEDBACK_KEY).filter((item) => !source || item.source === source).slice(0, 12);
+    const items = feedbackCache.filter((item) => !source || item.source === source).slice(0, 12);
     feedbackList.innerHTML = "";
     if (!items.length) {
       feedbackList.innerHTML = '<div class="empty-note">暂无反馈。用户点击「结果正确」或「反馈错误」后会出现在这里。</div>';
@@ -476,7 +518,7 @@
       row.className = `feedback-row ${item.kind === "correct" ? "is-correct" : "is-incorrect"}`;
       row.innerHTML = `
         <div><b>${item.kind === "correct" ? "正确" : "错误"}</b><span>${escapeHtml(item.question || "")}</span></div>
-        <small>${escapeHtml(item.reason || "无说明")} · ${escapeHtml(item.source_label || item.source || "自动识别")}</small>
+        <small>${escapeHtml(item.category || "未分类")} · ${escapeHtml(item.reason || "无说明")} · ${escapeHtml(item.source_label || item.source || "自动识别")}</small>
       `;
       feedbackList.appendChild(row);
     });
@@ -573,6 +615,59 @@
 
     schemaEditorTitle.textContent = activeSchemaTable ? `${activeSchemaTable} 字段配置` : "字段配置";
     fieldTableBody.innerHTML = "";
+    const profile = currentProfile(src);
+    if (activeSchemaTable) {
+      const tableProfile = (profile.tables || {})[activeSchemaTable] || {};
+      const tableCard = document.createElement("div");
+      tableCard.className = "field-card";
+      tableCard.innerHTML = `
+        <div class="field-card-head">
+          <div class="field-identity">
+            <b>${escapeHtml(activeSchemaTable)}</b>
+            <span>表画像 / 粒度 / 默认口径</span>
+          </div>
+          <div class="field-badges"><em>P0</em><em>发布到后端</em></div>
+          <button class="field-meta-save" type="button">保存表画像</button>
+        </div>
+        <div class="field-card-grid">
+          <label>
+            <span>业务名</span>
+            <input class="table-profile-input" data-profile-field="business_name" value="${escapeHtml(tableProfile.business_name || "")}" placeholder="例如: 订单" />
+          </label>
+          <label class="wide">
+            <span>表说明</span>
+            <input class="table-profile-input" data-profile-field="description" value="${escapeHtml(tableProfile.description || "")}" placeholder="这张表记录什么业务对象" />
+          </label>
+          <label class="wide">
+            <span>表粒度</span>
+            <input class="table-profile-input" data-profile-field="grain" value="${escapeHtml(tableProfile.grain || "")}" placeholder="例如: 一行代表一笔订单" />
+          </label>
+          <label>
+            <span>默认时间字段</span>
+            <input class="table-profile-input" data-profile-field="default_time_column" value="${escapeHtml(tableProfile.default_time_column || "")}" placeholder="created_at" />
+          </label>
+          <label class="wide">
+            <span>默认过滤</span>
+            <input class="table-profile-input" data-profile-field="default_filters" value="${escapeHtml((tableProfile.default_filters || []).join("; "))}" placeholder="status = 'paid'; is_deleted = 0" />
+          </label>
+        </div>
+      `;
+      tableCard.querySelector(".field-meta-save").addEventListener("click", async () => {
+        const next = JSON.parse(JSON.stringify(currentProfile(src)));
+        const target = ensureProfileTable(next, activeSchemaTable);
+        tableCard.querySelectorAll(".table-profile-input").forEach((el) => {
+          const key = el.dataset.profileField;
+          if (key === "default_filters") {
+            target[key] = el.value.split(";").map((x) => x.trim()).filter(Boolean);
+          } else {
+            target[key] = el.value.trim();
+          }
+        });
+        await saveProfile(src, next);
+        renderSchemaConsole();
+      });
+      fieldTableBody.appendChild(tableCard);
+    }
     const fieldMeta = loadFieldMeta(src);
     (tables[activeSchemaTable] || []).forEach((field) => {
       const card = document.createElement("div");
@@ -581,10 +676,14 @@
       const role = fieldRoleLabel(serverMeta, field);
       const id = fieldMetaId(activeSchemaTable, field);
       const meta = fieldMeta[id] || {};
-      const enumText = meta.enums || compactList(serverMeta.enum_values, "");
-      const descText = meta.desc || serverMeta.description || "";
-      const unitText = meta.unit || serverMeta.unit || "";
-      const defaultFilterText = meta.default_filter || serverMeta.default_filter || "";
+      const profMeta = profileColumn(src, activeSchemaTable, field);
+      const enumText = meta.enums || compactList(profMeta.enum_values, "") || compactList(serverMeta.enum_values, "");
+      const descText = meta.desc || profMeta.description || serverMeta.description || "";
+      const unitText = meta.unit || profMeta.unit || serverMeta.unit || "";
+      const defaultFilterText = meta.default_filter || profMeta.default_filter || serverMeta.default_filter || "";
+      const aliasText = meta.alias || profMeta.business_name || serverMeta.business_name || "";
+      const semanticText = profMeta.semantic_type || serverMeta.semantic_type || "";
+      const aggText = profMeta.default_aggregation || serverMeta.default_aggregation || "";
       const nullableText = serverMeta.nullable === false ? "NOT NULL" : "可空";
       const defaultText = serverMeta.default_value ? `默认 ${serverMeta.default_value}` : "";
       const keyBadge = serverMeta.is_primary_key ? "主键" : (serverMeta.is_foreign_key ? "外键" : "");
@@ -605,11 +704,11 @@
         <div class="field-card-grid">
           <label>
             <span>中文名 / 别名</span>
-            <input class="field-meta-input" data-meta-field="alias" value="${escapeHtml(meta.alias || "")}" placeholder="例如: 订单金额" />
+            <input class="field-meta-input" data-meta-field="business_name" value="${escapeHtml(aliasText)}" placeholder="例如: 订单金额" />
           </label>
           <label class="wide">
             <span>业务描述</span>
-            <input class="field-meta-input" data-meta-field="desc" value="${escapeHtml(descText)}" placeholder="字段含义、统计口径或使用边界" />
+            <input class="field-meta-input" data-meta-field="description" value="${escapeHtml(descText)}" placeholder="字段含义、统计口径或使用边界" />
           </label>
           <label class="wide">
             <span>枚举 / 取值</span>
@@ -627,18 +726,37 @@
             <span>默认过滤</span>
             <input class="field-meta-input" data-meta-field="default_filter" value="${escapeHtml(defaultFilterText)}" placeholder="如 is_deleted = 0" />
           </label>
+          <label>
+            <span>语义类型</span>
+            <input class="field-meta-input compact" data-meta-field="semantic_type" value="${escapeHtml(semanticText)}" placeholder="metric / dimension / time / identifier" />
+          </label>
+          <label>
+            <span>默认聚合</span>
+            <input class="field-meta-input compact" data-meta-field="default_aggregation" value="${escapeHtml(aggText)}" placeholder="sum / avg / count" />
+          </label>
+          <label>
+            <span>敏感 / 禁用</span>
+            <input class="field-meta-input compact" data-meta-field="flags" value="${escapeHtml([profMeta.sensitive ? "sensitive" : "", profMeta.deprecated ? "deprecated" : "", profMeta.enabled === false ? "disabled" : ""].filter(Boolean).join(", "))}" placeholder="sensitive, deprecated, disabled" />
+          </label>
         </div>
       `;
-      card.querySelectorAll(".field-meta-input").forEach((el) => {
-        el.addEventListener("change", () => {
-          const next = loadFieldMeta(src);
-          next[id] = next[id] || {};
-          next[id][el.dataset.metaField] = el.value.trim();
-          saveFieldMeta(src, next);
+      card.querySelector(".field-meta-save").addEventListener("click", async () => {
+        const next = JSON.parse(JSON.stringify(currentProfile(src)));
+        const target = ensureProfileColumn(next, activeSchemaTable, field);
+        card.querySelectorAll(".field-meta-input").forEach((el) => {
+          const key = el.dataset.metaField;
+          const value = el.value.trim();
+          if (key === "enums") target.enum_values = value ? value.split(/[;/]/).map((x) => x.trim()).filter(Boolean) : [];
+          else if (key === "flags") {
+            const flags = value.toLowerCase();
+            target.sensitive = flags.includes("sensitive");
+            target.deprecated = flags.includes("deprecated");
+            target.enabled = !flags.includes("disabled");
+          } else {
+            target[key] = value;
+          }
         });
-      });
-      card.querySelector(".field-meta-save").addEventListener("click", () => {
-        card.querySelectorAll(".field-meta-input").forEach((el) => el.dispatchEvent(new Event("change")));
+        await saveProfile(src, next);
         renderSchemaConsole();
       });
       fieldTableBody.appendChild(card);
@@ -684,10 +802,10 @@
       row.className = "relation-row";
       row.innerHTML = `<span>${escapeHtml(text)}</span><button type="button">删除</button>`;
       row.querySelector("button").addEventListener("click", () => {
-        const next = loadRelations(source);
-        next.splice(index, 1);
-        saveRelations(source, next);
-        renderRelations(source);
+        const next = JSON.parse(JSON.stringify(currentProfile(source)));
+        next.relations = next.relations || [];
+        next.relations.splice(index, 1);
+        saveProfile(source, next).then(() => renderRelations(source));
       });
       relationList.appendChild(row);
     });
@@ -697,11 +815,17 @@
     const src = currentKbSource();
     const text = (relationInput && relationInput.value || "").trim();
     if (!src || !text) return;
-    const list = loadRelations(src);
-    if (!list.includes(text)) list.unshift(text);
-    saveRelations(src, list);
+    const m = text.match(/^\s*([A-Za-z_][\w]*\.[A-Za-z_][\w]*)\s*=\s*([A-Za-z_][\w]*\.[A-Za-z_][\w]*)(?:\s*[;·]\s*(.*))?$/);
+    if (!m) {
+      alert("关系格式示例: orders.user_id = users.id");
+      return;
+    }
+    const next = JSON.parse(JSON.stringify(currentProfile(src)));
+    next.relations = next.relations || [];
+    const exists = next.relations.some((r) => r.left === m[1] && r.right === m[2]);
+    if (!exists) next.relations.unshift({ left: m[1], right: m[2], type: "manual", description: m[3] || "" });
     relationInput.value = "";
-    renderRelations(src);
+    saveProfile(src, next).then(() => renderRelations(src));
   }
 
   function renderDebugSteps() {
@@ -713,7 +837,7 @@
     }
     const steps = [
       ["数据源路由", lastTrace.source_label || lastTrace.source || "自动识别", lastTrace.route_reason || (lastTrace.auto_routed ? "系统自动选择最相关的数据源。" : "使用当前锁定的数据源。")],
-      ["Schema 召回", `${lastTrace.columns || 0} 个结果字段`, "结合问题、术语表和表结构选择候选字段。"],
+      ["Schema 召回", (lastTrace.trace && lastTrace.trace.retrieval_used) ? `命中表: ${(lastTrace.trace.tables || []).join(", ")}` : `${lastTrace.columns || 0} 个结果字段`, (lastTrace.trace && lastTrace.trace.retrievers_used || []).join(" / ") || "结合问题、术语表和表结构选择候选字段。"],
       ["SQL 生成", lastTrace.sql ? lastTrace.sql.slice(0, 160) : "无 SQL", "生成只读查询并保留可复制 SQL。"],
       ["执行结果", `${lastTrace.row_count || 0} 行 · ${lastTrace.elapsed_ms || 0} ms`, "结果表、CSV 下载和图表预览共用同一份返回数据。"],
       ["可信度评估", lastTrace.judge_id ? "后台异步评估" : "未触发", "评估结果会补充到 SQL 元信息区域。"],
@@ -724,6 +848,58 @@
       div.innerHTML = `<span class="debug-step-no">${i + 1}</span><div><b>${escapeHtml(title)}</b><strong>${escapeHtml(value)}</strong><p>${escapeHtml(desc)}</p></div>`;
       debugSteps.appendChild(div);
     });
+  }
+
+  function renderDebugPayload(data, question) {
+    lastTrace = {
+      question,
+      source: data.source,
+      source_label: data.source_label,
+      auto_routed: data.auto_routed,
+      route_reason: data.route_reason,
+      sql: "",
+      columns: data.column_count,
+      row_count: 0,
+      elapsed_ms: 0,
+      judge_id: null,
+      trace: {
+        retrieval_used: data.retrieval_used,
+        tables: data.retrieval_tables || [],
+        retrievers_used: data.retrievers_used || [],
+        context_preview: data.context_preview || "",
+      },
+    };
+    debugSteps.innerHTML = "";
+    const rows = [
+      ["路由结果", `${data.source_label || data.source || "-"} · ${data.auto_routed ? "自动" : "手动"}`, data.route_reason || ""],
+      ["Schema 规模", `${data.table_count || 0} 张表 / ${data.column_count || 0} 个字段`, data.retrieval_used ? "已触发 schema linking" : "未触发检索,使用整库 DDL"],
+      ["召回表", (data.retrieval_tables || []).join(", ") || "-", (data.retrievers_used || []).join(" / ") || "-"],
+      ["上下文预览", (data.context_preview || "").slice(0, 500), "这是将喂给生成器的 schema 证据预览。"],
+    ];
+    rows.forEach(([title, value, desc], i) => {
+      const div = document.createElement("div");
+      div.className = "debug-step";
+      div.innerHTML = `<span class="debug-step-no">${i + 1}</span><div><b>${escapeHtml(title)}</b><strong>${escapeHtml(value)}</strong><p>${escapeHtml(desc)}</p></div>`;
+      debugSteps.appendChild(div);
+    });
+  }
+
+  async function runRetrievalDebug() {
+    const question = (debugQuestion && debugQuestion.value || input.value || "").trim();
+    if (!question) return;
+    debugSteps.innerHTML = '<div class="empty-note">正在分析路由和召回...</div>';
+    try {
+      const resp = await fetch("/api/debug/retrieval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, source: manualSource(), current_source: conversationSource, history: loadHistory().slice(-MAX_HISTORY_TURNS) }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+      renderDebugPayload(data, question);
+    } catch (e) {
+      debugSteps.innerHTML = `<div class="empty-note">调试失败: ${escapeHtml(e.message)}</div>`;
+    }
   }
 
   /* ---------------- 我的术语表(按库存 localStorage) ---------------- */
@@ -899,7 +1075,8 @@
   }
 
   function loadRelations(source) {
-    return readJsonList(relationKey(source));
+    const rels = currentProfile(source).relations || [];
+    return rels.map((r) => `${r.left} = ${r.right}${r.description ? " · " + r.description : ""}`);
   }
 
   function saveRelations(source, list) {
@@ -1099,6 +1276,11 @@
     const rowCount = typeof data.row_count === "number" ? data.row_count : rows.length;
     const bits = [`共返回 ${rowCount} 行、${columns.length} 列`];
     if (data.truncated) bits.push("结果已按安全上限截断");
+    const exp = data.explanation || {};
+    if (exp.summary) bits.push(exp.summary);
+    (exp.default_filters || []).slice(0, 3).forEach((x) => bits.push(`口径: ${x}`));
+    (exp.metrics || []).slice(0, 2).forEach((x) => bits.push(`指标: ${x}`));
+    (exp.relations || []).slice(0, 2).forEach((x) => bits.push(`关系: ${x}`));
     const first = rows[0] || [];
     const numericIndex = columns.findIndex((_, idx) => rows.some((r) => isNumeric(r[idx])));
     if (numericIndex >= 0) {
@@ -1215,26 +1397,39 @@
     return item;
   }
 
-  function saveFeedback(kind, reason) {
+  async function saveFeedback(kind, reason, category) {
     if (!currentResult) return;
     const item = {
       id: String(Date.now()),
       kind,
       reason: reason || "",
+      category: category || "",
       question: currentResult.question,
       sql: currentResult.sql,
       source: currentResult.source,
       source_label: currentResult.source_label,
+      explanation: currentResult.explanation || {},
       created_at: new Date().toISOString(),
     };
     writeJsonList(FEEDBACK_KEY, [item, ...readJsonList(FEEDBACK_KEY)].slice(0, 100));
+    try {
+      const resp = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
+      });
+      if (resp.ok) {
+        const saved = await resp.json();
+        feedbackCache = [saved.item, ...feedbackCache.filter((x) => x.id !== saved.item.id)];
+      }
+    } catch {}
     renderKbOverview();
   }
 
   function confirmCurrentResult() {
     if (!currentResult) return;
     const item = saveCurrentQuery();
-    saveFeedback("correct", "用户确认结果正确");
+    saveFeedback("correct", "用户确认结果正确", "confirmed");
     if (confirmGoodBtn) {
       const old = confirmGoodBtn.textContent;
       confirmGoodBtn.textContent = item ? "已沉淀为样例" : "已确认";
@@ -1246,7 +1441,8 @@
     if (!currentResult) return;
     const reason = prompt("请简要说明哪里不对: 口径不对 / 字段选错 / 过滤条件错 / 数据源错 / 其他", "");
     if (reason == null) return;
-    saveFeedback("incorrect", reason.trim());
+    const category = prompt("错误类型(可选): 选错库 / 字段理解错 / JOIN错 / 过滤条件错 / 指标口径错 / 结果看不懂", "") || "";
+    saveFeedback("incorrect", reason.trim(), category.trim());
     if (reportBadBtn) {
       const old = reportBadBtn.textContent;
       reportBadBtn.textContent = "已记录";
@@ -1340,6 +1536,48 @@
 
   /* ---------------- data fetching ---------------- */
 
+  async function loadProfile(source) {
+    if (!source) return emptyProfile();
+    const key = profileKey(source);
+    if (profileCache[key]) return profileCache[key];
+    try {
+      const resp = await fetch(`/api/profile?source=${encodeURIComponent(source)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      profileCache[key] = data.profile || emptyProfile();
+    } catch {
+      profileCache[key] = emptyProfile();
+    }
+    return profileCache[key];
+  }
+
+  async function saveProfile(source, profile) {
+    if (!source) return;
+    const resp = await fetch(`/api/profile?source=${encodeURIComponent(source)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    profileCache[profileKey(source)] = data.profile || profile;
+    schemaCache = {};
+    await loadSchema(source);
+  }
+
+  async function loadFeedback(source) {
+    try {
+      const qs = source ? `?source=${encodeURIComponent(source)}` : "";
+      const resp = await fetch(`/api/feedback${qs}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      feedbackCache = data.items || [];
+    } catch {
+      feedbackCache = readJsonList(FEEDBACK_KEY);
+    }
+    return feedbackCache;
+  }
+
   async function loadSchema(forceSource) {
     const src = forceSource || manualSource();
     const key = schemaKey(src);
@@ -1355,6 +1593,7 @@
       }
       const data = await resp.json();
       schemaCache[key] = data;
+      if (src) await loadProfile(src);
       if (shouldUpdateSchemaText) {
         schemaText.textContent = data.ddl;
       }
@@ -1423,6 +1662,7 @@
       availableSources = data.sources || [];
       renderSourceTags(availableSources);
       renderSuggestions();
+      await loadFeedback();
       renderKbList();
       renderKbOverview();
       renderSchemaConsole();
@@ -1579,6 +1819,8 @@
           row_count: rowCount,
           elapsed_ms: data.elapsed_ms,
           judge_id: data.judge_id,
+          explanation: data.explanation || {},
+          trace: data.trace || {},
         };
         if (chartPanel) chartPanel.hidden = true;
         if (chartToggleBtn) chartToggleBtn.textContent = "图表视图";
@@ -1635,8 +1877,7 @@
     debugRunBtn.addEventListener("click", () => {
       const text = (debugQuestion && debugQuestion.value || "").trim();
       if (text) input.value = text;
-      showView("assistant-view");
-      executeQuery();
+      runRetrievalDebug();
     });
   }
   if (relationAddBtn) relationAddBtn.addEventListener("click", addRelationEntry);

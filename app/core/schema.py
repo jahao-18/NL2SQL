@@ -20,6 +20,7 @@ from sqlalchemy.engine import Engine
 
 from app.core.config import settings
 from app.core.data_sources import DataSource, get_engine, get_source
+from app.core.schema_profile import load_profile, profile_context
 
 logger = logging.getLogger("nl2sql.schema")
 
@@ -34,6 +35,7 @@ class SchemaInfo:
     tables: dict[str, list[str]] = field(default_factory=dict)  # 表名 -> 列名列表(白名单)
     pure_ddl: str = ""                      # 仅表结构(CREATE TABLE),供前端「查看表结构」展示,不含 enum/词表/指标
     columns: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    blocked_columns: set[str] = field(default_factory=set)
 
 
 _COL_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+", re.MULTILINE)
@@ -217,8 +219,9 @@ def _sample_values(engine: Engine, table: str, column: str, col_type: str) -> tu
     return examples, enum_values
 
 
-def _schema_columns(engine: Engine, tables: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+def _schema_columns(engine: Engine, tables: dict[str, list[str]], source_name: str) -> dict[str, list[dict[str, Any]]]:
     insp = inspect(engine)
+    profile = load_profile(source_name)
     total_columns = sum(len(cols) for cols in tables.values())
     should_sample = (
         settings.enum_discovery_enabled
@@ -246,29 +249,47 @@ def _schema_columns(engine: Engine, tables: dict[str, list[str]]) -> dict[str, l
         for c in cols:
             name = c["name"]
             col_type = str(c.get("type") or "")
+            prof = profile.columns.get(f"{table}.{name}")
             examples: list[str] = []
             enum_values: list[str] = []
             if should_sample:
                 examples, enum_values = _sample_values(engine, table, name, col_type)
+            if prof:
+                if prof.example_values:
+                    examples = list(prof.example_values)
+                if prof.enum_values:
+                    enum_values = list(prof.enum_values)
             is_pk = name in pk_cols
             is_fk = name in fk_cols
             is_id_like = name.lower() == "id" or name.lower().endswith("_id")
-            is_metric = _is_numeric_type(col_type) and not is_pk and not is_fk and not is_id_like
+            semantic_type = prof.semantic_type if prof else ""
+            is_metric = (
+                semantic_type == "metric"
+                or (_is_numeric_type(col_type) and semantic_type != "dimension" and not is_pk and not is_fk and not is_id_like)
+            )
             items.append({
                 "table_name": table,
                 "column_name": name,
                 "data_type": col_type,
                 "nullable": bool(c.get("nullable", True)),
                 "default_value": None if c.get("default") is None else str(c.get("default")),
-                "description": c.get("comment") or "",
+                "business_name": prof.business_name if prof else "",
+                "description": (prof.description if prof and prof.description else c.get("comment") or ""),
                 "example_values": examples,
                 "enum_values": enum_values,
-                "unit": _infer_unit(name),
+                "unit": (prof.unit if prof and prof.unit else _infer_unit(name)),
                 "is_primary_key": is_pk,
                 "is_foreign_key": is_fk,
                 "is_metric": is_metric,
                 "is_dimension": not is_metric,
-                "default_filter": _default_filter(name, enum_values),
+                "semantic_type": semantic_type,
+                "default_aggregation": prof.default_aggregation if prof else "",
+                "enabled_for_query": prof.enabled if prof else True,
+                "sensitive": prof.sensitive if prof else False,
+                "deprecated": prof.deprecated if prof else False,
+                "default_filter": (
+                    prof.default_filter if prof and prof.default_filter else _default_filter(name, enum_values)
+                ),
             })
         out[table] = items
     return out
@@ -279,6 +300,7 @@ def load_schema(source_name: str | None = None) -> SchemaInfo:
     """按数据源名加载 schema。返回 SchemaInfo,内含拼装好的 DDL 文本 + 表/列白名单。"""
     source = get_source(source_name)
     engine = get_engine(source)
+    profile = load_profile(source.name)
 
     if source.dialect == "sqlite":
         ddl_text, tables = _sqlite_ddl_text(engine)
@@ -295,6 +317,9 @@ def load_schema(source_name: str | None = None) -> SchemaInfo:
     glossary = _read_glossary(source.glossary_path)
     if glossary:
         parts.append(glossary)
+    profile_block = profile_context(source.name)
+    if profile_block:
+        parts.append(profile_block)
 
     # ddl_text 是喂 LLM 的完整上下文(表 + 取值发现 + 词表 + 派生指标);
     # pure_ddl 只含 CREATE TABLE,供前端「查看表结构」展示——业务说明那些不该露给用户看。
@@ -302,7 +327,8 @@ def load_schema(source_name: str | None = None) -> SchemaInfo:
         ddl_text="\n\n".join(parts),
         tables=tables,
         pure_ddl=ddl_text,
-        columns=_schema_columns(engine, tables),
+        columns=_schema_columns(engine, tables, source.name),
+        blocked_columns=profile.blocked_columns,
     )
 
 

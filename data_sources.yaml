@@ -10,6 +10,7 @@ sources:
     label: 示例电商 (SQLite)
     url: sqlite:///data/app.db
     glossary: data/glossaries/demo_sqlite.md
+    schema_profile: data/schema_profiles/demo_sqlite.yaml
 
   # ─────────── BIRD dev 基准库(只读) ───────────
   # url 用 mode=ro&immutable=1:只读 + 当作不可变,跳过加锁/WAL,否则部分库只读打开会失败。

@@ -60,6 +60,8 @@ class AskResponse(BaseModel):
     confidence: int | None = Field(None, description="AI 评估的答案准确率 0-100(召回质量+SQL正确性合成),None=未评估")
     confidence_detail: ConfidenceDetail | None = Field(None, description="准确率分项明细")
     judge_id: str | None = Field(None, description="异步准确率评估的取件号;非空时前端用它请求 /api/judge 补勋章")
+    explanation: dict[str, Any] = Field(default_factory=dict, description="面向业务用户的口径/关系/路由解释")
+    trace: dict[str, Any] = Field(default_factory=dict, description="面向治理和调试的链路证据")
 
 
 class ConfidenceDetail(BaseModel):
@@ -89,6 +91,7 @@ class ColumnMetadata(BaseModel):
     data_type: str = ""
     nullable: bool = True
     default_value: str | None = None
+    business_name: str = ""
     description: str = ""
     example_values: list[str] = Field(default_factory=list)
     enum_values: list[str] = Field(default_factory=list)
@@ -97,6 +100,11 @@ class ColumnMetadata(BaseModel):
     is_foreign_key: bool = False
     is_metric: bool = False
     is_dimension: bool = False
+    semantic_type: str = ""
+    default_aggregation: str = ""
+    enabled_for_query: bool = True
+    sensitive: bool = False
+    deprecated: bool = False
     default_filter: str = ""
 
 
@@ -104,3 +112,51 @@ class SchemaResponse(BaseModel):
     tables: dict[str, list[str]]
     ddl: str
     columns: dict[str, list[ColumnMetadata]] = Field(default_factory=dict)
+
+
+class ProfileResponse(BaseModel):
+    source: str
+    profile: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProfileUpdateRequest(BaseModel):
+    profile: dict[str, Any] = Field(default_factory=dict)
+
+
+class FeedbackRequest(BaseModel):
+    kind: Literal["correct", "incorrect"] = "incorrect"
+    reason: str = ""
+    category: str = ""
+    question: str = ""
+    sql: str = ""
+    source: str = ""
+    source_label: str = ""
+    explanation: dict[str, Any] = Field(default_factory=dict)
+
+
+class FeedbackResponse(BaseModel):
+    item: dict[str, Any]
+
+
+class FeedbackListResponse(BaseModel):
+    items: list[dict[str, Any]]
+
+
+class DebugRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=500)
+    source: str | None = None
+    current_source: str | None = None
+    history: list[Turn] = Field(default_factory=list)
+
+
+class DebugResponse(BaseModel):
+    source: str | None = None
+    source_label: str | None = None
+    auto_routed: bool = False
+    route_reason: str = ""
+    table_count: int = 0
+    column_count: int = 0
+    retrieval_used: bool = False
+    retrieval_tables: list[str] = Field(default_factory=list)
+    retrievers_used: list[str] = Field(default_factory=list)
+    context_preview: str = ""
