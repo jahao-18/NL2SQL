@@ -13,6 +13,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
@@ -32,6 +33,7 @@ class SchemaInfo:
     ddl_text: str                          # 拼接给 LLM 的文本(含注释 + 发现的取值 + 词表 + 派生指标)
     tables: dict[str, list[str]] = field(default_factory=dict)  # 表名 -> 列名列表(白名单)
     pure_ddl: str = ""                      # 仅表结构(CREATE TABLE),供前端「查看表结构」展示,不含 enum/词表/指标
+    columns: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 _COL_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+", re.MULTILINE)
@@ -159,6 +161,119 @@ def _read_glossary(path: Path | None) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+def _is_text_type(col_type: str) -> bool:
+    t = col_type.upper()
+    return any(x in t for x in ("TEXT", "CHAR", "STRING", "VARCHAR", "CLOB"))
+
+
+def _is_numeric_type(col_type: str) -> bool:
+    t = col_type.upper()
+    return any(x in t for x in ("INT", "REAL", "DOUBLE", "FLOAT", "NUMERIC", "DECIMAL", "MONEY"))
+
+
+def _infer_unit(name: str) -> str:
+    n = name.lower()
+    if any(x in n for x in ("amount", "price", "cost", "fee", "salary", "revenue", "sales")):
+        return "amount"
+    if any(x in n for x in ("rate", "ratio", "percent", "pct")):
+        return "percent"
+    if any(x in n for x in ("count", "num", "qty", "quantity", "stock")):
+        return "count"
+    return ""
+
+
+def _default_filter(name: str, enum_values: list[str]) -> str:
+    n = name.lower()
+    vals = {v.lower(): v for v in enum_values}
+    if n in {"is_deleted", "deleted", "delete_flag", "del_flag"}:
+        return f"{name} = 0"
+    if n in {"is_active", "active", "enabled", "is_valid", "valid"}:
+        return f"{name} = 1"
+    for key in ("paid", "success", "completed", "active", "valid"):
+        if key in vals:
+            return f"{name} = '{vals[key]}'"
+    return ""
+
+
+def _sample_values(engine: Engine, table: str, column: str, col_type: str) -> tuple[list[str], list[str]]:
+    """Return (examples, enum_values). Best-effort and intentionally small."""
+    preparer = engine.dialect.identifier_preparer
+    q_tbl = preparer.quote(table)
+    q_col = preparer.quote(column)
+    limit = ENUM_DISCOVER_MAX + 1 if _is_text_type(col_type) else 4
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(
+                f"SELECT DISTINCT {q_col} FROM {q_tbl} WHERE {q_col} IS NOT NULL LIMIT {limit}"
+            )).all()
+    except Exception:
+        return [], []
+    values = [str(r[0]) for r in rows if r[0] is not None]
+    examples = [v[:80] for v in values[:3]]
+    enum_values: list[str] = []
+    if _is_text_type(col_type) and 0 < len(values) <= ENUM_DISCOVER_MAX:
+        if not any(len(v) > ENUM_DISCOVER_TEXT_LEN_LIMIT for v in values):
+            enum_values = sorted(values)
+    return examples, enum_values
+
+
+def _schema_columns(engine: Engine, tables: dict[str, list[str]]) -> dict[str, list[dict[str, Any]]]:
+    insp = inspect(engine)
+    total_columns = sum(len(cols) for cols in tables.values())
+    should_sample = (
+        settings.enum_discovery_enabled
+        and len(tables) <= settings.enum_discovery_max_tables
+        and total_columns <= settings.enum_discovery_max_columns
+    )
+    out: dict[str, list[dict[str, Any]]] = {}
+    for table in tables:
+        try:
+            cols = insp.get_columns(table)
+        except Exception:
+            cols = [{"name": name, "type": "", "nullable": True, "default": None} for name in tables[table]]
+        try:
+            pk_cols = set(insp.get_pk_constraint(table).get("constrained_columns") or [])
+        except Exception:
+            pk_cols = set()
+        fk_cols: set[str] = set()
+        try:
+            for fk in insp.get_foreign_keys(table):
+                fk_cols.update(fk.get("constrained_columns") or [])
+        except Exception:
+            pass
+
+        items: list[dict[str, Any]] = []
+        for c in cols:
+            name = c["name"]
+            col_type = str(c.get("type") or "")
+            examples: list[str] = []
+            enum_values: list[str] = []
+            if should_sample:
+                examples, enum_values = _sample_values(engine, table, name, col_type)
+            is_pk = name in pk_cols
+            is_fk = name in fk_cols
+            is_id_like = name.lower() == "id" or name.lower().endswith("_id")
+            is_metric = _is_numeric_type(col_type) and not is_pk and not is_fk and not is_id_like
+            items.append({
+                "table_name": table,
+                "column_name": name,
+                "data_type": col_type,
+                "nullable": bool(c.get("nullable", True)),
+                "default_value": None if c.get("default") is None else str(c.get("default")),
+                "description": c.get("comment") or "",
+                "example_values": examples,
+                "enum_values": enum_values,
+                "unit": _infer_unit(name),
+                "is_primary_key": is_pk,
+                "is_foreign_key": is_fk,
+                "is_metric": is_metric,
+                "is_dimension": not is_metric,
+                "default_filter": _default_filter(name, enum_values),
+            })
+        out[table] = items
+    return out
+
+
 @lru_cache(maxsize=8)
 def load_schema(source_name: str | None = None) -> SchemaInfo:
     """按数据源名加载 schema。返回 SchemaInfo,内含拼装好的 DDL 文本 + 表/列白名单。"""
@@ -183,7 +298,12 @@ def load_schema(source_name: str | None = None) -> SchemaInfo:
 
     # ddl_text 是喂 LLM 的完整上下文(表 + 取值发现 + 词表 + 派生指标);
     # pure_ddl 只含 CREATE TABLE,供前端「查看表结构」展示——业务说明那些不该露给用户看。
-    return SchemaInfo(ddl_text="\n\n".join(parts), tables=tables, pure_ddl=ddl_text)
+    return SchemaInfo(
+        ddl_text="\n\n".join(parts),
+        tables=tables,
+        pure_ddl=ddl_text,
+        columns=_schema_columns(engine, tables),
+    )
 
 
 @lru_cache(maxsize=32)

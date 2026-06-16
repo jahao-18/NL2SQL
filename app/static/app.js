@@ -286,6 +286,25 @@
     return { data, tables, tableNames, fieldCount };
   }
 
+  function schemaColumnMeta(src, table, field) {
+    const data = schemaCache[schemaKey(src)] || {};
+    const columns = (data.columns && data.columns[table]) || [];
+    return columns.find((item) => item.column_name === field) || {};
+  }
+
+  function fieldRoleLabel(meta, fallbackName) {
+    if (meta.is_primary_key) return "主键";
+    if (meta.is_foreign_key) return "关联键";
+    if (meta.is_metric) return "指标";
+    if (meta.is_dimension) return "维度";
+    return inferFieldRole(fallbackName);
+  }
+
+  function compactList(values, emptyText) {
+    const arr = Array.isArray(values) ? values.filter((v) => v != null && String(v).trim() !== "") : [];
+    return arr.length ? arr.slice(0, 6).join(" / ") : (emptyText || "");
+  }
+
   function inferFieldRole(name) {
     const n = String(name || "").toLowerCase();
     if (/(date|time|created|updated|year|month|day)/.test(n)) return "时间";
@@ -556,19 +575,61 @@
     fieldTableBody.innerHTML = "";
     const fieldMeta = loadFieldMeta(src);
     (tables[activeSchemaTable] || []).forEach((field) => {
-      const tr = document.createElement("tr");
-      const role = inferFieldRole(field);
+      const card = document.createElement("div");
+      card.className = "field-card";
+      const serverMeta = schemaColumnMeta(src, activeSchemaTable, field);
+      const role = fieldRoleLabel(serverMeta, field);
       const id = fieldMetaId(activeSchemaTable, field);
       const meta = fieldMeta[id] || {};
-      tr.innerHTML = `
-        <td><b>${escapeHtml(field)}</b></td>
-        <td><input class="field-meta-input" data-meta-field="alias" value="${escapeHtml(meta.alias || "")}" placeholder="中文名/别名" /></td>
-        <td>${escapeHtml(role)} · ${role === "指标" ? "可聚合" : "可筛选"}</td>
-        <td><input class="field-meta-input" data-meta-field="desc" value="${escapeHtml(meta.desc || "")}" placeholder="业务口径说明" /></td>
-        <td><input class="field-meta-input" data-meta-field="enums" value="${escapeHtml(meta.enums || "")}" placeholder="如 paid=已支付" /></td>
-        <td><button class="field-meta-save" type="button">保存</button></td>
+      const enumText = meta.enums || compactList(serverMeta.enum_values, "");
+      const descText = meta.desc || serverMeta.description || "";
+      const unitText = meta.unit || serverMeta.unit || "";
+      const defaultFilterText = meta.default_filter || serverMeta.default_filter || "";
+      const nullableText = serverMeta.nullable === false ? "NOT NULL" : "可空";
+      const defaultText = serverMeta.default_value ? `默认 ${serverMeta.default_value}` : "";
+      const keyBadge = serverMeta.is_primary_key ? "主键" : (serverMeta.is_foreign_key ? "外键" : "");
+      card.innerHTML = `
+        <div class="field-card-head">
+          <div class="field-identity">
+            <b>${escapeHtml(field)}</b>
+            <span>${escapeHtml(nullableText)}${defaultText ? " · " + escapeHtml(defaultText) : ""}</span>
+          </div>
+          <div class="field-badges">
+            <code>${escapeHtml(serverMeta.data_type || "unknown")}</code>
+            ${keyBadge ? `<em>${escapeHtml(keyBadge)}</em>` : ""}
+            <em>${escapeHtml(role)}</em>
+            <em>${role === "指标" ? "可聚合" : "可筛选"}</em>
+          </div>
+          <button class="field-meta-save" type="button">保存</button>
+        </div>
+        <div class="field-card-grid">
+          <label>
+            <span>中文名 / 别名</span>
+            <input class="field-meta-input" data-meta-field="alias" value="${escapeHtml(meta.alias || "")}" placeholder="例如: 订单金额" />
+          </label>
+          <label class="wide">
+            <span>业务描述</span>
+            <input class="field-meta-input" data-meta-field="desc" value="${escapeHtml(descText)}" placeholder="字段含义、统计口径或使用边界" />
+          </label>
+          <label class="wide">
+            <span>枚举 / 取值</span>
+            <input class="field-meta-input" data-meta-field="enums" value="${escapeHtml(enumText)}" placeholder="如 paid=已支付, cancelled=已取消" />
+          </label>
+          <label>
+            <span>示例值</span>
+            <output>${escapeHtml(compactList(serverMeta.example_values, "-"))}</output>
+          </label>
+          <label>
+            <span>单位</span>
+            <input class="field-meta-input compact" data-meta-field="unit" value="${escapeHtml(unitText)}" placeholder="元 / 个 / %" />
+          </label>
+          <label>
+            <span>默认过滤</span>
+            <input class="field-meta-input" data-meta-field="default_filter" value="${escapeHtml(defaultFilterText)}" placeholder="如 is_deleted = 0" />
+          </label>
+        </div>
       `;
-      tr.querySelectorAll(".field-meta-input").forEach((el) => {
+      card.querySelectorAll(".field-meta-input").forEach((el) => {
         el.addEventListener("change", () => {
           const next = loadFieldMeta(src);
           next[id] = next[id] || {};
@@ -576,14 +637,14 @@
           saveFieldMeta(src, next);
         });
       });
-      tr.querySelector(".field-meta-save").addEventListener("click", () => {
-        tr.querySelectorAll(".field-meta-input").forEach((el) => el.dispatchEvent(new Event("change")));
+      card.querySelector(".field-meta-save").addEventListener("click", () => {
+        card.querySelectorAll(".field-meta-input").forEach((el) => el.dispatchEvent(new Event("change")));
         renderSchemaConsole();
       });
-      fieldTableBody.appendChild(tr);
+      fieldTableBody.appendChild(card);
     });
     if (!fieldTableBody.children.length) {
-      fieldTableBody.innerHTML = '<tr><td colspan="6">暂无字段</td></tr>';
+      fieldTableBody.innerHTML = '<div class="empty-note">暂无字段</div>';
     }
 
     if (metricList) {
@@ -821,12 +882,14 @@
   function fieldMetaContext(source) {
     const meta = loadFieldMeta(source);
     return Object.entries(meta)
-      .filter(([, item]) => item && (item.alias || item.desc || item.enums))
+      .filter(([, item]) => item && (item.alias || item.desc || item.enums || item.unit || item.default_filter))
       .map(([key, item]) => {
         const parts = [`字段治理: ${key}`];
         if (item.alias) parts.push(`别名=${item.alias}`);
         if (item.desc) parts.push(`描述=${item.desc}`);
         if (item.enums) parts.push(`取值=${item.enums}`);
+        if (item.unit) parts.push(`单位=${item.unit}`);
+        if (item.default_filter) parts.push(`默认过滤=${item.default_filter}`);
         return parts.join("；");
       });
   }

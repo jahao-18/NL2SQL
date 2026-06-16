@@ -83,6 +83,24 @@ class JudgeResponse(BaseModel):
     )
 
 
+class ColumnMetadata(BaseModel):
+    table_name: str
+    column_name: str
+    data_type: str = ""
+    nullable: bool = True
+    default_value: str | None = None
+    description: str = ""
+    example_values: list[str] = Field(default_factory=list)
+    enum_values: list[str] = Field(default_factory=list)
+    unit: str = ""
+    is_primary_key: bool = False
+    is_foreign_key: bool = False
+    is_metric: bool = False
+    is_dimension: bool = False
+    default_filter: str = ""
+
+
 class SchemaResponse(BaseModel):
     tables: dict[str, list[str]]
     ddl: str
+    columns: dict[str, list[ColumnMetadata]] = Field(default_factory=dict)

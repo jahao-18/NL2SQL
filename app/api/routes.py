@@ -43,7 +43,7 @@ def get_schema(source: str | None = Query(None)) -> SchemaResponse:
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     # 只返回纯表结构(CREATE TABLE);取值发现/业务词表/派生指标是喂 LLM 的,不展示给用户
-    return SchemaResponse(tables=info.tables, ddl=info.pure_ddl)
+    return SchemaResponse(tables=info.tables, ddl=info.pure_ddl, columns=info.columns)
 
 
 @router.post("/ask", response_model=AskResponse)
