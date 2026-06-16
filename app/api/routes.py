@@ -4,11 +4,21 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from app.core.data_sources import get_source, load_sources
+from app.core.examples import delete_example, list_examples, upsert_example
 from app.core.feedback import add_feedback, list_feedback
 from app.core.judge import stashed_status
 from app.core.retrieval import retrieve_context
 from app.core.schema import count_columns, load_schema
-from app.core.schema_profile import load_profile_dict, save_profile_dict
+from app.core.schema_profile import (
+    delete_profile_version,
+    list_profile_versions,
+    load_profile_dict,
+    publish_profile,
+    quality_report,
+    rollback_profile,
+    save_profile_dict,
+    update_profile_version,
+)
 from app.core.source_router import route
 from app.models.schemas import (
     AskRequest,
@@ -16,13 +26,21 @@ from app.models.schemas import (
     ConfidenceDetail,
     DebugRequest,
     DebugResponse,
+    ExampleListResponse,
+    ExampleRequest,
+    ExampleResponse,
     FeedbackListResponse,
     FeedbackRequest,
     FeedbackResponse,
     JudgeRequest,
     JudgeResponse,
     ProfileResponse,
+    ProfilePublishRequest,
+    ProfileRollbackRequest,
     ProfileUpdateRequest,
+    ProfileVersionUpdateRequest,
+    ProfileVersionsResponse,
+    QualityResponse,
     SchemaResponse,
     SourceInfo,
     SourcesResponse,
@@ -76,6 +94,74 @@ def update_profile(req: ProfileUpdateRequest, source: str = Query(...)) -> Profi
     return ProfileResponse(source=source, profile=saved)
 
 
+@router.get("/profile/versions", response_model=ProfileVersionsResponse)
+def get_profile_versions(source: str = Query(...)) -> ProfileVersionsResponse:
+    try:
+        get_source(source)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return ProfileVersionsResponse(items=list_profile_versions(source))
+
+
+@router.post("/profile/publish")
+def publish_profile_endpoint(req: ProfilePublishRequest | None = None, source: str = Query(...)) -> dict:
+    try:
+        get_source(source)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    req = req or ProfilePublishRequest()
+    return publish_profile(source, label=req.label, description=req.description)
+
+
+@router.post("/profile/rollback", response_model=ProfileResponse)
+def rollback_profile_endpoint(req: ProfileRollbackRequest, source: str = Query(...)) -> ProfileResponse:
+    try:
+        get_source(source)
+        profile = rollback_profile(source, req.version_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"version not found: {e}")
+    return ProfileResponse(source=source, profile=profile)
+
+
+@router.put("/profile/versions/{version_id}")
+def update_profile_version_endpoint(
+    version_id: str,
+    req: ProfileVersionUpdateRequest,
+    source: str = Query(...),
+) -> dict:
+    try:
+        get_source(source)
+        item = update_profile_version(source, version_id, label=req.label, description=req.description)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"version not found: {e}")
+    return {"item": item}
+
+
+@router.delete("/profile/versions/{version_id}")
+def delete_profile_version_endpoint(version_id: str, source: str = Query(...)) -> dict:
+    try:
+        get_source(source)
+        delete_profile_version(source, version_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"version not found: {e}")
+    return {"deleted": True}
+
+
+@router.get("/quality", response_model=QualityResponse)
+def get_quality(source: str = Query(...)) -> QualityResponse:
+    try:
+        info = load_schema(source)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return QualityResponse(report=quality_report(source, info.tables))
+
+
 @router.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest) -> AskResponse:
     try:
@@ -113,6 +199,34 @@ def create_feedback(req: FeedbackRequest) -> FeedbackResponse:
 @router.get("/feedback", response_model=FeedbackListResponse)
 def get_feedback(source: str | None = Query(None), limit: int = Query(100, ge=1, le=500)) -> FeedbackListResponse:
     return FeedbackListResponse(items=list_feedback(source, limit))
+
+
+@router.get("/examples", response_model=ExampleListResponse)
+def get_examples(source: str = Query(...), limit: int = Query(200, ge=1, le=500)) -> ExampleListResponse:
+    try:
+        get_source(source)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return ExampleListResponse(items=list_examples(source, limit))
+
+
+@router.post("/examples", response_model=ExampleResponse)
+def save_example(req: ExampleRequest, source: str = Query(...)) -> ExampleResponse:
+    try:
+        get_source(source)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return ExampleResponse(item=upsert_example(source, req.model_dump()))
+
+
+@router.delete("/examples/{item_id}")
+def remove_example(item_id: str, source: str = Query(...)) -> dict:
+    try:
+        get_source(source)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    delete_example(source, item_id)
+    return {"deleted": True}
 
 
 @router.post("/debug/retrieval", response_model=DebugResponse)

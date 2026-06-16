@@ -123,6 +123,28 @@ class ProfileUpdateRequest(BaseModel):
     profile: dict[str, Any] = Field(default_factory=dict)
 
 
+class ProfileVersionsResponse(BaseModel):
+    items: list[dict[str, Any]]
+
+
+class ProfilePublishRequest(BaseModel):
+    label: str = Field("", max_length=120)
+    description: str = Field("", max_length=1000)
+
+
+class ProfileRollbackRequest(BaseModel):
+    version_id: str = Field(..., min_length=1)
+
+
+class ProfileVersionUpdateRequest(BaseModel):
+    label: str = Field("", max_length=120)
+    description: str = Field("", max_length=1000)
+
+
+class QualityResponse(BaseModel):
+    report: dict[str, Any]
+
+
 class FeedbackRequest(BaseModel):
     kind: Literal["correct", "incorrect"] = "incorrect"
     reason: str = ""
@@ -139,6 +161,23 @@ class FeedbackResponse(BaseModel):
 
 
 class FeedbackListResponse(BaseModel):
+    items: list[dict[str, Any]]
+
+
+class ExampleRequest(BaseModel):
+    id: str | None = None
+    question: str = Field(..., min_length=1, max_length=500)
+    sql: str = Field(..., min_length=1, max_length=3000)
+    source_label: str = ""
+    tags: list[str] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class ExampleResponse(BaseModel):
+    item: dict[str, Any]
+
+
+class ExampleListResponse(BaseModel):
     items: list[dict[str, Any]]
 
 

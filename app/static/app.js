@@ -164,6 +164,8 @@
   const schemaTree = $("schema-tree");
   const schemaEditorTitle = $("schema-editor-title");
   const fieldTableBody = $("field-table-body");
+  const llmDraftBtn = $("llm-draft-btn");
+  const profileVersionList = $("profile-version-list");
   const metricList = $("metric-list");
   const termList = $("term-list");
   const relationInput = $("relation-input");
@@ -194,6 +196,9 @@
   let schemaCache = {};
   let profileCache = {};
   let feedbackCache = [];
+  let qualityCache = {};
+  let standardExamplesCache = {};
+  let profileVersionsCache = {};
   let schemaLoading = new Set();
   let selectedKb = "auto";
   let lastTrace = null;
@@ -464,7 +469,16 @@
     kbStatGrid.appendChild(renderStatPill("收藏", saved.length, "沉淀为样例"));
     if (feedback.length) kbStatGrid.appendChild(renderStatPill("反馈", feedback.length, "待治理线索"));
 
-    const healthItems = [
+    const quality = qualityCache[profileKey(src)] || {};
+    const qp = quality.parts || {};
+    const healthItems = quality.score ? [
+      ["总质量", quality.score],
+      ["表粒度", qp.table_grain || 0],
+      ["字段语义", qp.field_semantics || 0],
+      ["关系治理", qp.relations || 0],
+      ["指标口径", qp.metrics || 0],
+      ["安全标记", qp.safety || 0],
+    ] : [
       ["Schema 完整度", summary.tableNames.length ? 88 : 45],
       ["字段治理", summary.fieldCount ? Math.min(96, Math.round(governedFields / summary.fieldCount * 100)) : 0],
       ["关系治理", relationCount ? Math.min(96, 60 + relationCount * 6) : 35],
@@ -477,6 +491,12 @@
       const row = document.createElement("div");
       row.className = "health-row";
       row.innerHTML = `<div><b>${name}</b><span>${value >= 80 ? "健康" : "需补充"}</span></div><div class="health-track"><i style="width:${value}%"></i></div><em>${value}%</em>`;
+      healthList.appendChild(row);
+    });
+    (quality.gaps || []).slice(0, 4).forEach((gap) => {
+      const row = document.createElement("div");
+      row.className = "health-row";
+      row.innerHTML = `<div><b>治理建议</b><span>${escapeHtml(gap)}</span></div><em>todo</em>`;
       healthList.appendChild(row);
     });
 
@@ -525,6 +545,8 @@
   }
 
   function savedExamplesForSource(source) {
+    const remote = standardExamplesCache[profileKey(source)];
+    if (remote && remote.length) return remote;
     return readJsonList(SAVED_QUERY_KEY).filter((item) => !source || item.source === source);
   }
 
@@ -555,7 +577,18 @@
       const questionInput = card.querySelector(".saved-example-question-input");
       const sqlInput = card.querySelector(".saved-example-sql-input");
       const fewshotInput = card.querySelector(".saved-example-fewshot");
-      function persistExample() {
+      async function persistExample() {
+        const src = item.source || source;
+        if (src) {
+          await saveStandardExample(src, {
+            id: item.id,
+            question: questionInput.value.trim(),
+            sql: sqlInput.value.trim(),
+            source_label: item.source_label || sourceLabel(src),
+            enabled: fewshotInput.checked,
+            tags: item.tags || [],
+          });
+        }
         const next = readJsonList(SAVED_QUERY_KEY).map((x) => x.id === item.id ? {
           ...x,
           question: questionInput.value.trim(),
@@ -571,14 +604,13 @@
         input.focus();
       });
       card.querySelector(".saved-example-save").addEventListener("click", () => {
-        persistExample();
-        renderSavedExamples(source);
+        persistExample().then(() => renderSavedExamples(source));
       });
       fewshotInput.addEventListener("change", () => {
-        persistExample();
-        renderKbOverview();
+        persistExample().then(() => renderKbOverview());
       });
-      card.querySelector(".saved-example-delete").addEventListener("click", () => {
+      card.querySelector(".saved-example-delete").addEventListener("click", async () => {
+        if (item.source || source) await deleteStandardExample(item.source || source, item.id);
         const next = readJsonList(SAVED_QUERY_KEY).filter((x) => x.id !== item.id);
         writeJsonList(SAVED_QUERY_KEY, next);
         renderKbList();
@@ -766,15 +798,77 @@
     }
 
     if (metricList) {
-      const metricSeeds = ["销售额 = 金额字段求和", "订单量 = 订单主键计数", "平均值 = 数值字段 AVG", "占比 = 分组值 / 总量"];
-      const metrics = [...loadMetrics(src), ...metricSeeds].slice(0, 10);
+      const metrics = currentProfile(src).metrics || {};
       metricList.innerHTML = "";
-      metrics.forEach((text) => {
-        const li = document.createElement("li");
-        li.className = "tag-chip";
-        li.textContent = text;
-        metricList.appendChild(li);
+      const add = document.createElement("button");
+      add.className = "nav-btn secondary metric-add-btn";
+      add.type = "button";
+      add.textContent = "新增指标";
+      add.addEventListener("click", async () => {
+        const name = prompt("指标名称", "新指标");
+        if (!name) return;
+        const formula = prompt("指标公式", "已支付订单的订单金额求和");
+        if (!formula) return;
+        const next = JSON.parse(JSON.stringify(currentProfile(src)));
+        next.metrics = next.metrics || {};
+        next.metrics[name.trim()] = { formula: formula.trim(), enabled: true };
+        await saveProfile(src, next);
+        renderSchemaConsole();
       });
+      metricList.appendChild(add);
+      Object.entries(metrics).forEach(([name, metric]) => {
+        const card = document.createElement("div");
+        card.className = "metric-card";
+        card.innerHTML = `
+          <div class="metric-card-head">
+            <input class="metric-name" value="${escapeHtml(name)}" />
+            <label><input class="metric-enabled" type="checkbox" ${metric.enabled === false ? "" : "checked"} /> 启用</label>
+          </div>
+          <input class="metric-formula" value="${escapeHtml(metric.formula || "")}" placeholder="公式 / 计算口径" />
+          <input class="metric-filters" value="${escapeHtml((metric.default_filters || []).join("; "))}" placeholder="默认过滤, 用 ; 分隔" />
+          <input class="metric-time" value="${escapeHtml(metric.default_time_column || "")}" placeholder="默认时间字段" />
+          <textarea class="metric-desc" rows="2" placeholder="说明">${escapeHtml(metric.description || "")}</textarea>
+          <div class="saved-example-actions">
+            <button type="button" class="metric-save">保存</button>
+            <button type="button" class="metric-delete">删除</button>
+            <button type="button" class="metric-test">测试命中</button>
+          </div>
+        `;
+        card.querySelector(".metric-save").addEventListener("click", async () => {
+          const next = JSON.parse(JSON.stringify(currentProfile(src)));
+          next.metrics = next.metrics || {};
+          delete next.metrics[name];
+          const newName = card.querySelector(".metric-name").value.trim();
+          if (!newName) return;
+          next.metrics[newName] = {
+            formula: card.querySelector(".metric-formula").value.trim(),
+            default_filters: card.querySelector(".metric-filters").value.split(";").map((x) => x.trim()).filter(Boolean),
+            default_time_column: card.querySelector(".metric-time").value.trim(),
+            description: card.querySelector(".metric-desc").value.trim(),
+            enabled: card.querySelector(".metric-enabled").checked,
+          };
+          await saveProfile(src, next);
+          renderSchemaConsole();
+        });
+        card.querySelector(".metric-delete").addEventListener("click", async () => {
+          const next = JSON.parse(JSON.stringify(currentProfile(src)));
+          next.metrics = next.metrics || {};
+          delete next.metrics[name];
+          await saveProfile(src, next);
+          renderSchemaConsole();
+        });
+        card.querySelector(".metric-test").addEventListener("click", () => {
+          const q = prompt("输入一个问题,检查是否包含该指标名", `今年${name}是多少?`);
+          if (q != null) alert(q.includes(card.querySelector(".metric-name").value.trim()) ? "会命中该指标" : "未直接命中,建议添加别名或标准问法");
+        });
+        metricList.appendChild(card);
+      });
+      if (Object.keys(metrics).length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty-note";
+        empty.textContent = "暂无结构化指标。点击新增指标沉淀 GMV、客单价、复购用户数等口径。";
+        metricList.appendChild(empty);
+      }
     }
     if (termList) {
       const terms = [...loadGlossary(src), "最近一年 = 当前日期向前 12 个月", "TOP N = 按指标倒序取前 N 条"].slice(0, 10);
@@ -787,6 +881,73 @@
       });
     }
     renderRelations(src);
+    renderProfileVersions(src);
+  }
+
+  function renderProfileVersions(source) {
+    if (!profileVersionList) return;
+    const versions = profileVersionsCache[profileKey(source)] || [];
+    profileVersionList.innerHTML = "";
+    if (!versions.length) {
+      profileVersionList.innerHTML = '<div class="empty-note">暂无发布快照。字段保存只会更新草稿，点击发布后才会生成版本。</div>';
+      return;
+    }
+    versions.slice(0, 6).forEach((v) => {
+      const row = document.createElement("div");
+      row.className = "relation-row version-row";
+      const title = v.label || (v.kind === "publish" ? "发布版本" : "自动快照");
+      const desc = v.description || v.id;
+      row.innerHTML = `
+        <span>
+          <b>${escapeHtml(title)}</b>
+          <small>${escapeHtml(desc)}</small>
+          <small>${escapeHtml(v.id)} · ${escapeHtml(v.size || 0)} bytes</small>
+        </span>
+        <div class="version-actions">
+          <button type="button" data-action="rollback">回滚</button>
+          <button type="button" data-action="rename">重命名</button>
+          <button type="button" data-action="delete">删除</button>
+        </div>
+      `;
+      row.querySelector('[data-action="rollback"]').addEventListener("click", async () => {
+        if (!confirm(`回滚到 ${v.id}? 当前 profile 会先自动保存为新快照。`)) return;
+        const resp = await fetch(`/api/profile/rollback?source=${encodeURIComponent(source)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ version_id: v.id }),
+        });
+        if (!resp.ok) { alert("回滚失败"); return; }
+        const data = await resp.json();
+        profileCache[profileKey(source)] = data.profile || emptyProfile();
+        await loadProfileVersions(source);
+        await loadSchema(source);
+        renderSchemaConsole();
+      });
+      row.querySelector('[data-action="rename"]').addEventListener("click", async () => {
+        const label = prompt("版本名称", v.label || title);
+        if (label == null) return;
+        const description = prompt("版本描述", v.description || "");
+        if (description == null) return;
+        const resp = await fetch(`/api/profile/versions/${encodeURIComponent(v.id)}?source=${encodeURIComponent(source)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ label: label.trim(), description: description.trim() }),
+        });
+        if (!resp.ok) { alert("更新版本信息失败"); return; }
+        await loadProfileVersions(source);
+        renderProfileVersions(source);
+      });
+      row.querySelector('[data-action="delete"]').addEventListener("click", async () => {
+        if (!confirm(`删除版本 ${v.label || v.id}? 删除后不能回滚到该快照。`)) return;
+        const resp = await fetch(`/api/profile/versions/${encodeURIComponent(v.id)}?source=${encodeURIComponent(source)}`, {
+          method: "DELETE",
+        });
+        if (!resp.ok) { alert("删除版本失败"); return; }
+        await loadProfileVersions(source);
+        renderProfileVersions(source);
+      });
+      profileVersionList.appendChild(row);
+    });
   }
 
   function renderRelations(source) {
@@ -1387,6 +1548,16 @@
       saved_at: new Date().toISOString(),
     };
     writeJsonList(SAVED_QUERY_KEY, [item, ...saved.filter((x) => x.id !== item.id)].slice(0, 50));
+    if (item.source) {
+      saveStandardExample(item.source, {
+        id: item.id,
+        question: item.question,
+        sql: item.sql,
+        source_label: item.source_label,
+        enabled: true,
+        tags: ["confirmed"],
+      }).then(() => renderSavedExamples(item.source)).catch(() => {});
+    }
     renderKbList();
     renderKbOverview();
     if (saveQueryBtn) {
@@ -1471,7 +1642,10 @@
   }
 
   function savedFewShotsForRequest(question) {
-    return readJsonList(SAVED_QUERY_KEY)
+    const src = manualSource() || conversationSource || currentKbSource();
+    const remote = standardExamplesCache[profileKey(src)] || [];
+    const base = remote.length ? remote.map((x) => ({ ...x, use_few_shot: x.enabled !== false })) : readJsonList(SAVED_QUERY_KEY);
+    return base
       .filter((item) => item.question && item.sql && item.use_few_shot !== false)
       .map((item) => ({ ...item, _score: similarityScore(question, item.question) }))
       .sort((a, b) => b._score - a._score)
@@ -1562,6 +1736,8 @@
     const data = await resp.json();
     profileCache[profileKey(source)] = data.profile || profile;
     schemaCache = {};
+    await loadQuality(source);
+    await loadProfileVersions(source);
     await loadSchema(source);
   }
 
@@ -1576,6 +1752,89 @@
       feedbackCache = readJsonList(FEEDBACK_KEY);
     }
     return feedbackCache;
+  }
+
+  async function loadQuality(source) {
+    if (!source) return {};
+    try {
+      const resp = await fetch(`/api/quality?source=${encodeURIComponent(source)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      qualityCache[profileKey(source)] = data.report || {};
+    } catch {
+      qualityCache[profileKey(source)] = {};
+    }
+    return qualityCache[profileKey(source)];
+  }
+
+  async function loadStandardExamples(source) {
+    if (!source) return [];
+    try {
+      const resp = await fetch(`/api/examples?source=${encodeURIComponent(source)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      standardExamplesCache[profileKey(source)] = data.items || [];
+    } catch {
+      standardExamplesCache[profileKey(source)] = savedExamplesForSource(source);
+    }
+    return standardExamplesCache[profileKey(source)];
+  }
+
+  async function saveStandardExample(source, item) {
+    if (!source) return null;
+    const resp = await fetch(`/api/examples?source=${encodeURIComponent(source)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    await loadStandardExamples(source);
+    return data.item;
+  }
+
+  async function deleteStandardExample(source, id) {
+    if (!source || !id) return;
+    await fetch(`/api/examples/${encodeURIComponent(id)}?source=${encodeURIComponent(source)}`, { method: "DELETE" });
+    await loadStandardExamples(source);
+  }
+
+  async function loadProfileVersions(source) {
+    if (!source) return [];
+    try {
+      const resp = await fetch(`/api/profile/versions?source=${encodeURIComponent(source)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      profileVersionsCache[profileKey(source)] = data.items || [];
+    } catch {
+      profileVersionsCache[profileKey(source)] = [];
+    }
+    return profileVersionsCache[profileKey(source)];
+  }
+
+  async function publishCurrentProfile() {
+    const src = currentKbSource();
+    if (!src) return;
+    const label = prompt("发布版本名称", "发布版本");
+    if (label == null) return;
+    const description = prompt("发布说明", "");
+    if (description == null) return;
+    const resp = await fetch(`/api/profile/publish?source=${encodeURIComponent(src)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: label.trim(), description: description.trim() }),
+    });
+    if (!resp.ok) {
+      alert("发布失败");
+      return;
+    }
+    await loadProfileVersions(src);
+    renderProfileVersions(src);
+    if (llmDraftBtn) {
+      const old = llmDraftBtn.textContent;
+      llmDraftBtn.textContent = "已发布";
+      setTimeout(() => { llmDraftBtn.textContent = old; }, 1400);
+    }
   }
 
   async function loadSchema(forceSource) {
@@ -1593,7 +1852,10 @@
       }
       const data = await resp.json();
       schemaCache[key] = data;
-      if (src) await loadProfile(src);
+      if (src) {
+        await loadProfile(src);
+        await Promise.allSettled([loadQuality(src), loadStandardExamples(src), loadProfileVersions(src)]);
+      }
       if (shouldUpdateSchemaText) {
         schemaText.textContent = data.ddl;
       }
@@ -1885,6 +2147,10 @@
     relationInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); addRelationEntry(); }
     });
+  }
+  if (llmDraftBtn) {
+    llmDraftBtn.textContent = "发布 Profile";
+    llmDraftBtn.addEventListener("click", publishCurrentProfile);
   }
 
   submit.addEventListener("click", executeQuery);

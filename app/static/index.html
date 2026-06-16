@@ -252,7 +252,13 @@
 
       <section class="work-view" id="schema-console-view" data-page-title="Schema 配置" data-breadcrumb="智能问数 / 知识库 / Schema">
         <div class="schema-console">
-          <aside class="schema-tree" id="schema-tree"></aside>
+          <aside class="schema-tree-panel">
+            <div class="schema-pane-head">
+              <span>Tables</span>
+              <b>表列表</b>
+            </div>
+            <div class="schema-tree" id="schema-tree"></div>
+          </aside>
           <section class="panel-card schema-editor">
             <div class="panel-toolbar">
               <div>
@@ -263,24 +269,28 @@
             </div>
             <div class="field-card-list" id="field-table-body"></div>
           </section>
-        </div>
-        <div class="config-grid">
-          <section class="panel-card">
-            <div class="section-head"><span class="section-icon">R</span><div><h2>表关系</h2><p>明确 JOIN 关系，减少模型猜错连接路径。</p></div></div>
-            <div class="relation-add">
-              <input id="relation-input" class="toolbar-input" placeholder="例如: orders.user_id = users.id" />
-              <button class="nav-btn secondary" id="relation-add-btn" type="button">添加关系</button>
-            </div>
-            <div id="relation-list" class="relation-list"></div>
-          </section>
-          <section class="panel-card">
-            <div class="section-head"><span class="section-icon">#</span><div><h2>计算指标</h2><p>派生指标会注入问数上下文。</p></div></div>
-            <div id="metric-list" class="tag-list"></div>
-          </section>
-          <section class="panel-card">
-            <div class="section-head"><span class="section-icon">T</span><div><h2>业务术语</h2><p>来自词表和本地自定义术语。</p></div></div>
-            <div id="term-list" class="tag-list"></div>
-          </section>
+          <aside class="schema-governance">
+            <section class="governance-card">
+              <div class="governance-head"><span>Release</span><h3>发布与版本</h3></div>
+              <div id="profile-version-list" class="version-list"></div>
+            </section>
+            <section class="governance-card">
+              <div class="governance-head"><span>Relations</span><h3>表关系</h3></div>
+              <div class="relation-add">
+                <input id="relation-input" class="toolbar-input" placeholder="例如: orders.user_id = users.id" />
+                <button class="nav-btn secondary" id="relation-add-btn" type="button">添加</button>
+              </div>
+              <div id="relation-list" class="relation-list"></div>
+            </section>
+            <section class="governance-card">
+              <div class="governance-head"><span>Metrics</span><h3>计算指标</h3></div>
+              <div id="metric-list" class="tag-list"></div>
+            </section>
+            <section class="governance-card">
+              <div class="governance-head"><span>Terms</span><h3>业务术语</h3></div>
+              <div id="term-list" class="tag-list"></div>
+            </section>
+          </aside>
         </div>
       </section>
 

@@ -38,7 +38,10 @@ class SchemaInfo:
     blocked_columns: set[str] = field(default_factory=set)
 
 
-_COL_LINE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s+", re.MULTILINE)
+_COL_LINE_RE = re.compile(
+    r'^\s*(?:`([^`]+)`|"([^"]+)"|\[([^\]]+)\]|([A-Za-z_][A-Za-z0-9_]*))\s+',
+    re.MULTILINE,
+)
 
 
 def _extract_columns_from_sqlite_ddl(ddl: str) -> list[str]:
@@ -50,7 +53,7 @@ def _extract_columns_from_sqlite_ddl(ddl: str) -> list[str]:
         m = _COL_LINE_RE.match(line)
         if not m:
             continue
-        name = m.group(1)
+        name = next(g for g in m.groups() if g)
         if name.upper() in skip:
             continue
         cols.append(name)

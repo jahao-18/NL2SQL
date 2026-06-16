@@ -1846,6 +1846,52 @@ html,body{height:100%}
   cursor:pointer;
 }
 .relation-row button:hover{color:var(--primary-dark)}
+.metric-add-btn{
+  width:max-content;
+  margin-bottom:8px;
+}
+.metric-card{
+  display:grid;
+  gap:8px;
+  padding:12px;
+  border:1px solid var(--line-soft);
+  background:var(--surface);
+}
+.metric-card-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.metric-card-head label{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:var(--muted);
+  font-size:11px;
+  white-space:nowrap;
+}
+.metric-card input,
+.metric-card textarea{
+  width:100%;
+  border:1px solid var(--line-soft);
+  background:var(--surface);
+  color:var(--text);
+  font:inherit;
+  font-size:12px;
+  padding:8px 10px;
+  outline:none;
+}
+.metric-card input:focus,
+.metric-card textarea:focus{border-color:var(--primary)}
+.metric-name{
+  font-weight:600;
+}
+.profile-version-card .version-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
 .result-summary{
   display:flex;
   flex-wrap:wrap;
@@ -1884,4 +1930,315 @@ html,body{height:100%}
   margin-top:4px;
   color:var(--muted);
   font-size:10px;
+}
+
+/* Schema configuration workspace */
+#schema-console-view .schema-console{
+  grid-template-columns:minmax(190px,230px) minmax(520px,1fr) minmax(300px,360px);
+  gap:16px;
+  align-items:start;
+  margin-bottom:0;
+}
+#schema-console-view .schema-tree-panel,
+#schema-console-view .schema-governance{
+  position:sticky;
+  top:16px;
+  min-width:0;
+  min-height:calc(100vh - 132px);
+  max-height:calc(100vh - 132px);
+  overflow:auto;
+}
+#schema-console-view .schema-tree-panel{
+  padding:14px;
+  border:1px solid var(--line-soft);
+  border-radius:8px;
+  background:var(--surface);
+}
+#schema-console-view .schema-pane-head,
+#schema-console-view .governance-head{
+  margin-bottom:12px;
+}
+#schema-console-view .schema-pane-head span,
+#schema-console-view .governance-head span{
+  display:block;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:1.4px;
+  text-transform:uppercase;
+}
+#schema-console-view .schema-pane-head b,
+#schema-console-view .governance-head h3{
+  margin:2px 0 0;
+  color:var(--text);
+  font-size:14px;
+  line-height:1.35;
+}
+#schema-console-view .schema-tree{
+  max-height:none;
+  gap:6px;
+  overflow:visible;
+}
+#schema-console-view .schema-tree-btn{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px;
+  padding:9px 10px;
+  border-color:transparent;
+  border-radius:6px;
+  background:transparent;
+}
+#schema-console-view .schema-tree-btn:hover,
+#schema-console-view .schema-tree-btn.active{
+  border-color:var(--line-soft);
+  background:var(--surface-soft);
+}
+#schema-console-view .schema-tree-btn.active{
+  box-shadow:inset 3px 0 0 var(--primary);
+}
+#schema-console-view .schema-tree-btn b{
+  font-size:12px;
+}
+#schema-console-view .schema-tree-btn span{
+  justify-self:end;
+  margin:0;
+  padding:3px 7px;
+  border:1px solid var(--line-soft);
+  border-radius:999px;
+  background:var(--surface);
+  font-size:10px;
+  white-space:nowrap;
+}
+#schema-console-view .schema-editor{
+  padding:0;
+  overflow:hidden;
+  min-height:calc(100vh - 132px);
+}
+#schema-console-view .schema-editor .panel-toolbar{
+  margin:0;
+  padding:18px 20px;
+  border-bottom:1px solid var(--line-soft);
+  background:var(--surface);
+}
+#schema-console-view .schema-editor .panel-toolbar h2{
+  font-size:18px;
+}
+#schema-console-view .field-card-list{
+  gap:0;
+  padding:0;
+}
+#schema-console-view .field-card{
+  border:0;
+  border-bottom:1px solid var(--line-soft);
+  border-radius:0;
+  padding:18px 20px;
+  background:var(--surface);
+}
+#schema-console-view .field-card:last-child{
+  border-bottom:0;
+}
+#schema-console-view .field-card-list > .field-card:first-child{
+  background:var(--surface-soft);
+}
+#schema-console-view .field-card-head{
+  grid-template-columns:minmax(180px,1fr) auto;
+  gap:10px;
+  margin-bottom:14px;
+}
+#schema-console-view .field-card-head .field-badges{
+  grid-column:1 / -1;
+  justify-content:flex-start;
+}
+#schema-console-view .field-meta-save{
+  min-height:30px;
+  padding:6px 10px;
+  border:1px solid var(--line-soft);
+  border-radius:6px;
+  background:var(--surface);
+  color:var(--text-soft);
+}
+#schema-console-view .field-meta-save:hover{
+  border-color:var(--primary);
+  background:var(--primary-soft);
+}
+#schema-console-view .field-card-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+#schema-console-view .field-card-grid label.wide{
+  grid-column:span 2;
+}
+#schema-console-view .field-card-grid label span{
+  color:var(--text-soft);
+  font-size:11px;
+}
+#schema-console-view .field-meta-input,
+#schema-console-view .field-card-grid output{
+  min-height:36px;
+  border-radius:6px;
+  background:var(--surface);
+}
+#schema-console-view .schema-governance{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  padding:14px;
+  border:1px solid var(--line-soft);
+  border-radius:8px;
+  background:var(--surface);
+}
+#schema-console-view .governance-card{
+  padding:0 0 14px;
+  border:0;
+  border-bottom:1px solid var(--line-soft);
+  border-radius:0;
+  background:transparent;
+}
+#schema-console-view .governance-card + .governance-card{
+  padding-top:14px;
+}
+#schema-console-view .governance-card:last-child{
+  padding-bottom:0;
+  border-bottom:0;
+}
+#schema-console-view .governance-card .tag-list{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  flex-wrap:nowrap;
+  gap:8px;
+}
+#schema-console-view .governance-card .tag-chip{
+  width:100%;
+  border-color:var(--line-soft);
+  background:var(--surface-soft);
+  overflow-wrap:anywhere;
+}
+#schema-console-view .relation-add{
+  grid-template-columns:1fr;
+  gap:8px;
+}
+#schema-console-view .relation-add .nav-btn{
+  justify-content:center;
+  width:100%;
+}
+#schema-console-view .relation-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 42px;
+  align-items:start;
+  justify-content:initial;
+  gap:10px;
+  padding:9px 0;
+  font-size:10px;
+  line-height:1.5;
+}
+#schema-console-view .relation-row span{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+#schema-console-view .relation-row button{
+  justify-self:end;
+  width:42px;
+  padding:0;
+  text-align:right;
+  white-space:nowrap;
+}
+#schema-console-view .version-row span{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+#schema-console-view .version-row{
+  grid-template-columns:minmax(0,1fr) 64px;
+}
+#schema-console-view .version-row b{
+  color:var(--text);
+  font-family:inherit;
+  font-size:11px;
+  font-weight:600;
+  overflow-wrap:anywhere;
+}
+#schema-console-view .version-row small{
+  color:var(--muted);
+  font-family:inherit;
+}
+#schema-console-view .version-actions{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:4px;
+}
+#schema-console-view .version-actions button{
+  width:64px;
+  min-height:22px;
+  text-align:right;
+}
+#schema-console-view .metric-add-btn{
+  width:100%;
+  justify-content:center;
+  margin:0;
+}
+#schema-console-view .metric-card{
+  border-color:var(--line-soft);
+  border-radius:6px;
+  background:var(--surface-soft);
+}
+#schema-console-view .metric-card-head{
+  align-items:flex-start;
+}
+#schema-console-view .metric-card input,
+#schema-console-view .metric-card textarea{
+  border-radius:6px;
+  background:var(--surface);
+}
+@media(max-width:1280px){
+  #schema-console-view .schema-console{
+    grid-template-columns:minmax(180px,220px) minmax(0,1fr);
+  }
+  #schema-console-view .schema-governance{
+    grid-column:1 / -1;
+    position:static;
+    min-height:0;
+    max-height:none;
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:0;
+  }
+  #schema-console-view .governance-card{
+    padding:14px;
+    border-bottom:0;
+  }
+  #schema-console-view .governance-card + .governance-card{
+    padding-top:14px;
+  }
+}
+@media(max-width:960px){
+  #schema-console-view .schema-console{
+    grid-template-columns:1fr;
+  }
+  #schema-console-view .schema-tree-panel,
+  #schema-console-view .schema-governance{
+    position:static;
+    min-height:0;
+    max-height:none;
+  }
+  #schema-console-view .schema-editor{
+    min-height:0;
+  }
+  #schema-console-view .schema-tree{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+  }
+  #schema-console-view .schema-governance{
+    grid-template-columns:1fr;
+  }
+  #schema-console-view .field-card-grid,
+  #schema-console-view .field-card-head{
+    grid-template-columns:1fr;
+  }
+  #schema-console-view .field-card-grid label.wide,
+  #schema-console-view .field-card-head .field-badges{
+    grid-column:auto;
+  }
 }
