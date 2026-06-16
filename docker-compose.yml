@@ -1,0 +1,114 @@
+# 检索后端依赖的外部服务:Elasticsearch(关键字 BM25) + Milvus(向量)。
+#   docker compose up -d --build      # 必须带 --build!
+# ES 是自定义镜像(官方 ES 8.13 + IK 中文分词插件,见 docker/es/Dockerfile),
+# 普通 docker compose up -d 不会重建镜像,改了 Dockerfile 也不生效——所以一律加 --build。
+# Milvus standalone 自身还依赖 etcd(元数据) + minio(对象存储),一并起。
+# 起完:ES http://localhost:9200 | Milvus localhost:19530
+# 然后在 .env 里设 RETRIEVAL_BACKEND=server 即可启用。
+services:
+
+  # ───────────── Elasticsearch(关键字检索)─────────────
+  # 自定义镜像 = 官方 ES 8.13 + IK 中文分词插件(见 docker/es/Dockerfile)。
+  # 首次或改 Dockerfile 后须 docker compose up -d --build 才会重新构建。
+  elasticsearch:
+    container_name: nl2sql-es
+    build:
+      context: .
+      dockerfile: docker/es/Dockerfile
+    image: nl2sql-es-ik:8.13.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false        # 本地开发关鉴权
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/es:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ───────────── Milvus 的依赖:etcd + minio ─────────────
+  etcd:
+    container_name: nl2sql-milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.5
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/etcd:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio:
+    container_name: nl2sql-milvus-minio
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"
+      - "9000:9000"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/minio:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ───────────── Milvus(向量检索)─────────────
+  milvus:
+    container_name: nl2sql-milvus
+    image: milvusdb/milvus:v2.4.1
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      - etcd
+      - minio
+
+  # ───────────── PostgreSQL + pgvector(业务术语词表检索 = 第 4 路)─────────────
+  # 这是"检索存储库",和 data_sources.yaml 里被查询的业务 PG 数据源无关,是另一回事。
+  # 存 glossary 业务术语条目的 embedding,按问题向量召回相关术语,并入 RRF 融合。
+  # 镜像 pgvector/pgvector 自带 vector 扩展,无需自定义 Dockerfile。
+  postgres:
+    container_name: nl2sql-pgvector
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: nl2sql
+      POSTGRES_PASSWORD: nl2sql
+      POSTGRES_DB: nl2sql_retrieval
+    ports:
+      # host 用 5433,避开本机可能已装的 PostgreSQL(默认占 5432)。容器内仍是 5432。
+      - "5433:5432"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nl2sql -d nl2sql_retrieval"]
+      interval: 30s
+      timeout: 10s
+      retries: 5

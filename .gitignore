@@ -13,3 +13,4 @@ bird_result.json
 
 # 知识库检索:embedding 等索引缓存(可由 schema 重建)
 data/retrieval_index/
+volumes/
