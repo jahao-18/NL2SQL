@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.core.data_sources import get_source, load_sources
 from app.core.examples import delete_example, list_examples, upsert_example
 from app.core.feedback import add_feedback, list_feedback
+from app.core.governance import create_feedback_review, create_publish_review, load_settings
 from app.core.judge import stashed_status
 from app.core.retrieval import retrieve_context
 from app.core.schema import count_columns, load_schema
@@ -110,6 +111,12 @@ def publish_profile_endpoint(req: ProfilePublishRequest | None = None, source: s
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     req = req or ProfilePublishRequest()
+    settings = load_settings()
+    if settings.get("require_publish_note") and not req.description.strip():
+        raise HTTPException(status_code=400, detail="发布说明不能为空")
+    if settings.get("review_required_for_publish"):
+        item = create_publish_review(source, label=req.label, description=req.description)
+        return {"published": False, "review_required": True, "item": item}
     return publish_profile(source, label=req.label, description=req.description)
 
 
@@ -193,7 +200,9 @@ def judge(req: JudgeRequest) -> JudgeResponse:
 
 @router.post("/feedback", response_model=FeedbackResponse)
 def create_feedback(req: FeedbackRequest) -> FeedbackResponse:
-    return FeedbackResponse(item=add_feedback(req.model_dump()))
+    item = add_feedback(req.model_dump())
+    create_feedback_review(item)
+    return FeedbackResponse(item=item)
 
 
 @router.get("/feedback", response_model=FeedbackListResponse)

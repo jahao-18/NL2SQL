@@ -164,6 +164,49 @@ class FeedbackListResponse(BaseModel):
     items: list[dict[str, Any]]
 
 
+class ReviewItemPatchRequest(BaseModel):
+    status: Literal["open", "in_progress", "accepted", "rejected", "closed"] | None = None
+    assignee: str = Field("", max_length=100)
+    priority: str = Field("", max_length=40)
+    resolution: str = Field("", max_length=1000)
+
+
+class ReviewAcceptRequest(BaseModel):
+    action: Literal["example", "field_profile", "relation", "metric", "publish_profile"]
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReviewRejectRequest(BaseModel):
+    reason: str = Field("", max_length=1000)
+
+
+class ReviewItemResponse(BaseModel):
+    item: dict[str, Any]
+
+
+class ReviewAcceptResponse(BaseModel):
+    item: dict[str, Any]
+    action: str
+    result: dict[str, Any]
+
+
+class ReviewListResponse(BaseModel):
+    items: list[dict[str, Any]]
+
+
+class GovernanceSettingsRequest(BaseModel):
+    review_required_for_publish: bool | None = None
+    auto_queue_error_feedback: bool | None = None
+    low_confidence_threshold: int | None = Field(None, ge=0, le=100)
+    require_publish_note: bool | None = None
+    default_status_filter: str | None = Field(None, max_length=40)
+    page_size: int | None = Field(None, ge=10, le=200)
+
+
+class GovernanceSettingsResponse(BaseModel):
+    settings: dict[str, Any]
+
+
 class ExampleRequest(BaseModel):
     id: str | None = None
     question: str = Field(..., min_length=1, max_length=500)

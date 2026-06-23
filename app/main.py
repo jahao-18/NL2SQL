@@ -11,6 +11,7 @@ import threading
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.api.governance import router as governance_router
 from app.api.routes import router
 from app.core.config import STATIC_DIR, settings
 
@@ -24,6 +25,7 @@ logger = logging.getLogger("nl2sql")
 app = FastAPI(title="NL2SQL", version="0.1.0")
 
 app.include_router(router)
+app.include_router(governance_router)
 
 
 @app.on_event("startup")

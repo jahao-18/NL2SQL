@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.core.config import ROOT_DIR
+from app.core.file_store import atomic_write_text
 
 EXAMPLE_DIR = ROOT_DIR / "data" / "examples"
 
@@ -29,8 +30,7 @@ def _read(source: str) -> list[dict[str, Any]]:
 
 
 def _write(source: str, items: list[dict[str, Any]]) -> None:
-    EXAMPLE_DIR.mkdir(parents=True, exist_ok=True)
-    _path(source).write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(_path(source), json.dumps(items, ensure_ascii=False, indent=2))
 
 
 def list_examples(source: str, limit: int = 200) -> list[dict[str, Any]]:

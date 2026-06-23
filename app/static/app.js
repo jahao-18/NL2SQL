@@ -89,6 +89,8 @@
    ============================================================ */
 (function () {
   const $ = (id) => document.getElementById(id);
+  const api = window.NL2SQLApi;
+  const openGovernanceModal = window.NL2SQLModal.open;
 
   const input = $("query-input");
   const submit = $("query-submit");
@@ -199,6 +201,7 @@
   let qualityCache = {};
   let standardExamplesCache = {};
   let profileVersionsCache = {};
+  let governanceView = null;
   let schemaLoading = new Set();
   let selectedKb = "auto";
   let lastTrace = null;
@@ -246,6 +249,8 @@
     }
     if (id === "schema-console-view") renderSchemaConsole();
     if (id === "debug-view") renderDebugSteps();
+    if (id === "governance-queue-view" && governanceView) governanceView.renderQueue();
+    if (id === "governance-settings-view" && governanceView) governanceView.renderSettings();
   }
 
   function sourceByName(name) {
@@ -911,13 +916,13 @@
       `;
       row.querySelector('[data-action="rollback"]').addEventListener("click", async () => {
         if (!confirm(`回滚到 ${v.id}? 当前 profile 会先自动保存为新快照。`)) return;
-        const resp = await fetch(`/api/profile/rollback?source=${encodeURIComponent(source)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ version_id: v.id }),
-        });
-        if (!resp.ok) { alert("回滚失败"); return; }
-        const data = await resp.json();
+        let data;
+        try {
+          data = await api.rollbackProfile(source, v.id);
+        } catch {
+          alert("回滚失败");
+          return;
+        }
         profileCache[profileKey(source)] = data.profile || emptyProfile();
         await loadProfileVersions(source);
         await loadSchema(source);
@@ -928,21 +933,23 @@
         if (label == null) return;
         const description = prompt("版本描述", v.description || "");
         if (description == null) return;
-        const resp = await fetch(`/api/profile/versions/${encodeURIComponent(v.id)}?source=${encodeURIComponent(source)}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ label: label.trim(), description: description.trim() }),
-        });
-        if (!resp.ok) { alert("更新版本信息失败"); return; }
+        try {
+          await api.updateProfileVersion(source, v.id, { label: label.trim(), description: description.trim() });
+        } catch {
+          alert("更新版本信息失败");
+          return;
+        }
         await loadProfileVersions(source);
         renderProfileVersions(source);
       });
       row.querySelector('[data-action="delete"]').addEventListener("click", async () => {
         if (!confirm(`删除版本 ${v.label || v.id}? 删除后不能回滚到该快照。`)) return;
-        const resp = await fetch(`/api/profile/versions/${encodeURIComponent(v.id)}?source=${encodeURIComponent(source)}`, {
-          method: "DELETE",
-        });
-        if (!resp.ok) { alert("删除版本失败"); return; }
+        try {
+          await api.deleteProfileVersion(source, v.id);
+        } catch {
+          alert("删除版本失败");
+          return;
+        }
         await loadProfileVersions(source);
         renderProfileVersions(source);
       });
@@ -1050,13 +1057,7 @@
     if (!question) return;
     debugSteps.innerHTML = '<div class="empty-note">正在分析路由和召回...</div>';
     try {
-      const resp = await fetch("/api/debug/retrieval", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, source: manualSource(), current_source: conversationSource, history: loadHistory().slice(-MAX_HISTORY_TURNS) }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
+      const data = await api.debugRetrieval({ question, source: manualSource(), current_source: conversationSource, history: loadHistory().slice(-MAX_HISTORY_TURNS) });
       renderDebugPayload(data, question);
     } catch (e) {
       debugSteps.innerHTML = `<div class="empty-note">调试失败: ${escapeHtml(e.message)}</div>`;
@@ -1468,15 +1469,11 @@
     sqlMeta.appendChild(pending);
     try {
       for (let attempt = 0; attempt < 45; attempt++) {
-        const resp = await fetch("/api/judge", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ judge_id: data.judge_id }),
-        });
-        const jd = await resp.json();
+        const jd = await api.judge(data.judge_id);
         if (!pending.isConnected) return;
         if (typeof jd.confidence === "number") {
           pending.outerHTML = confidenceBadge(jd.confidence, jd.confidence_detail);
+          queueLowConfidenceIfNeeded(data, jd.confidence, jd.confidence_detail);
           return;
         }
         if (jd.status === "failed") {
@@ -1502,6 +1499,23 @@
       pending.title = "可信度评估请求失败,不影响本次查询结果";
       pending.textContent = "可信度评估失败";
     }
+  }
+
+  async function queueLowConfidenceIfNeeded(data, confidence, detail) {
+    const settings = governanceView ? governanceView.getSettings() : {};
+    const threshold = Number((settings && settings.low_confidence_threshold) || 70);
+    if (confidence >= threshold || !data || !data.source) return;
+    try {
+      await api.queueLowConfidence({
+        confidence,
+        confidence_detail: detail || {},
+        question: currentResult && currentResult.question || "",
+        sql: data.sql || "",
+        source: data.source || "",
+        source_label: data.source_label || "",
+        reason: detail && detail.reason || "",
+      });
+    } catch {}
   }
 
   function tableToText(data, sep) {
@@ -1584,15 +1598,8 @@
     };
     writeJsonList(FEEDBACK_KEY, [item, ...readJsonList(FEEDBACK_KEY)].slice(0, 100));
     try {
-      const resp = await fetch("/api/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item),
-      });
-      if (resp.ok) {
-        const saved = await resp.json();
-        feedbackCache = [saved.item, ...feedbackCache.filter((x) => x.id !== saved.item.id)];
-      }
+      const saved = await api.saveFeedback(item);
+      feedbackCache = [saved.item, ...feedbackCache.filter((x) => x.id !== saved.item.id)];
     } catch {}
     renderKbOverview();
   }
@@ -1715,9 +1722,7 @@
     const key = profileKey(source);
     if (profileCache[key]) return profileCache[key];
     try {
-      const resp = await fetch(`/api/profile?source=${encodeURIComponent(source)}`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
+      const data = await api.profile(source);
       profileCache[key] = data.profile || emptyProfile();
     } catch {
       profileCache[key] = emptyProfile();
@@ -1727,13 +1732,7 @@
 
   async function saveProfile(source, profile) {
     if (!source) return;
-    const resp = await fetch(`/api/profile?source=${encodeURIComponent(source)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profile }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
+    const data = await api.saveProfile(source, profile);
     profileCache[profileKey(source)] = data.profile || profile;
     schemaCache = {};
     await loadQuality(source);
@@ -1743,10 +1742,7 @@
 
   async function loadFeedback(source) {
     try {
-      const qs = source ? `?source=${encodeURIComponent(source)}` : "";
-      const resp = await fetch(`/api/feedback${qs}`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
+      const data = await api.feedback(source);
       feedbackCache = data.items || [];
     } catch {
       feedbackCache = readJsonList(FEEDBACK_KEY);
@@ -1757,9 +1753,7 @@
   async function loadQuality(source) {
     if (!source) return {};
     try {
-      const resp = await fetch(`/api/quality?source=${encodeURIComponent(source)}`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
+      const data = await api.quality(source);
       qualityCache[profileKey(source)] = data.report || {};
     } catch {
       qualityCache[profileKey(source)] = {};
@@ -1770,9 +1764,7 @@
   async function loadStandardExamples(source) {
     if (!source) return [];
     try {
-      const resp = await fetch(`/api/examples?source=${encodeURIComponent(source)}`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
+      const data = await api.examples(source);
       standardExamplesCache[profileKey(source)] = data.items || [];
     } catch {
       standardExamplesCache[profileKey(source)] = savedExamplesForSource(source);
@@ -1782,29 +1774,21 @@
 
   async function saveStandardExample(source, item) {
     if (!source) return null;
-    const resp = await fetch(`/api/examples?source=${encodeURIComponent(source)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(item),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
+    const data = await api.saveExample(source, item);
     await loadStandardExamples(source);
     return data.item;
   }
 
   async function deleteStandardExample(source, id) {
     if (!source || !id) return;
-    await fetch(`/api/examples/${encodeURIComponent(id)}?source=${encodeURIComponent(source)}`, { method: "DELETE" });
+    await api.deleteExample(source, id);
     await loadStandardExamples(source);
   }
 
   async function loadProfileVersions(source) {
     if (!source) return [];
     try {
-      const resp = await fetch(`/api/profile/versions?source=${encodeURIComponent(source)}`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
+      const data = await api.profileVersions(source);
       profileVersionsCache[profileKey(source)] = data.items || [];
     } catch {
       profileVersionsCache[profileKey(source)] = [];
@@ -1812,20 +1796,48 @@
     return profileVersionsCache[profileKey(source)];
   }
 
+  async function refreshSourceGovernanceDependencies(source) {
+    profileCache[profileKey(source)] = null;
+    await Promise.allSettled([
+      loadProfile(source),
+      loadStandardExamples(source),
+      loadQuality(source),
+      loadProfileVersions(source),
+      loadSchema(source),
+    ]);
+  }
+
   async function publishCurrentProfile() {
     const src = currentKbSource();
     if (!src) return;
-    const label = prompt("发布版本名称", "发布版本");
-    if (label == null) return;
-    const description = prompt("发布说明", "");
-    if (description == null) return;
-    const resp = await fetch(`/api/profile/publish?source=${encodeURIComponent(src)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: label.trim(), description: description.trim() }),
+    const settings = governanceView ? governanceView.getSettings() : {};
+    const values = await openGovernanceModal({
+      title: "发布 Profile",
+      kicker: sourceLabel(src),
+      fields: [
+        { name: "label", label: "发布版本名称", value: "发布版本", required: true },
+        { name: "description", label: "发布说明", type: "textarea", required: settings && settings.require_publish_note !== false },
+      ],
+      submitText: settings && settings.review_required_for_publish ? "提交审核" : "发布",
     });
-    if (!resp.ok) {
-      alert("发布失败");
+    if (!values) return;
+    let data;
+    try {
+      data = await api.publishProfile(src, { label: values.label, description: values.description });
+    } catch (e) {
+      const msg = e.message || "发布失败";
+      alert(msg);
+      return;
+    }
+    if (data.review_required) {
+      await loadFeedback();
+      if (governanceView) governanceView.setSelectedReviewItemId(data.item && data.item.id || "");
+      showView("governance-queue-view");
+      if (llmDraftBtn) {
+        const old = llmDraftBtn.textContent;
+        llmDraftBtn.textContent = "已提交审核";
+        setTimeout(() => { llmDraftBtn.textContent = old; }, 1400);
+      }
       return;
     }
     await loadProfileVersions(src);
@@ -1843,14 +1855,8 @@
     schemaLoading.add(key);
     renderKbList();
     try {
-      const url = src ? `/api/schema?source=${encodeURIComponent(src)}` : "/api/schema";
-      const resp = await fetch(url);
+      const data = await api.schema(src);
       const shouldUpdateSchemaText = schemaKey(activeSourceName()) === key || (!activeSourceName() && key === "__auto__");
-      if (!resp.ok) {
-        if (shouldUpdateSchemaText) schemaText.textContent = `(加载失败: HTTP ${resp.status})`;
-        return;
-      }
-      const data = await resp.json();
       schemaCache[key] = data;
       if (src) {
         await loadProfile(src);
@@ -1918,12 +1924,12 @@
 
   async function loadSources() {
     try {
-      const resp = await fetch("/api/sources");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
+      const data = await api.sources();
       availableSources = data.sources || [];
       renderSourceTags(availableSources);
+      if (governanceView) governanceView.renderSourceOptions();
       renderSuggestions();
+      if (governanceView) await governanceView.loadSettings();
       await loadFeedback();
       renderKbList();
       renderKbOverview();
@@ -2015,13 +2021,8 @@
     startProgress(!source);   // 手动锁库时跳过"判断数据源"阶段
 
     try {
-      const resp = await fetch("/api/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, history, source, current_source: currentSource,
-                               user_glossary: userGlossary, few_shots: fewShots }),
-      });
-      const data = await resp.json();
+      const data = await api.ask({ question, history, source, current_source: currentSource,
+                                  user_glossary: userGlossary, few_shots: fewShots });
       finishProgress();   // 网络往返结束,进度补满收起(后续分支只管渲染)
 
       // 透明展示本次实际使用的数据源
@@ -2122,6 +2123,15 @@
       submit.innerHTML = submitLabel;
     }
   }
+
+  governanceView = window.NL2SQLGovernanceView.create({
+    availableSources: () => availableSources,
+    sourceLabel,
+    loadFeedback,
+    renderKbOverview,
+    renderSchemaConsole,
+    refreshSource: refreshSourceGovernanceDependencies,
+  });
 
   /* ---------------- events ---------------- */
 

@@ -27,8 +27,8 @@
       <button class="side-nav-item" data-view-target="schema-console-view" type="button"><span>▤</span>Schema 配置</button>
       <button class="side-nav-item" data-view-target="debug-view" type="button"><span>✦</span>召回调试</button>
       <div class="nav-group-label">治理</div>
-      <button class="side-nav-item muted" type="button"><span>✓</span>待审队列</button>
-      <button class="side-nav-item muted" type="button"><span>⚙</span>设置</button>
+      <button class="side-nav-item" data-view-target="governance-queue-view" type="button"><span>✓</span>待审队列</button>
+      <button class="side-nav-item" data-view-target="governance-settings-view" type="button"><span>⚙</span>设置</button>
     </nav>
     <div class="sidebar-foot">
       <div class="user-avatar">本</div>
@@ -294,6 +294,128 @@
         </div>
       </section>
 
+      <section class="work-view" id="governance-queue-view" data-page-title="待审队列" data-breadcrumb="智能问数 / 治理 / 待审队列">
+        <div class="governance-layout">
+          <section class="panel-card governance-queue-panel">
+            <div class="panel-toolbar">
+              <div>
+                <div class="panel-kicker">Review Queue</div>
+                <h2>待审队列</h2>
+              </div>
+              <div class="toolbar-actions governance-filters">
+                <select class="toolbar-input" id="governance-source-filter"></select>
+                <select class="toolbar-input" id="governance-kind-filter">
+                  <option value="all">全部类型</option>
+                  <option value="publish_request">发布申请</option>
+                  <option value="feedback_fix">错误反馈</option>
+                  <option value="correct">正确确认</option>
+                </select>
+                <button class="nav-btn" type="button" id="governance-refresh-btn">刷新</button>
+              </div>
+            </div>
+            <div class="status-tabs" id="governance-status-tabs">
+              <button type="button" data-status="open" class="active">待处理</button>
+              <button type="button" data-status="in_progress">处理中</button>
+              <button type="button" data-status="accepted">已采纳</button>
+              <button type="button" data-status="rejected">已驳回</button>
+              <button type="button" data-status="closed">已关闭</button>
+              <button type="button" data-status="all">全部</button>
+            </div>
+            <select class="toolbar-input hidden-select" id="governance-status-filter" aria-hidden="true" tabindex="-1">
+              <option value="open">待处理</option>
+              <option value="in_progress">处理中</option>
+              <option value="accepted">已采纳</option>
+              <option value="rejected">已驳回</option>
+              <option value="closed">已关闭</option>
+              <option value="all">全部</option>
+            </select>
+            <div id="governance-review-list" class="review-list"></div>
+          </section>
+          <aside class="panel-card governance-detail-panel">
+            <div class="section-head">
+              <span class="section-icon">G</span>
+              <div><h2>审核详情</h2><p>把有效反馈沉淀为标准问法、字段语义、关系或指标口径。</p></div>
+            </div>
+            <div id="governance-review-detail" class="review-detail"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="work-view" id="governance-settings-view" data-page-title="治理设置" data-breadcrumb="智能问数 / 治理 / 设置">
+        <div class="panel-card governance-settings-panel">
+          <div class="panel-toolbar">
+            <div>
+              <div class="panel-kicker">Governance Settings</div>
+              <h2>治理设置</h2>
+            </div>
+            <button class="nav-btn" type="button" id="governance-settings-save-btn">保存设置</button>
+          </div>
+          <div class="settings-grid">
+            <section class="settings-section">
+              <div class="settings-section-head">
+                <span>Workflow</span>
+                <h3>审核流程</h3>
+              </div>
+              <label class="setting-row setting-switch">
+                <span class="setting-copy">
+                  <b>发布前需要人工审核</b>
+                  <small>启用后，Profile 发布前需要先完成队列处理。</small>
+                </span>
+                <input id="setting-review-required" type="checkbox" />
+              </label>
+              <label class="setting-row setting-switch">
+                <span class="setting-copy">
+                  <b>错误反馈自动进入待审队列</b>
+                  <small>用户点击反馈错误后，自动作为治理线索展示。</small>
+                </span>
+                <input id="setting-auto-queue" type="checkbox" />
+              </label>
+              <label class="setting-row setting-switch">
+                <span class="setting-copy">
+                  <b>发布时要求填写说明</b>
+                  <small>要求发布版本带上变更摘要，方便后续回滚判断。</small>
+                </span>
+                <input id="setting-require-note" type="checkbox" />
+              </label>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-head">
+                <span>Queue</span>
+                <h3>队列规则</h3>
+              </div>
+              <label class="setting-row setting-field">
+                <span class="setting-copy">
+                  <b>低可信度入队阈值</b>
+                  <small>低于该分值的查询结果可作为后续自动入队依据。</small>
+                </span>
+                <input id="setting-confidence-threshold" type="number" min="0" max="100" step="1" />
+              </label>
+              <label class="setting-row setting-field">
+                <span class="setting-copy">
+                  <b>默认队列状态</b>
+                  <small>进入待审队列页面时默认使用的状态筛选。</small>
+                </span>
+                <select id="setting-default-status">
+                  <option value="open">待处理</option>
+                  <option value="in_progress">处理中</option>
+                  <option value="accepted">已采纳</option>
+                  <option value="rejected">已驳回</option>
+                  <option value="closed">已关闭</option>
+                  <option value="all">全部</option>
+                </select>
+              </label>
+              <label class="setting-row setting-field">
+                <span class="setting-copy">
+                  <b>队列每页数量</b>
+                  <small>控制列表一次加载的反馈数量，避免页面过长。</small>
+                </span>
+                <input id="setting-page-size" type="number" min="10" max="200" step="10" />
+              </label>
+            </section>
+          </div>
+        </div>
+      </section>
+
       <section class="work-view" id="debug-view" data-page-title="召回调试" data-breadcrumb="智能问数 / 调试">
         <div class="panel-card">
           <div class="section-head">
@@ -311,6 +433,26 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="governance-modal" hidden>
+  <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="governance-modal-title">
+    <div class="modal-head">
+      <div>
+        <div class="panel-kicker" id="governance-modal-kicker">Governance</div>
+        <h2 id="governance-modal-title">治理操作</h2>
+      </div>
+      <button class="modal-close" id="governance-modal-close" type="button">关闭</button>
+    </div>
+    <div class="modal-body" id="governance-modal-body"></div>
+    <div class="modal-actions">
+      <button class="nav-btn secondary" id="governance-modal-cancel" type="button">取消</button>
+      <button class="nav-btn" id="governance-modal-submit" type="button">确认</button>
+    </div>
+  </section>
+</div>
+
+<script src="/api.js"></script>
+<script src="/modal.js"></script>
+<script src="/governance-view.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

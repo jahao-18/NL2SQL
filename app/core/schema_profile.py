@@ -16,6 +16,7 @@ import yaml
 
 from app.core.config import ROOT_DIR
 from app.core.data_sources import get_source
+from app.core.file_store import atomic_write_text
 
 
 @dataclass(frozen=True)
@@ -355,7 +356,7 @@ def _write_version_snapshot(source_name: str, content: str, meta: dict[str, Any]
     version_id = f"{stamp}-{uuid4().hex[:8]}"
     vdir = _version_dir(source_name)
     vdir.mkdir(parents=True, exist_ok=True)
-    _version_yaml_path(source_name, version_id).write_text(content, encoding="utf-8")
+    atomic_write_text(_version_yaml_path(source_name, version_id), content)
     payload = {
         "id": version_id,
         "label": "",
@@ -365,9 +366,9 @@ def _write_version_snapshot(source_name: str, content: str, meta: dict[str, Any]
     }
     if meta:
         payload.update({k: v for k, v in meta.items() if v is not None})
-    _version_meta_path(source_name, version_id).write_text(
+    atomic_write_text(
+        _version_meta_path(source_name, version_id),
         yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
     )
     return version_id
 
@@ -397,9 +398,9 @@ def save_profile_dict(source_name: str, raw: dict[str, Any]) -> dict[str, Any]:
 
     path = profile_path(source_name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    atomic_write_text(
+        path,
         yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
     )
     clear_cache()
     # Related caches are optional imports to avoid circular imports at module load.
@@ -461,7 +462,7 @@ def update_profile_version(source_name: str, version_id: str, label: str = "", d
         meta["created_at"] = datetime.now(timezone.utc).isoformat()
     if not meta.get("kind"):
         meta["kind"] = "manual"
-    meta_path.write_text(yaml.safe_dump(meta, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    atomic_write_text(meta_path, yaml.safe_dump(meta, allow_unicode=True, sort_keys=False))
     return next((x for x in list_profile_versions(source_name) if x["id"] == version_id), {"id": version_id, **meta})
 
 
