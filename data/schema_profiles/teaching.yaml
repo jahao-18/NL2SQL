@@ -1,0 +1,384 @@
+tables:
+  college:
+    business_name: 学院
+    description: 学院基础维表，记录学校内各二级学院。
+    grain: 一行代表一个学院。
+  major:
+    business_name: 专业
+    description: 专业基础维表，专业隶属于学院。
+    grain: 一行代表一个专业。
+  class_group:
+    business_name: 班级
+    description: 班级基础维表，班级隶属于专业并带有年级。
+    grain: 一行代表一个行政班级。
+  student:
+    business_name: 学生
+    description: 学生基础信息表，记录学生所属学院、专业、班级和学籍状态。
+    grain: 一行代表一名学生。
+    default_filters:
+      - status = 'active'
+    notes: 统计学生人数时默认只统计在读学生；除非用户明确说全部学生、毕业学生或休学学生。
+  teacher:
+    business_name: 教师
+    description: 教师基础信息表，记录教师所属学院和职称。
+    grain: 一行代表一名教师。
+  course:
+    business_name: 课程
+    description: 课程基础维表，记录课程名称、学分、类型、开课学院和难度系数。
+    grain: 一行代表一门课程。
+  teaching_class:
+    business_name: 开课班
+    description: 开课事实表，记录课程在某学年学期由某位教师开设的一次教学班。
+    grain: 一行代表一个开课班。
+    default_time_column: year
+    notes: 涉及学期、本学期、教师授课、课程开设时优先使用本表。
+  enrollment:
+    business_name: 选课记录
+    description: 学生选课事实表，连接学生和开课班。
+    grain: 一行代表一名学生选择一个开课班。
+    default_time_column: enroll_time
+  score:
+    business_name: 成绩
+    description: 成绩事实表，一条选课记录对应一条成绩。
+    grain: 一行代表一条选课记录的成绩结果。
+    notes: 成绩分析默认使用 final_score 总评成绩。
+  evaluation:
+    business_name: 教学评价
+    description: 学生对开课班的教学评价记录。
+    grain: 一行代表一名学生对一个开课班的一次评价。
+
+columns:
+  college:
+    id:
+      business_name: 学院ID
+      semantic_type: identifier
+    code:
+      business_name: 学院编码
+      semantic_type: dimension
+    name:
+      business_name: 学院名称
+      semantic_type: dimension
+  major:
+    id:
+      business_name: 专业ID
+      semantic_type: identifier
+    college_id:
+      business_name: 所属学院ID
+      semantic_type: identifier
+    code:
+      business_name: 专业编码
+      semantic_type: dimension
+    name:
+      business_name: 专业名称
+      semantic_type: dimension
+  class_group:
+    id:
+      business_name: 班级ID
+      semantic_type: identifier
+    major_id:
+      business_name: 所属专业ID
+      semantic_type: identifier
+    name:
+      business_name: 班级名称
+      semantic_type: dimension
+    grade_year:
+      business_name: 年级
+      semantic_type: dimension
+      unit: 年
+  student:
+    id:
+      business_name: 学生ID
+      semantic_type: identifier
+    student_no:
+      business_name: 学号
+      semantic_type: identifier
+      sensitive: true
+      description: 学号属于个人标识，除非用户明确要求展示学号，否则优先展示学生姓名或统计结果。
+    name:
+      business_name: 学生姓名
+      semantic_type: dimension
+    gender:
+      business_name: 性别
+      semantic_type: dimension
+      enum_values:
+        - male=男
+        - female=女
+    college_id:
+      business_name: 学院ID
+      semantic_type: identifier
+    major_id:
+      business_name: 专业ID
+      semantic_type: identifier
+    class_id:
+      business_name: 班级ID
+      semantic_type: identifier
+    enrollment_year:
+      business_name: 入学年份
+      semantic_type: time
+      unit: 年
+    status:
+      business_name: 学籍状态
+      semantic_type: dimension
+      enum_values:
+        - active=在读
+        - graduated=毕业
+        - suspended=休学
+      default_filter: status = 'active'
+  teacher:
+    id:
+      business_name: 教师ID
+      semantic_type: identifier
+    teacher_no:
+      business_name: 工号
+      semantic_type: identifier
+      sensitive: true
+    name:
+      business_name: 教师姓名
+      semantic_type: dimension
+    gender:
+      business_name: 性别
+      semantic_type: dimension
+      enum_values:
+        - male=男
+        - female=女
+    college_id:
+      business_name: 学院ID
+      semantic_type: identifier
+    title:
+      business_name: 职称
+      semantic_type: dimension
+      enum_values:
+        - 助教
+        - 讲师
+        - 副教授
+        - 教授
+    hire_date:
+      business_name: 入职日期
+      semantic_type: time
+  course:
+    id:
+      business_name: 课程ID
+      semantic_type: identifier
+    course_code:
+      business_name: 课程编码
+      semantic_type: identifier
+    name:
+      business_name: 课程名称
+      semantic_type: dimension
+    credit:
+      business_name: 学分
+      semantic_type: metric
+      default_aggregation: avg
+      unit: 学分
+    course_type:
+      business_name: 课程类型
+      semantic_type: dimension
+      enum_values:
+        - required=必修课
+        - elective=选修课
+        - general=通识课
+    college_id:
+      business_name: 开课学院ID
+      semantic_type: identifier
+    difficulty:
+      business_name: 难度系数
+      semantic_type: metric
+      default_aggregation: avg
+      description: 数值越高通常课程平均分越低。
+  teaching_class:
+    id:
+      business_name: 开课班ID
+      semantic_type: identifier
+    course_id:
+      business_name: 课程ID
+      semantic_type: identifier
+    teacher_id:
+      business_name: 任课教师ID
+      semantic_type: identifier
+    year:
+      business_name: 开课年份
+      semantic_type: time
+      unit: 年
+    semester:
+      business_name: 学期
+      semantic_type: dimension
+      enum_values:
+        - spring=春季学期
+        - autumn=秋季学期
+    capacity:
+      business_name: 课程容量
+      semantic_type: metric
+      default_aggregation: avg
+      unit: 人
+    classroom:
+      business_name: 教室
+      semantic_type: dimension
+  enrollment:
+    id:
+      business_name: 选课ID
+      semantic_type: identifier
+    teaching_class_id:
+      business_name: 开课班ID
+      semantic_type: identifier
+    student_id:
+      business_name: 学生ID
+      semantic_type: identifier
+    enroll_time:
+      business_name: 选课时间
+      semantic_type: time
+  score:
+    id:
+      business_name: 成绩ID
+      semantic_type: identifier
+    enrollment_id:
+      business_name: 选课ID
+      semantic_type: identifier
+    usual_score:
+      business_name: 平时成绩
+      semantic_type: metric
+      default_aggregation: avg
+      unit: 分
+    exam_score:
+      business_name: 考试成绩
+      semantic_type: metric
+      default_aggregation: avg
+      unit: 分
+    final_score:
+      business_name: 总评成绩
+      semantic_type: metric
+      default_aggregation: avg
+      unit: 分
+      description: 成绩分析默认使用本字段。
+    grade_point:
+      business_name: 绩点
+      semantic_type: metric
+      default_aggregation: avg
+    passed:
+      business_name: 是否通过
+      semantic_type: dimension
+      enum_values:
+        - 0=未通过/挂科
+        - 1=通过/及格
+  evaluation:
+    id:
+      business_name: 教学评价ID
+      semantic_type: identifier
+    teaching_class_id:
+      business_name: 开课班ID
+      semantic_type: identifier
+    student_id:
+      business_name: 学生ID
+      semantic_type: identifier
+    score:
+      business_name: 教学评价分
+      semantic_type: metric
+      default_aggregation: avg
+      unit: 分
+      description: 取值范围 1 到 5。
+    comment:
+      business_name: 评价内容
+      semantic_type: dimension
+      sensitive: true
+      description: 评价文本可能包含个人信息，默认不要展示原文。
+
+relations:
+  - left: major.college_id
+    right: college.id
+    type: many_to_one
+    description: 每个专业属于一个学院。
+  - left: class_group.major_id
+    right: major.id
+    type: many_to_one
+    description: 每个班级属于一个专业。
+  - left: student.college_id
+    right: college.id
+    type: many_to_one
+    description: 每名学生属于一个学院。
+  - left: student.major_id
+    right: major.id
+    type: many_to_one
+    description: 每名学生属于一个专业。
+  - left: student.class_id
+    right: class_group.id
+    type: many_to_one
+    description: 每名学生属于一个班级。
+  - left: teacher.college_id
+    right: college.id
+    type: many_to_one
+    description: 每名教师属于一个学院。
+  - left: course.college_id
+    right: college.id
+    type: many_to_one
+    description: 每门课程由一个学院开设。
+  - left: teaching_class.course_id
+    right: course.id
+    type: many_to_one
+    description: 每个开课班对应一门课程。
+  - left: teaching_class.teacher_id
+    right: teacher.id
+    type: many_to_one
+    description: 每个开课班由一名教师授课。
+  - left: enrollment.teaching_class_id
+    right: teaching_class.id
+    type: many_to_one
+    description: 每条选课记录对应一个开课班。
+  - left: enrollment.student_id
+    right: student.id
+    type: many_to_one
+    description: 每条选课记录对应一名学生。
+  - left: score.enrollment_id
+    right: enrollment.id
+    type: one_to_one
+    description: 每条成绩对应一条选课记录。
+  - left: evaluation.teaching_class_id
+    right: teaching_class.id
+    type: many_to_one
+    description: 每条教学评价对应一个开课班。
+  - left: evaluation.student_id
+    right: student.id
+    type: many_to_one
+    description: 每条教学评价由一名学生提交。
+
+metrics:
+  学生人数:
+    formula: 在读学生数量，默认 COUNT(student.id) 且 student.status = 'active'
+    default_filters:
+      - student.status = 'active'
+    grain: 可按学院、专业、班级、年级、性别分组。
+  选课人数:
+    formula: COUNT(enrollment.id)
+    default_time_column: teaching_class.year
+    grain: 可按课程、教师、学院、学年、学期分组。
+  选课学生数:
+    formula: COUNT(DISTINCT enrollment.student_id)
+    default_time_column: teaching_class.year
+    grain: 可按课程、教师、学院、学年、学期分组。
+  平均分:
+    formula: AVG(score.final_score)
+    default_time_column: teaching_class.year
+    grain: 可按课程、教师、学院、专业、班级、学年、学期分组。
+  及格率:
+    formula: AVG(CASE WHEN score.final_score >= 60 THEN 1.0 ELSE 0.0 END)
+    default_time_column: teaching_class.year
+    grain: 可按课程、教师、学院、专业、班级、学年、学期分组。
+  挂科率:
+    formula: AVG(CASE WHEN score.final_score < 60 THEN 1.0 ELSE 0.0 END)
+    default_time_column: teaching_class.year
+    grain: 可按课程、教师、学院、专业、班级、学年、学期分组。
+  优秀率:
+    formula: AVG(CASE WHEN score.final_score >= 90 THEN 1.0 ELSE 0.0 END)
+    default_time_column: teaching_class.year
+    grain: 可按课程、教师、学院、专业、班级、学年、学期分组。
+  教师授课班级数:
+    formula: COUNT(DISTINCT teaching_class.id)
+    default_time_column: teaching_class.year
+    grain: 按教师统计。
+  教师授课学生人次:
+    formula: COUNT(enrollment.id)
+    default_time_column: teaching_class.year
+    grain: 按教师统计。
+  教学评价均分:
+    formula: AVG(evaluation.score)
+    default_time_column: teaching_class.year
+    grain: 可按教师、课程、学院、学年、学期分组。
+

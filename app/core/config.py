@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     judge_model: str = "qwen-plus"          # 裁判模型,与生成模型 qwen_model 分开(另一个 LLM),可调
     judge_weight_correctness: float = 0.7   # 最终分 = 此权重*SQL正确性 + (1-此权重)*召回质量
     judge_sample_rows: int = 20             # 喂给裁判的结果行样本上限(控 token)
+    judge_fallback_seconds: int = 12        # 裁判模型超过该秒数未返回时,先用规则估算兜底展示
 
 
     # ── 知识库检索(schema linking)──

@@ -1,0 +1,189 @@
+# NL2SQL 执行准确率评估集
+#
+# 每个 case:
+#   id            唯一标识(用于 --filter 过滤)
+#   category      分类(报告里按类别分组)
+#   source        数据源名(默认 demo_sqlite)
+#   question      用户输入
+#   history       多轮场景的历史 turn(可选)
+#   expected_sql  标准答案 SQL,执行后跟 predicted 比对结果集
+#   match         比对方式: rowset(默认,无序多重集) / ordered(有序) / cell(单值)
+#   expected      特殊期望: clarify(应触发澄清) / error_placeholder(应回退"无法回答")
+#
+# 注意:expected_sql 和 predicted 都会经过 validator(强制 LIMIT 200),所以两边 LIMIT
+# 应该写明确(尤其 top-N 类),否则可能默认值不同导致结果集大小不一致。
+
+cases:
+  # ─────────── 基础聚合 / 过滤 ───────────
+  - id: count_001
+    category: simple_count
+    question: 一共有多少个商品?
+    expected_sql: SELECT COUNT(*) AS n FROM products
+    match: cell
+
+  - id: count_002
+    category: simple_count
+    question: 北京有多少用户?
+    expected_sql: SELECT COUNT(*) AS n FROM users WHERE city='北京'
+    match: cell
+
+  - id: filter_001
+    category: filter
+    question: 60 岁以上的男性用户有多少?
+    expected_sql: SELECT COUNT(*) AS n FROM users WHERE age>=60 AND gender='male'
+    match: cell
+
+  - id: filter_002
+    category: filter
+    question: 库存小于 10 的商品有几个?
+    expected_sql: SELECT COUNT(*) AS n FROM products WHERE stock<10
+    match: cell
+
+  # ─────────── 多表 JOIN ───────────
+  - id: join_001
+    category: multi_join
+    question: 销量前 5 的商品有哪些?
+    expected_sql: |
+      SELECT p.name AS name, SUM(o.quantity) AS s
+      FROM orders o JOIN products p ON o.product_id=p.id
+      WHERE o.status='paid'
+      GROUP BY p.id, p.name
+      ORDER BY s DESC LIMIT 5
+    match: ordered
+
+  - id: join_002
+    category: multi_join
+    question: 电子产品类目有多少个商品?
+    expected_sql: |
+      SELECT COUNT(*) AS n FROM products p
+      JOIN categories c ON p.category_id=c.id
+      WHERE c.name='电子产品'
+    match: cell
+
+  - id: join_003
+    category: multi_join
+    question: 差评最多的 5 个商品(评分 1 或 2 算差评)
+    expected_sql: |
+      SELECT p.name AS name, COUNT(*) AS n
+      FROM reviews r JOIN products p ON r.product_id=p.id
+      WHERE r.rating IN (1, 2)
+      GROUP BY p.id, p.name
+      ORDER BY n DESC LIMIT 5
+    match: ordered
+
+  # ─────────── 时间过滤 ───────────
+  - id: date_001
+    category: date_filter
+    question: 2025 年的订单总金额
+    expected_sql: |
+      SELECT SUM(o.amount) AS t FROM orders o
+      WHERE o.status='paid' AND o.created_at LIKE '2025%'
+    match: cell
+
+  - id: date_002
+    category: date_filter
+    question: 去年一共多少订单(今天是 2026-06-02)
+    expected_sql: |
+      SELECT COUNT(*) AS n FROM orders WHERE created_at LIKE '2025%'
+    match: cell
+
+  # ─────────── 窗口函数 ───────────
+  - id: window_001
+    category: window_func
+    question: 每个类目销量第一的商品分别是哪个?
+    expected_sql: |
+      SELECT category_name, product_name, total_sold FROM (
+        SELECT c.name AS category_name, p.name AS product_name,
+               SUM(o.quantity) AS total_sold,
+               ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY SUM(o.quantity) DESC) AS rk
+        FROM orders o JOIN products p ON o.product_id=p.id
+        JOIN categories c ON p.category_id=c.id
+        WHERE o.status='paid'
+        GROUP BY c.id, c.name, p.id, p.name
+      ) WHERE rk=1
+    match: rowset
+
+  # ─────────── HAVING ───────────
+  - id: having_001
+    category: aggregate
+    question: 平均评分最高的 5 个商品(至少 10 条评价)
+    expected_sql: |
+      SELECT p.name AS product_name, AVG(r.rating) AS avg_rating, COUNT(*) AS review_count
+      FROM reviews r JOIN products p ON r.product_id=p.id
+      GROUP BY p.id, p.name HAVING COUNT(*)>=10
+      ORDER BY avg_rating DESC LIMIT 5
+    match: ordered
+
+  # ─────────── 省份 / 跨表语义 ───────────
+  - id: province_001
+    category: province
+    question: 广东省有多少个用户设置了默认地址?
+    expected_sql: |
+      SELECT COUNT(DISTINCT user_id) AS n FROM addresses
+      WHERE province='广东' AND is_default=1
+    match: cell
+
+  # ─────────── 隐含语义 ───────────
+  - id: implicit_001
+    category: implicit_semantic
+    question: 最贵的用户是谁?
+    expected_sql: |
+      SELECT u.name AS user_name, SUM(o.amount) AS total_spent FROM users u
+      JOIN orders o ON u.id=o.user_id
+      WHERE o.status='paid'
+      GROUP BY u.id, u.name
+      ORDER BY total_spent DESC LIMIT 1
+    match: ordered
+
+  # ─────────── 字段不存在 ───────────
+  - id: missing_001
+    category: missing_field
+    question: 谁是体重最重的用户?
+    expected: error_placeholder
+
+  - id: missing_002
+    category: missing_field
+    question: 用户的邮箱列表
+    expected: error_placeholder
+
+  # ─────────── CLARIFY 触发 ───────────
+  - id: clarify_001
+    category: clarify
+    question: 谁是最有价值的客户?
+    expected: clarify
+
+  # ─────────── 多轮追问 ───────────
+  - id: multi_001
+    category: multi_turn
+    question: 按城市拆分
+    history:
+      - question: 2025 订单总金额
+        sql: |
+          SELECT SUM(o.amount) AS t FROM orders o
+          WHERE o.status='paid' AND o.created_at LIKE '2025%'
+    expected_sql: |
+      SELECT u.city AS city, SUM(o.amount) AS t
+      FROM orders o JOIN users u ON o.user_id=u.id
+      WHERE o.status='paid' AND o.created_at LIKE '2025%'
+      GROUP BY u.city
+    match: rowset
+
+  - id: multi_002
+    category: multi_turn
+    question: 只看广东的
+    history:
+      - question: 2025 订单总金额
+        sql: |
+          SELECT SUM(o.amount) AS t FROM orders o
+          WHERE o.status='paid' AND o.created_at LIKE '2025%'
+      - question: 按城市拆分
+        sql: |
+          SELECT u.city AS city, SUM(o.amount) AS t
+          FROM orders o JOIN users u ON o.user_id=u.id
+          WHERE o.status='paid' AND o.created_at LIKE '2025%' GROUP BY u.city
+    expected_sql: |
+      SELECT a.city AS city, SUM(o.amount) AS t
+      FROM orders o JOIN addresses a ON o.user_id=a.user_id
+      WHERE a.province='广东' AND o.status='paid' AND o.created_at LIKE '2025%'
+      GROUP BY a.city
+    match: rowset

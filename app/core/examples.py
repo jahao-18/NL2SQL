@@ -63,3 +63,23 @@ def upsert_example(source: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 def delete_example(source: str, item_id: str) -> None:
     _write(source, [x for x in _read(source) if x.get("id") != item_id])
+
+
+def delete_matching_examples(source: str, question: str, sql: str) -> int:
+    question = (question or "").strip()
+    sql = (sql or "").strip()
+    if not question and not sql:
+        return 0
+    items = _read(source)
+    kept: list[dict[str, Any]] = []
+    deleted = 0
+    for item in items:
+        same_question = question and str(item.get("question") or "").strip() == question
+        same_sql = sql and str(item.get("sql") or "").strip() == sql
+        if same_question and same_sql:
+            deleted += 1
+            continue
+        kept.append(item)
+    if deleted:
+        _write(source, kept)
+    return deleted

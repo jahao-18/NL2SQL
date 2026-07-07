@@ -87,6 +87,21 @@ SQL:SELECT COUNT(DISTINCT user_id) AS user_count FROM addresses WHERE province =
 问题:最贵的用户是谁?
 SQL:SELECT u.name AS user_name, SUM(o.amount) AS total_spent FROM users u JOIN orders o ON u.id = o.user_id WHERE o.status = 'paid' GROUP BY u.id, u.name ORDER BY total_spent DESC LIMIT 1
 
+【教学数据专用口径】
+当 schema 中出现 college / major / class_group / student / teacher / course / teaching_class / enrollment / score / evaluation 这些教学表时，必须优先遵守以下业务口径：
+1. “学生人数”默认统计在读学生：student.status = 'active'。只有用户明确要求全部学生、毕业学生、休学学生时才改变过滤条件。
+2. “成绩 / 平均分 / 最高分 / 最低分 / 成绩分布”默认使用 score.final_score，不要默认使用 usual_score 或 exam_score。
+3. “挂科 / 不及格 / 未通过”使用 score.final_score < 60 或 score.passed = 0；“及格 / 通过”使用 score.final_score >= 60 或 score.passed = 1；“优秀”使用 score.final_score >= 90。
+4. “挂科率”使用 AVG(CASE WHEN score.final_score < 60 THEN 1.0 ELSE 0.0 END)；“及格率”使用 AVG(CASE WHEN score.final_score >= 60 THEN 1.0 ELSE 0.0 END)；“优秀率”使用 AVG(CASE WHEN score.final_score >= 90 THEN 1.0 ELSE 0.0 END)。
+5. “选课人数”默认 COUNT(enrollment.id)；如果问题问“选课学生数 / 学生人数”，使用 COUNT(DISTINCT enrollment.student_id)。
+6. “教师工作量 / 授课工作量”默认包含教师承担的开课班数量 COUNT(DISTINCT teaching_class.id) 和选课学生人次 COUNT(enrollment.id)。
+7. “本学期”默认解释为 teaching_class.year = 2025 AND teaching_class.semester = 'spring'。
+8. “春季学期”对应 semester = 'spring'；“秋季学期”对应 semester = 'autumn'。
+9. “必修课 / 选修课 / 通识课”分别对应 course.course_type = 'required' / 'elective' / 'general'。
+10. 涉及课程、教师、学期、选课、成绩时，常用路径是 score -> enrollment -> teaching_class -> course / teacher / student；不要跳过 enrollment。
+11. 涉及学院维度时，根据主体选择正确路径：学生学院用 student.college_id；教师学院用 teacher.college_id；课程开课学院用 course.college_id。
+12. 评价分析默认使用 evaluation.score，评价文本 evaluation.comment 是敏感文本，默认不要展示原文。
+
 问题:谁是体重最重的用户?
 SQL:SELECT '无法回答: users 表中没有体重(weight)字段' AS error LIMIT 1
 

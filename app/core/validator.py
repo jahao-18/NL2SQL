@@ -51,8 +51,9 @@ def validate_and_fix(
     # 3) 表名白名单(粗校验:FROM/JOIN 后第一个标识符)
     _check_tables_in_whitelist(sql, set(allowed_tables.keys()))
 
-    # 3.5) 字段治理黑名单:敏感/禁用/废弃字段不允许执行。
-    blocked_hit = _blocked_column_hit(sql, blocked_columns or set())
+    # 3.5) 字段治理黑名单:敏感/禁用/废弃字段不允许作为结果输出。
+    # 注意:部分身份字段可用于 JOIN/WHERE 做行级范围过滤,但不能 SELECT 展示。
+    blocked_hit = _blocked_output_column_hit(stmt, blocked_columns or set())
     if blocked_hit:
         raise SQLValidationError(f"引用了不可用于问数的字段: {blocked_hit}")
 
@@ -70,21 +71,96 @@ def validate_and_fix(
     return sql, truncated
 
 
-def _blocked_column_hit(sql: str, blocked_columns: set[str]) -> str | None:
+def _blocked_output_column_hit(stmt: Statement, blocked_columns: set[str]) -> str | None:
     if not blocked_columns:
         return None
-    lower_sql = sql.lower()
+    aliases = _table_aliases(stmt)
+    select_text = " ".join(_select_output_tokens(stmt)).lower()
+    if not select_text:
+        return None
     for full in sorted(blocked_columns):
         if "." not in full:
             continue
         table, column = full.split(".", 1)
+        table_l = table.lower()
+        column_l = column.lower()
+        alias_names = {a for a, t in aliases.items() if t == table_l}
+        if _selects_star_for_table(select_text, table_l, alias_names, aliases):
+            return full
         patterns = [
-            rf"\b{re.escape(table.lower())}\s*\.\s*{re.escape(column.lower())}\b",
-            rf"\b{re.escape(column.lower())}\b",
+            rf"\b{re.escape(table_l)}\s*\.\s*{re.escape(column_l)}\b",
         ]
-        if any(re.search(pattern, lower_sql) for pattern in patterns):
+        patterns.extend(rf"\b{re.escape(alias)}\s*\.\s*{re.escape(column_l)}\b" for alias in alias_names)
+        if column_l not in {"id", "name"}:
+            patterns.append(rf"(?<!\.)\b{re.escape(column_l)}\b")
+        if any(re.search(pattern, select_text) for pattern in patterns):
             return full
     return None
+
+
+def _select_output_tokens(stmt: Statement) -> list[str]:
+    tokens = _meaningful(stmt)
+    out: list[str] = []
+    in_select = False
+    for tok in tokens:
+        norm = tok.normalized.upper() if hasattr(tok, "normalized") else ""
+        if tok.ttype is DML and norm == "SELECT":
+            in_select = True
+            continue
+        if in_select and norm == "FROM":
+            break
+        if in_select:
+            out.append(str(tok.value))
+    return out
+
+
+def _selects_star_for_table(select_text: str, table: str, aliases: set[str], alias_map: dict[str, str]) -> bool:
+    if re.search(r"(^|,)\s*\*\s*(,|$)", select_text):
+        return table in set(alias_map.values())
+    names = {table, *aliases}
+    return any(re.search(rf"\b{re.escape(name)}\s*\.\s*\*", select_text) for name in names)
+
+
+def _table_aliases(stmt: Statement) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    tokens = _meaningful(stmt)
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        norm = tok.normalized.upper() if hasattr(tok, "normalized") else ""
+        if norm == "FROM" or norm == "JOIN" or norm.endswith(" JOIN"):
+            if i + 1 < len(tokens):
+                _collect_identifier_aliases(tokens[i + 1], aliases)
+            i += 2
+            continue
+        if isinstance(tok, Parenthesis) and _contains_select(tok):
+            aliases.update(_table_aliases(tok))
+        elif isinstance(tok, TokenList) and not isinstance(tok, Identifier):
+            aliases.update(_table_aliases(tok))
+        i += 1
+    return aliases
+
+
+def _collect_identifier_aliases(token, aliases: dict[str, str]) -> None:
+    if isinstance(token, IdentifierList):
+        for ident in token.get_identifiers():
+            _collect_identifier_aliases(ident, aliases)
+        return
+    if isinstance(token, Identifier):
+        if _contains_select(token):
+            aliases.update(_table_aliases(token))
+            return
+        real = _clean_name(token.get_real_name())
+        alias = _clean_name(token.get_alias())
+        if real:
+            aliases[real.lower()] = real.lower()
+            if alias:
+                aliases[alias.lower()] = real.lower()
+        return
+    if token.ttype is Name:
+        name = _clean_name(token.value)
+        if name:
+            aliases[name.lower()] = name.lower()
 
 
 def _check_tables_in_whitelist(sql: str, whitelist: set[str]) -> None:
@@ -159,7 +235,7 @@ def _table_refs(token_list: TokenList) -> set[str]:
     while i < len(tokens):
         tok = tokens[i]
         norm = tok.normalized.upper() if hasattr(tok, "normalized") else ""
-        if norm == "FROM" or norm.endswith(" JOIN"):
+        if norm == "FROM" or norm == "JOIN" or norm.endswith(" JOIN"):
             if i + 1 < len(tokens):
                 refs |= _identifier_names(tokens[i + 1])
             i += 2

@@ -1,0 +1,49 @@
+source: teaching
+cases:
+  - id: teaching_001
+    question: 各学院学生人数是多少？
+    checks:
+      - contains_sql: student
+      - contains_sql: college
+      - contains_sql: status = 'active'
+  - id: teaching_002
+    question: 2025 年春季学期挂科率最高的 5 门课程是什么？
+    checks:
+      - contains_sql: final_score < 60
+      - contains_sql: semester = 'spring'
+      - contains_sql: LIMIT 5
+  - id: teaching_003
+    question: 软件工程专业各年级学生人数是多少？
+    checks:
+      - contains_sql: major
+      - contains_sql: grade_year
+  - id: teaching_004
+    question: 统计每位教师的授课班级数和选课学生人次。
+    checks:
+      - contains_sql: teacher
+      - contains_sql: teaching_class
+      - contains_sql: enrollment
+  - id: teaching_005
+    question: 哪些课程的平均分低于 70？
+    checks:
+      - contains_sql: AVG
+      - contains_sql: final_score
+      - contains_sql: HAVING
+  - id: teaching_006
+    question: 教学评价分最高的 10 位教师是谁？
+    checks:
+      - contains_sql: evaluation
+      - contains_sql: teacher
+      - contains_sql: LIMIT 10
+  - id: teaching_007
+    question: 本学期开设了多少门课程？
+    checks:
+      - contains_sql: teaching_class
+      - contains_sql: year = 2025
+      - contains_sql: semester = 'spring'
+  - id: teaching_008
+    question: 各学院平均成绩和挂科率是多少？
+    checks:
+      - contains_sql: college
+      - contains_sql: final_score
+      - contains_sql: CASE

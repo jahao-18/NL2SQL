@@ -9,7 +9,7 @@ from uuid import uuid4
 import yaml
 
 from app.core.config import ROOT_DIR
-from app.core.examples import upsert_example
+from app.core.examples import delete_matching_examples, upsert_example
 from app.core.file_store import atomic_write_text, lock_for
 from app.core.schema_profile import load_profile_dict, publish_profile, save_profile_dict
 
@@ -26,7 +26,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 VALID_STATUSES = {"open", "in_progress", "accepted", "rejected", "closed"}
-VALID_TYPES = {"feedback_fix", "profile_publish", "relation_change", "metric_change", "field_change"}
+VALID_TYPES = {"feedback_fix", "example_candidate", "profile_publish", "relation_change", "metric_change", "field_change"}
 
 
 def now_iso() -> str:
@@ -127,29 +127,54 @@ def create_review_item(
 
 def create_feedback_review(feedback_item: dict[str, Any]) -> dict[str, Any] | None:
     settings = load_settings()
-    if feedback_item.get("kind") != "incorrect":
+    kind = feedback_item.get("kind")
+    if kind == "incorrect" and not settings.get("auto_queue_error_feedback", True):
         return None
-    if not settings.get("auto_queue_error_feedback", True):
+    if kind not in {"incorrect", "correct"}:
         return None
+    item_type = "example_candidate" if kind == "correct" else "feedback_fix"
+    reason = str(feedback_item.get("reason") or "")
+    category = str(feedback_item.get("category") or kind or "")
+    if kind == "correct":
+        reason = reason or "用户确认结果正确，建议沉淀为标准问法样例"
+        category = category or "confirmed_example"
     return create_review_item(
-        "feedback_fix",
+        item_type,
         source=str(feedback_item.get("source") or "unknown"),
         source_label=str(feedback_item.get("source_label") or feedback_item.get("source") or "unknown"),
         title=str(feedback_item.get("question") or "用户反馈"),
-        reason=str(feedback_item.get("reason") or ""),
-        category=str(feedback_item.get("category") or feedback_item.get("kind") or ""),
+        reason=reason,
+        category=category,
         payload={"feedback": feedback_item},
+        priority="normal" if kind == "correct" else "high",
     )
 
 
 def _kind_from_type(item_type: str) -> str:
     return {
         "feedback_fix": "feedback_fix",
+        "example_candidate": "correct_example",
         "profile_publish": "publish_request",
         "relation_change": "relation_change",
         "metric_change": "metric_change",
         "field_change": "field_change",
     }.get(item_type, item_type)
+
+
+def delete_review_items_for_feedback(feedback_id: str) -> int:
+    deleted = 0
+    with lock_for(REVIEW_ITEMS_PATH):
+        items = _read_review_items()
+        kept = []
+        for item in items:
+            feedback = (item.get("payload") or {}).get("feedback") or {}
+            if feedback.get("id") == feedback_id:
+                deleted += 1
+                continue
+            kept.append(item)
+        if deleted:
+            _write_review_items(kept)
+    return deleted
 
 
 def list_review_items(
@@ -296,9 +321,18 @@ def accept_review_item(item_id: str, action: str, payload: dict[str, Any] | None
 
 
 def reject_review_item(item_id: str, reason: str = "") -> dict[str, Any]:
+    item = _find_item(item_id)
+    deleted_examples = 0
+    if item.get("kind") == "correct_example" or item.get("type") == "example_candidate":
+        feedback = (item.get("payload") or {}).get("feedback") or {}
+        deleted_examples = delete_matching_examples(
+            str(item.get("source") or ""),
+            str(feedback.get("question") or item.get("question") or ""),
+            str(feedback.get("sql") or item.get("sql") or ""),
+        )
     return _update_review_item(item_id, {
         "status": "rejected",
-        "resolution": reason.strip() or "rejected",
+        "resolution": (reason.strip() or "rejected") + (f"；已清理误沉淀样例 {deleted_examples} 条" if deleted_examples else ""),
         "updated_at": now_iso(),
         "closed_at": now_iso(),
         "reviewed_at": now_iso(),

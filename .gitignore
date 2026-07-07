@@ -3,14 +3,17 @@ __pycache__/
 *.pyc
 .env
 data/*.db
+!data/teaching.db
+data/feedback/
+data/governance/
 .idea/
 .vscode/
 
-# BIRD 基准:数据集(几个 GB)与 eval_bird.py 生成的工作目录,都不入库
+# BIRD benchmark: raw datasets can be several GB; generated work dirs are not tracked.
 /bird_dev/
 data/bird/
 bird_result.json
 
-# 知识库检索:embedding 等索引缓存(可由 schema 重建)
+# Retrieval/embedding indexes are cache files and can be rebuilt from schema files.
 data/retrieval_index/
 volumes/

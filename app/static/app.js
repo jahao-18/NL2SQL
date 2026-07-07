@@ -92,6 +92,17 @@
   const api = window.NL2SQLApi;
   const openGovernanceModal = window.NL2SQLModal.open;
 
+  const loginScreen = $("login-screen");
+  const workspaceShell = $("workspace-shell");
+  const loginForm = $("login-form");
+  const loginUsername = $("login-username");
+  const loginPassword = $("login-password");
+  const loginError = $("login-error");
+  const loginDomainList = $("login-domain-list");
+  const logoutBtn = $("logout-btn");
+  const currentUserName = $("current-user-name");
+  const currentUserRole = $("current-user-role");
+
   const input = $("query-input");
   const submit = $("query-submit");
   const clearBtn = $("clear-btn");
@@ -102,8 +113,7 @@
   const routedText = $("routed-text");
 
   const progressBox = $("progress-box");
-  const progressFill = $("progress-fill");
-  const progressStageText = $("progress-stage-text");
+  const processLog = $("process-log");
 
   const clarifyBox = $("clarify-box");
   const clarifyMsg = $("clarify-msg");
@@ -132,6 +142,7 @@
   const emptyHint = $("empty-hint");
 
   const suggestionList = $("suggestion-list");
+  const suggestionRoleLabel = $("suggestion-role-label");
   const historyList = $("history-list");
   const historyEmpty = $("history-empty");
   const historyClearBtn = $("history-clear-btn");
@@ -176,6 +187,27 @@
   const debugQuestion = $("debug-question");
   const debugRunBtn = $("debug-run-btn");
   const debugSteps = $("debug-steps");
+  const dashboardRefreshBtn = $("dashboard-refresh-btn");
+  const dashboardCardGrid = $("dashboard-card-grid");
+  const dashboardStudentsBars = $("dashboard-students-bars");
+  const dashboardScoreBars = $("dashboard-score-bars");
+  const dashboardQualityBody = $("dashboard-quality-body");
+  const dashboardLowScoreBody = $("dashboard-low-score-body");
+  const dashboardFailRateBody = $("dashboard-fail-rate-body");
+  const dashboardWorkloadBody = $("dashboard-workload-body");
+  const domainRefreshBtn = $("domain-refresh-btn");
+  const domainCurrent = $("domain-current");
+  const domainGrid = $("domain-grid");
+  const domainRoleBody = $("domain-role-body");
+  const roleRefreshBtn = $("role-refresh-btn");
+  const roleCardGrid = $("role-card-grid");
+  const roleUserBody = $("role-user-body");
+  const passwordForm = $("password-form");
+  const passwordAccount = $("password-account");
+  const oldPassword = $("old-password");
+  const newPassword = $("new-password");
+  const confirmPassword = $("confirm-password");
+  const passwordMessage = $("password-message");
 
   const HISTORY_KEY = "nl2sql.history.v1";
   const QUERY_LOG_KEY = "nl2sql.queryLog.v1";
@@ -188,6 +220,8 @@
   const MAX_HISTORY_TURNS = 5;
   const MAX_GLOSSARY = 50;
   const MAX_QUERY_LOG = 20;
+  const AUTH_TOKEN_KEY = "nl2sql.auth.token";
+  const AUTH_USER_KEY = "nl2sql.auth.user";
 
   // 会话首轮路由选定的数据源;多轮追问复用它,避免串库。新会话/手动切换时重置。
   let conversationSource = null;
@@ -206,6 +240,9 @@
   let selectedKb = "auto";
   let lastTrace = null;
   let activeSchemaTable = "";
+  let dashboardCache = null;
+  let currentUser = null;
+  let domainSettingsCache = null;
 
   /* ---------------- helpers ---------------- */
 
@@ -231,7 +268,225 @@
       .replace(/'/g, "&#39;");
   }
 
+  function hasFeature(feature) {
+    return !!currentUser && Array.isArray(currentUser.features) && currentUser.features.includes(feature);
+  }
+
+  function applyUserUi() {
+    if (!currentUser) return;
+    if (currentUserName) currentUserName.textContent = currentUser.display_name || currentUser.username || "演示用户";
+    if (currentUserRole) currentUserRole.textContent = `${currentUser.role_label || "角色"} · ${currentUser.domain_items?.length || 0} 个业务域`;
+    const featureMap = {
+      "dashboard-view": "dashboard",
+      "assistant-view": "ask",
+      "kb-list-view": "knowledge",
+      "kb-overview-view": "knowledge",
+      "schema-console-view": "schema",
+      "debug-view": "schema",
+      "governance-queue-view": "governance",
+      "governance-settings-view": "governance",
+      "domain-settings-view": "domain_settings",
+      "role-management-view": "role_management",
+    };
+    document.querySelectorAll("[data-view-target]").forEach((btn) => {
+      const feature = featureMap[btn.dataset.viewTarget];
+      if (feature) btn.classList.toggle("hidden", !hasFeature(feature));
+    });
+  }
+
+  function showLogin() {
+    if (loginScreen) loginScreen.classList.remove("hidden");
+    if (workspaceShell) workspaceShell.classList.add("app-locked");
+  }
+
+  function showWorkspace() {
+    if (loginScreen) loginScreen.classList.add("hidden");
+    if (workspaceShell) workspaceShell.classList.remove("app-locked");
+  }
+
+  function formatNumber(value, digits) {
+    const num = Number(value || 0);
+    if (digits != null) return num.toFixed(digits);
+    return new Intl.NumberFormat("zh-CN").format(num);
+  }
+
+  function pctText(value) {
+    return `${formatNumber(value, 2)}%`;
+  }
+
+  function renderDashboardCard(label, value, sub) {
+    const div = document.createElement("div");
+    div.className = "dashboard-card";
+    div.innerHTML = `<span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b><small>${escapeHtml(sub || "")}</small>`;
+    return div;
+  }
+
+  function renderDashboardBars(el, items, options) {
+    if (!el) return;
+    const rows = Array.isArray(items) ? items : [];
+    const max = Math.max(1, ...rows.map((x) => Number(x.value || 0)));
+    el.innerHTML = "";
+    rows.forEach((item) => {
+      const value = Number(item.value || 0);
+      const row = document.createElement("div");
+      row.className = "dashboard-bar-row";
+      row.innerHTML = `
+        <div class="dashboard-bar-meta">
+          <span>${escapeHtml(item.label || "")}</span>
+          <b>${escapeHtml(options && options.percent ? pctText(value) : formatNumber(value))}</b>
+        </div>
+        <div class="dashboard-bar-track"><i style="width:${Math.max(3, value / max * 100)}%"></i></div>
+      `;
+      el.appendChild(row);
+    });
+  }
+
+  function renderDashboardTable(tbodyEl, rows, columns) {
+    if (!tbodyEl) return;
+    tbodyEl.innerHTML = "";
+    (rows || []).forEach((row) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = columns.map((col) => {
+        const raw = typeof col.value === "function" ? col.value(row) : row[col.key];
+        const value = col.percent ? pctText(raw) : (col.number ? formatNumber(raw, col.digits) : raw);
+        return `<td class="${col.align === "right" ? "num" : ""}">${escapeHtml(value == null ? "" : value)}</td>`;
+      }).join("");
+      tbodyEl.appendChild(tr);
+    });
+  }
+
+  function renderDashboard(data) {
+    if (!dashboardCardGrid || !data) return;
+    const c = data.cards || {};
+    dashboardCardGrid.innerHTML = "";
+    [
+      ["在读学生", formatNumber(c.active_students), "默认 active 学籍"],
+      ["教师数量", formatNumber(c.teacher_count), "覆盖全部学院"],
+      ["课程数量", formatNumber(c.course_count), "含必修/选修/通识"],
+      ["本学期开课", formatNumber(c.current_classes), "2025 春季学期"],
+      ["本学期选课", formatNumber(c.current_enrollments), "选课记录数"],
+      ["平均成绩", formatNumber(c.avg_score, 2), "总评成绩"],
+      ["及格率", pctText(c.pass_rate), "final_score >= 60"],
+      ["挂科率", pctText(c.fail_rate), "final_score < 60"],
+    ].filter(([label]) => {
+      const keyMap = {"在读学生":"active_students","教师数量":"teacher_count","课程数量":"course_count","本学期开课":"current_classes","本学期选课":"current_enrollments","平均成绩":"avg_score","及格率":"pass_rate","挂科率":"fail_rate"};
+      return Object.prototype.hasOwnProperty.call(c, keyMap[label]);
+    }).forEach(([label, value, sub]) => dashboardCardGrid.appendChild(renderDashboardCard(label, value, sub)));
+
+    renderDashboardBars(dashboardStudentsBars, data.students_by_college || []);
+    renderDashboardBars(dashboardScoreBars, data.score_distribution || []);
+    renderDashboardTable(dashboardQualityBody, data.college_quality || [], [
+      { key: "college_name" },
+      { key: "avg_score", number: true, digits: 2, align: "right" },
+      { key: "fail_rate", percent: true, align: "right" },
+    ]);
+    renderDashboardTable(dashboardLowScoreBody, data.low_score_courses || [], [
+      { key: "course_name" },
+      { key: "avg_score", number: true, digits: 2, align: "right" },
+      { key: "enrollment_count", number: true, align: "right" },
+    ]);
+    renderDashboardTable(dashboardFailRateBody, data.fail_rate_courses || [], [
+      { key: "course_name" },
+      { key: "fail_rate", percent: true, align: "right" },
+      { key: "enrollment_count", number: true, align: "right" },
+    ]);
+    renderDashboardTable(dashboardWorkloadBody, data.teacher_workload || [], [
+      { key: "teacher_name" },
+      { key: "teaching_class_count", number: true, align: "right" },
+      { key: "enrollment_count", number: true, align: "right" },
+    ]);
+  }
+
+  async function loadDashboard(force) {
+    if (!force && dashboardCache) {
+      renderDashboard(dashboardCache);
+      return dashboardCache;
+    }
+    if (dashboardCardGrid) {
+      dashboardCardGrid.innerHTML = '<div class="dashboard-loading">正在加载教学数据总览...</div>';
+    }
+    try {
+      dashboardCache = await api.teachingDashboard();
+      renderDashboard(dashboardCache);
+    } catch (err) {
+      if (dashboardCardGrid) {
+        dashboardCardGrid.innerHTML = `<div class="dashboard-loading is-error">教学数据总览加载失败: ${escapeHtml(err.message || err)}</div>`;
+      }
+    }
+    return dashboardCache;
+  }
+
+  function renderDomainSettings(data) {
+    if (!domainCurrent || !domainGrid || !domainRoleBody || !data) return;
+    const user = data.current_user || currentUser || {};
+    const userDomains = user.domain_items || [];
+    domainCurrent.innerHTML = `
+      <b>${escapeHtml(user.display_name || "当前用户")} · ${escapeHtml(user.role_label || "")}</b>
+      <span>当前可访问业务域：${escapeHtml(userDomains.map((d) => d.label).join("、") || "无")}；可访问表：${escapeHtml((user.allowed_tables || []).join(", ") || "无")}</span>
+    `;
+    domainGrid.innerHTML = "";
+    (data.domains || []).forEach((domain) => {
+      const active = (user.domains || []).includes(domain.name);
+      const card = document.createElement("div");
+      card.className = "domain-card";
+      card.innerHTML = `
+        <b>${active ? "已授权 · " : ""}${escapeHtml(domain.label)}</b>
+        <span>${escapeHtml(domain.description || "")}</span>
+        <span>表：${escapeHtml((domain.tables || []).join(", "))}</span>
+      `;
+      domainGrid.appendChild(card);
+    });
+    domainRoleBody.innerHTML = "";
+    (data.roles || []).forEach((role) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(role.label)}</td>
+        <td>${escapeHtml((role.domain_items || []).map((d) => d.label).join("、"))}</td>
+        <td>${escapeHtml((role.tables || []).join(", "))}</td>
+      `;
+      domainRoleBody.appendChild(tr);
+    });
+  }
+
+  function renderRoleManagement(data) {
+    if (!roleUserBody || !data) return;
+    if (roleCardGrid) roleCardGrid.innerHTML = "";
+    if (passwordAccount && currentUser) {
+      passwordAccount.value = `${currentUser.username} · ${currentUser.display_name || ""} · ${currentUser.role_label || ""}`;
+    }
+    roleUserBody.innerHTML = "";
+    (data.users || []).forEach((user) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(user.username)}</td>
+        <td>${escapeHtml(user.display_name)}</td>
+        <td>${escapeHtml(user.role_label)}</td>
+        <td>${escapeHtml(user.description || "")}</td>
+      `;
+      roleUserBody.appendChild(tr);
+    });
+  }
+
+  async function loadDomainSettings(force) {
+    if (!force && domainSettingsCache) {
+      renderDomainSettings(domainSettingsCache);
+      return domainSettingsCache;
+    }
+    try {
+      domainSettingsCache = await api.businessDomains();
+      renderDomainSettings(domainSettingsCache);
+      renderRoleManagement(domainSettingsCache);
+    } catch {
+      if (domainCurrent) domainCurrent.innerHTML = "<b>权限加载失败</b><span>请重新登录后再试。</span>";
+    }
+    return domainSettingsCache;
+  }
+
   function showView(id) {
+    const trigger = document.querySelector(`[data-view-target="${id}"]`);
+    if (trigger && trigger.classList.contains("hidden")) {
+      id = hasFeature("dashboard") ? "dashboard-view" : "assistant-view";
+    }
     workViews.forEach((view) => view.classList.toggle("active", view.id === id));
     navTargets.forEach((btn) => {
       if (!btn.classList.contains("side-nav-item")) return;
@@ -243,12 +498,15 @@
       breadcrumb.textContent = view.dataset.breadcrumb || "智能问数";
     }
     if (id === "kb-list-view") renderKbList();
+    if (id === "dashboard-view") loadDashboard();
     if (id === "kb-overview-view") {
       loadFeedback(currentKbSource()).then(() => renderKbOverview());
       renderKbOverview();
     }
     if (id === "schema-console-view") renderSchemaConsole();
     if (id === "debug-view") renderDebugSteps();
+    if (id === "domain-settings-view") loadDomainSettings();
+    if (id === "role-management-view") loadDomainSettings();
     if (id === "governance-queue-view" && governanceView) governanceView.renderQueue();
     if (id === "governance-settings-view" && governanceView) governanceView.renderSettings();
   }
@@ -669,7 +927,7 @@
         <div class="field-card-grid">
           <label>
             <span>业务名</span>
-            <input class="table-profile-input" data-profile-field="business_name" value="${escapeHtml(tableProfile.business_name || "")}" placeholder="例如: 订单" />
+            <input class="table-profile-input" data-profile-field="business_name" value="${escapeHtml(tableProfile.business_name || "")}" placeholder="例如: 学生 / 课程 / 成绩" />
           </label>
           <label class="wide">
             <span>表说明</span>
@@ -677,7 +935,7 @@
           </label>
           <label class="wide">
             <span>表粒度</span>
-            <input class="table-profile-input" data-profile-field="grain" value="${escapeHtml(tableProfile.grain || "")}" placeholder="例如: 一行代表一笔订单" />
+            <input class="table-profile-input" data-profile-field="grain" value="${escapeHtml(tableProfile.grain || "")}" placeholder="例如: 一行代表一名学生或一条选课记录" />
           </label>
           <label>
             <span>默认时间字段</span>
@@ -741,7 +999,7 @@
         <div class="field-card-grid">
           <label>
             <span>中文名 / 别名</span>
-            <input class="field-meta-input" data-meta-field="business_name" value="${escapeHtml(aliasText)}" placeholder="例如: 订单金额" />
+            <input class="field-meta-input" data-meta-field="business_name" value="${escapeHtml(aliasText)}" placeholder="例如: 总评成绩 / 学院名称" />
           </label>
           <label class="wide">
             <span>业务描述</span>
@@ -812,7 +1070,7 @@
       add.addEventListener("click", async () => {
         const name = prompt("指标名称", "新指标");
         if (!name) return;
-        const formula = prompt("指标公式", "已支付订单的订单金额求和");
+        const formula = prompt("指标公式", "挂科人数 / 选课人数");
         if (!formula) return;
         const next = JSON.parse(JSON.stringify(currentProfile(src)));
         next.metrics = next.metrics || {};
@@ -985,7 +1243,7 @@
     if (!src || !text) return;
     const m = text.match(/^\s*([A-Za-z_][\w]*\.[A-Za-z_][\w]*)\s*=\s*([A-Za-z_][\w]*\.[A-Za-z_][\w]*)(?:\s*[;·]\s*(.*))?$/);
     if (!m) {
-      alert("关系格式示例: orders.user_id = users.id");
+      alert("关系格式示例: enrollment.student_id = student.id");
       return;
     }
     const next = JSON.parse(JSON.stringify(currentProfile(src)));
@@ -1283,39 +1541,65 @@
       historyList.appendChild(row);
     });
   }
-
   const SUGGESTIONS = {
-    demo_sqlite: [
-      "2025 年订单总金额是多少？",
-      "销量前 5 的商品有哪些？",
-      "按城市拆分 2025 年订单金额",
-      "平均评分最高的 5 个商品，至少 10 条评价",
+    admin: [
+      "各学院学生人数是多少？",
+      "2025 年春季学期挂科率最高的 5 门课程是什么？",
+      "统计每位教师的授课班级数和选课学生人次。",
+      "教学评价分最高的 10 位教师是谁？",
+      "各学院平均成绩和挂科率是多少？",
+      "本学期开设了多少门课程？",
     ],
-    financial: [
-      "交易后才出对账单的账户有多少个？",
-      "按地区统计客户数量",
-      "平均工资大于 8000 的地区有哪些？",
+    academic_office: [
+      "各学院在读学生人数是多少？",
+      "2025 年春季学期选课人数最多的 10 门课程是什么？",
+      "哪些课程的平均分低于 70？",
+      "各课程类型的平均成绩是多少？",
+      "各学院课程开设数量是多少？",
+      "2025 年春季学期各课程挂科率是多少？",
     ],
-    superhero: [
-      "拥有 Super Strength 且身高超过 200cm 的超级英雄有多少个？",
-      "列出蓝眼睛且金色头发的超级英雄名字",
-      "Marvel Comics 旗下英雄按身高排名",
+    college_manager: [
+      "本学院课程平均成绩排名前 10 的课程有哪些？",
+      "本学院课程挂科率最高的 5 门课程是什么？",
+      "本学院本学期开设了多少个教学班？",
+      "本学院各课程类型的选课人次是多少？",
+      "本学院教学评价平均分最高的课程有哪些？",
+      "本学院低于 70 分的课程有哪些？",
     ],
-    european_football_2: [
-      "2016 赛季进球总数最多的联赛是哪一个？",
-      "苏格兰超级联赛 2010 赛季客场胜场最多的球队是哪支？",
+    teacher: [
+      "我负责课程的平均成绩是多少？",
+      "我负责课程的挂科率是多少？",
+      "我负责的教学班选课人次是多少？",
+      "我负责课程的成绩分布是什么？",
+      "我负责课程的教学评价平均分是多少？",
+      "我负责课程中平均分低于 70 的课程有哪些？",
     ],
-    formula_1: [
-      "第 592 场比赛中完赛车手里年龄最大的是谁？",
-      "按车队统计完赛次数",
+    student: [
+      "我本学期选择了哪些课程？",
+      "我各门课程的成绩是多少？",
+      "我已完成课程的平均成绩是多少？",
+      "我课程的成绩分布是什么？",
+      "我可以评价哪些课程？",
+      "我选修课和必修课分别有多少门？",
+    ],
+    teaching: [
+      "各学院学生人数是多少？",
+      "2025 年春季学期挂科率最高的 5 门课程是什么？",
+      "哪些课程的平均分低于 70？",
+      "各学院平均成绩和挂科率是多少？",
+      "2025 年春季学期选课人数最多的 10 门课程是什么？",
+      "本学期开设了多少门课程？",
     ],
     auto: [
-      "2025 年销售额最高的 5 个商品是什么？",
-      "按地区统计用户数量",
-      "最近一年每个月的订单金额趋势",
-      "数量最多的是哪一个？",
+      "各学院学生人数是多少？",
+      "本学期开设了多少门课程？",
+      "2025 年春季学期选课人数最多的 10 门课程是什么？",
+      "各学院平均成绩和挂科率是多少？",
+      "哪些课程的平均分低于 70？",
+      "2025 年春季学期各课程挂科率是多少？",
     ],
   };
+
 
   function suggestionSource() {
     return manualSource() || conversationSource || "auto";
@@ -1324,7 +1608,11 @@
   function renderSuggestions() {
     if (!suggestionList) return;
     const src = suggestionSource();
-    const list = SUGGESTIONS[src] || SUGGESTIONS.auto;
+    const role = currentUser && currentUser.role;
+    const list = SUGGESTIONS[role] || SUGGESTIONS[src] || SUGGESTIONS.auto;
+    if (suggestionRoleLabel) {
+      suggestionRoleLabel.textContent = currentUser ? `· ${currentUser.role_label}` : "";
+    }
     suggestionList.innerHTML = "";
     list.forEach((text) => {
       const btn = document.createElement("button");
@@ -1473,6 +1761,7 @@
         if (!pending.isConnected) return;
         if (typeof jd.confidence === "number") {
           pending.outerHTML = confidenceBadge(jd.confidence, jd.confidence_detail);
+          appendProcessLog(`可信度评估完成: ${jd.confidence}%。`, "done");
           queueLowConfidenceIfNeeded(data, jd.confidence, jd.confidence_detail);
           return;
         }
@@ -1480,24 +1769,28 @@
           pending.className = "confidence conf-pending";
           pending.title = "裁判模型调用失败或输出无法解析,不影响本次查询结果";
           pending.textContent = "可信度评估失败";
+          appendProcessLog("可信度评估失败,不影响当前查询结果。", "failed");
           return;
         }
         if (jd.status === "missing") {
           pending.className = "confidence conf-pending";
           pending.title = "评估任务已过期或服务重启后丢失,不影响本次查询结果";
           pending.textContent = "可信度评估过期";
+          appendProcessLog("可信度评估任务已过期,查询结果仍可使用。", "failed");
           return;
         }
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
       pending.className = "confidence conf-pending";
       pending.title = "裁判模型仍未返回,可能是模型响应慢或网络较慢;不影响本次查询结果";
       pending.textContent = "可信度评估仍在后台运行";
+      appendProcessLog("可信度评估仍在后台运行,你可以先查看当前查询结果。", "active");
     } catch (e) {
       if (!pending.isConnected) return;
       pending.className = "confidence conf-pending";
       pending.title = "可信度评估请求失败,不影响本次查询结果";
       pending.textContent = "可信度评估失败";
+      appendProcessLog("可信度评估请求失败,不影响当前查询结果。", "failed");
     }
   }
 
@@ -1562,16 +1855,6 @@
       saved_at: new Date().toISOString(),
     };
     writeJsonList(SAVED_QUERY_KEY, [item, ...saved.filter((x) => x.id !== item.id)].slice(0, 50));
-    if (item.source) {
-      saveStandardExample(item.source, {
-        id: item.id,
-        question: item.question,
-        sql: item.sql,
-        source_label: item.source_label,
-        enabled: true,
-        tags: ["confirmed"],
-      }).then(() => renderSavedExamples(item.source)).catch(() => {});
-    }
     renderKbList();
     renderKbOverview();
     if (saveQueryBtn) {
@@ -1600,32 +1883,62 @@
     try {
       const saved = await api.saveFeedback(item);
       feedbackCache = [saved.item, ...feedbackCache.filter((x) => x.id !== saved.item.id)];
+      currentResult.feedback = saved.item;
+      currentResult.feedbackKind = kind;
     } catch {}
     renderKbOverview();
+    updateFeedbackButtons();
   }
 
-  function confirmCurrentResult() {
-    if (!currentResult) return;
-    const item = saveCurrentQuery();
-    saveFeedback("correct", "用户确认结果正确", "confirmed");
+  async function clearCurrentFeedback() {
+    if (!currentResult || !currentResult.feedback) return;
+    const id = currentResult.feedback.id;
+    currentResult.feedback = null;
+    currentResult.feedbackKind = "";
+    feedbackCache = feedbackCache.filter((x) => x.id !== id);
+    try { await api.deleteFeedback(id); } catch {}
+    renderKbOverview();
+    updateFeedbackButtons();
+  }
+
+  function updateFeedbackButtons() {
+    const kind = currentResult && currentResult.feedbackKind;
     if (confirmGoodBtn) {
-      const old = confirmGoodBtn.textContent;
-      confirmGoodBtn.textContent = item ? "已沉淀为样例" : "已确认";
-      setTimeout(() => { confirmGoodBtn.textContent = old; }, 1500);
+      confirmGoodBtn.classList.toggle("active", kind === "correct");
+      confirmGoodBtn.textContent = kind === "correct" ? "取消点赞" : "结果正确";
+      confirmGoodBtn.title = kind === "correct" ? "已提交用例沉淀审核，再次点击可取消" : "提交到治理队列，审核通过后沉淀为标准样例";
+    }
+    if (reportBadBtn) {
+      reportBadBtn.classList.toggle("active", kind === "incorrect");
+      reportBadBtn.textContent = kind === "incorrect" ? "取消点踩" : "反馈错误";
     }
   }
 
-  function reportCurrentResult() {
+  async function confirmCurrentResult() {
     if (!currentResult) return;
+    if (currentResult.feedbackKind === "correct") {
+      await clearCurrentFeedback();
+      return;
+    }
+    if (currentResult.feedbackKind === "incorrect") {
+      await clearCurrentFeedback();
+    }
+    await saveFeedback("correct", "用户确认结果正确，建议沉淀为标准问法样例", "confirmed_example");
+  }
+
+  async function reportCurrentResult() {
+    if (!currentResult) return;
+    if (currentResult.feedbackKind === "incorrect") {
+      await clearCurrentFeedback();
+      return;
+    }
     const reason = prompt("请简要说明哪里不对: 口径不对 / 字段选错 / 过滤条件错 / 数据源错 / 其他", "");
     if (reason == null) return;
     const category = prompt("错误类型(可选): 选错库 / 字段理解错 / JOIN错 / 过滤条件错 / 指标口径错 / 结果看不懂", "") || "";
-    saveFeedback("incorrect", reason.trim(), category.trim());
-    if (reportBadBtn) {
-      const old = reportBadBtn.textContent;
-      reportBadBtn.textContent = "已记录";
-      setTimeout(() => { reportBadBtn.textContent = old; }, 1500);
+    if (currentResult.feedbackKind === "correct") {
+      await clearCurrentFeedback();
     }
+    await saveFeedback("incorrect", reason.trim(), category.trim());
   }
 
   function textTokens(text) {
@@ -1889,14 +2202,14 @@
     // 第一项始终是「自动识别」(value 为空 => 后端按问题路由)
     sourceTags.innerHTML = "";
     const autoTag = document.createElement("span");
-    autoTag.className = "source-tag active";
+    autoTag.className = `source-tag${selectedSource ? "" : " active"}`;
     autoTag.dataset.src = "";
     autoTag.textContent = "🤖 自动识别";
     sourceTags.appendChild(autoTag);
 
     for (const s of sources) {
       const tag = document.createElement("span");
-      tag.className = "source-tag";
+      tag.className = `source-tag${selectedSource === s.name ? " active" : ""}`;
       tag.dataset.src = s.name;
       tag.textContent = `${s.label} · ${s.dialect}`;
       sourceTags.appendChild(tag);
@@ -1922,10 +2235,75 @@
     });
   }
 
+  async function loadAuthOptions() {
+    try {
+      const data = await api.authOptions();
+      if (loginDomainList) {
+        loginDomainList.innerHTML = "";
+        (data.users || []).forEach((user) => {
+          const card = document.createElement("div");
+          card.className = "login-domain-card";
+          card.innerHTML = `
+            <b>${escapeHtml(user.display_name)} · ${escapeHtml(user.role_label)}</b>
+            <span>${escapeHtml(user.description || "")}</span>
+            <code>${escapeHtml(user.username)} / 123456</code>
+          `;
+          loginDomainList.appendChild(card);
+        });
+      }
+    } catch {
+      if (loginError) loginError.textContent = "登录选项加载失败，请确认后端服务已启动。";
+    }
+  }
+
+  function setAuthSession(payload) {
+    currentUser = payload.user;
+    localStorage.setItem(AUTH_TOKEN_KEY, payload.token);
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(payload.user || {}));
+    dashboardCache = null;
+    domainSettingsCache = null;
+    schemaCache = {};
+    profileCache = {};
+    qualityCache = {};
+    standardExamplesCache = {};
+    profileVersionsCache = {};
+    conversationSource = null;
+    selectedSource = "teaching";
+    selectedKb = "teaching";
+    applyUserUi();
+    showWorkspace();
+  }
+
+  async function restoreAuthSession() {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (!token) return false;
+    try {
+      const payload = await api.session();
+      setAuthSession(payload);
+      return true;
+    } catch {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_USER_KEY);
+      return false;
+    }
+  }
+
+  async function bootWorkspace() {
+    applyUserUi();
+    await loadSources();
+    await loadDashboard(true);
+    await loadDomainSettings(true);
+    showView(hasFeature("dashboard") ? "dashboard-view" : "assistant-view");
+  }
+
   async function loadSources() {
     try {
       const data = await api.sources();
       availableSources = data.sources || [];
+      if (!selectedSource && availableSources.some((s) => s.name === "teaching")) {
+        selectedSource = "teaching";
+        selectedKb = "teaching";
+      }
       renderSourceTags(availableSources);
       if (governanceView) governanceView.renderSourceOptions();
       renderSuggestions();
@@ -1940,20 +2318,27 @@
     }
   }
 
-  /* ---------------- progress ---------------- */
-  // 后端是一次性返回(不逐阶段推送),这里按真实流水线阶段做"乐观"进度:
-  // 分阶段推进、填到约 88%,响应一到补满 100% 收起。自动模式多一个"判断数据源"阶段。
+  /* ---------------- process log ---------------- */
+  // 后端当前不是流式返回,这里按真实流水线阶段追加过程日志,让用户知道系统还在推进。
   let progressTimers = [];
   const PROGRESS_AUTO = [
-    { text: "正在判断数据源…", pct: 18 },
-    { text: "检索相关表与字段…", pct: 44 },
-    { text: "生成 SQL…", pct: 72 },
-    { text: "执行查询…", pct: 88 },
+    "接收问题,准备识别可用数据源和当前角色权限。",
+    "根据问题和会话上下文判断要查询的教学数据域。",
+    "读取当前账号的数据范围,过滤不可访问的表和敏感字段。",
+    "检索相关表、字段、指标口径和业务术语。",
+    "组织数据库结构上下文,准备生成查询语句。",
+    "正在调用模型生成 SQL,同时进行安全约束检查。",
+    "如果 SQL 校验未通过,系统会自动尝试修复一次。",
+    "正在只读执行查询,并限制最大返回行数。",
   ];
   const PROGRESS_MANUAL = [
-    { text: "检索相关表与字段…", pct: 32 },
-    { text: "生成 SQL…", pct: 70 },
-    { text: "执行查询…", pct: 88 },
+    "接收问题,使用当前手动选择的数据源。",
+    "读取当前账号的数据范围,过滤不可访问的表和敏感字段。",
+    "检索相关表、字段、指标口径和业务术语。",
+    "组织数据库结构上下文,准备生成查询语句。",
+    "正在调用模型生成 SQL,同时进行安全约束检查。",
+    "如果 SQL 校验未通过,系统会自动尝试修复一次。",
+    "正在只读执行查询,并限制最大返回行数。",
   ];
 
   function clearProgressTimers() {
@@ -1961,42 +2346,44 @@
     progressTimers = [];
   }
 
+  function appendProcessLog(text, kind) {
+    if (!processLog) return;
+    const row = document.createElement("div");
+    row.className = `process-line ${kind || ""}`.trim();
+    const time = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+    row.innerHTML = `<span>${escapeHtml(time)}</span><b>${escapeHtml(text)}</b>`;
+    processLog.appendChild(row);
+    processLog.scrollTop = processLog.scrollHeight;
+  }
+
   function startProgress(isAuto) {
     clearProgressTimers();
     const stages = isAuto ? PROGRESS_AUTO : PROGRESS_MANUAL;
-    progressBox.classList.remove("done");
-    progressFill.style.transition = "none";
-    progressFill.style.width = "0%";
+    if (processLog) processLog.innerHTML = "";
+    progressBox.classList.remove("done", "failed");
     show(progressBox);
-    void progressFill.offsetWidth;          // 强制重排,让 0% 先落地再开始过渡
-    progressFill.style.transition = "";
-    let delay = 120;
-    stages.forEach((st, i) => {
+    appendProcessLog("已提交查询,系统开始处理。", "active");
+    let delay = 260;
+    stages.forEach((text, i) => {
       progressTimers.push(setTimeout(() => {
-        progressStageText.textContent = st.text;
-        progressFill.style.width = st.pct + "%";
+        appendProcessLog(text, "active");
       }, delay));
-      delay += 550 + i * 450;               // 越往后阶段越慢(生成 SQL 最耗时)
+      delay += 850 + i * 260;
     });
   }
 
   function finishProgress() {
     clearProgressTimers();
-    progressStageText.textContent = "完成";
     progressBox.classList.add("done");
-    progressFill.style.width = "100%";
-    progressTimers.push(setTimeout(() => {
-      hide(progressBox);
-      progressFill.style.width = "0%";
-      progressBox.classList.remove("done");
-    }, 480));
+    appendProcessLog("查询执行完成,正在渲染结果。", "done");
   }
 
   function failProgress() {
     clearProgressTimers();
-    hide(progressBox);
-    progressFill.style.width = "0%";
-    progressBox.classList.remove("done");
+    if (progressBox && !progressBox.hidden) {
+      progressBox.classList.add("failed");
+      appendProcessLog("流程已停止,请查看错误提示。", "failed");
+    }
   }
 
   /* ---------------- query ---------------- */
@@ -2027,6 +2414,9 @@
 
       // 透明展示本次实际使用的数据源
       showRoutedSource(data);
+      if (data.source_label || data.source) {
+        appendProcessLog(`已确定数据源: ${data.source_label || data.source}${data.auto_routed ? "（自动路由）" : "（手动选择）"}。`, "done");
+      }
       if (data.source) {
         // 自动路由切换了数据源 => 换库即换话题,清掉旧库的历史,避免把上一个库的问答
         // 当上下文喂给新库(跨库上下文污染)。同库追问不受影响。
@@ -2041,6 +2431,7 @@
       }
 
       if (data.clarify) {
+        appendProcessLog("模型判断还需要补充信息,已暂停执行并等待澄清。", "failed");
         // 澄清时彻底清掉上一轮的 SQL/结果内容,避免和澄清卡片并存(连隐藏的 DOM 残留也清)
         sqlBlock.classList.remove("visible");
         resultWrap.classList.remove("visible");
@@ -2059,18 +2450,23 @@
       }
 
       if (data.sql) {
+        appendProcessLog("SQL 已生成并通过安全校验,准备展示执行语句。", "done");
         sqlCode.innerHTML = highlightSQL(data.sql);
         sqlBlock.classList.add("visible");
       }
 
       if (data.error) {
+        appendProcessLog(`执行返回错误: ${data.error}`, "failed");
         errorMsg.textContent = data.error;
         show(errorBox);
       } else {
         renderMeta(data);
         const rowCount = typeof data.row_count === "number" ? data.row_count : (data.rows || []).length;
+        appendProcessLog(`查询完成,返回 ${rowCount} 行,耗时 ${data.elapsed_ms || 0} ms。`, "done");
+        if (data.judge_id) appendProcessLog("可信度评估已提交后台,结果出来后会自动补充。", "active");
         if (resultTitle) resultTitle.textContent = `查询结果 · ${rowCount} 行`;
-        currentResult = { ...data, question, id: String(Date.now()) };
+        currentResult = { ...data, question, id: String(Date.now()), feedback: null, feedbackKind: "" };
+        updateFeedbackButtons();
         lastTrace = {
           question,
           source: data.source,
@@ -2116,6 +2512,7 @@
       }
     } catch (err) {
       failProgress();
+      appendProcessLog(`请求失败: ${err.message}`, "failed");
       errorMsg.textContent = `请求失败: ${err.message}`;
       show(errorBox);
     } finally {
@@ -2214,12 +2611,79 @@
   glossaryInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); addGlossaryEntry(); }
   });
+  if (dashboardRefreshBtn) dashboardRefreshBtn.addEventListener("click", () => loadDashboard(true));
+  if (domainRefreshBtn) domainRefreshBtn.addEventListener("click", () => loadDomainSettings(true));
+  if (roleRefreshBtn) roleRefreshBtn.addEventListener("click", () => loadDomainSettings(true));
+  if (passwordForm) {
+    passwordForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (passwordMessage) passwordMessage.textContent = "";
+      const oldValue = oldPassword ? oldPassword.value : "";
+      const newValue = newPassword ? newPassword.value : "";
+      const confirmValue = confirmPassword ? confirmPassword.value : "";
+      if (!oldValue || !newValue || !confirmValue) {
+        if (passwordMessage) passwordMessage.textContent = "请完整填写原密码和新密码。";
+        return;
+      }
+      if (newValue !== confirmValue) {
+        if (passwordMessage) passwordMessage.textContent = "两次输入的新密码不一致。";
+        return;
+      }
+      try {
+        await api.changePassword({ old_password: oldValue, new_password: newValue });
+        if (passwordMessage) passwordMessage.textContent = "密码已修改，请使用新密码重新登录。";
+        setTimeout(() => {
+          localStorage.removeItem(AUTH_TOKEN_KEY);
+          localStorage.removeItem(AUTH_USER_KEY);
+          currentUser = null;
+          showLogin();
+          if (loginUsername && passwordAccount) loginUsername.value = (passwordAccount.value.split("·")[0] || "").trim();
+          if (loginPassword) loginPassword.value = "";
+        }, 700);
+      } catch (err) {
+        if (passwordMessage) passwordMessage.textContent = err.message || "密码修改失败";
+      }
+    });
+  }
+  if (loginForm) {
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (loginError) loginError.textContent = "";
+      try {
+        const payload = await api.login({
+          username: (loginUsername && loginUsername.value || "").trim(),
+          password: loginPassword.value || "",
+        });
+        setAuthSession(payload);
+        await bootWorkspace();
+      } catch (err) {
+        if (loginError) loginError.textContent = err.message || "登录失败";
+      }
+    });
+  }
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", () => {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_USER_KEY);
+      clearHistory();
+      currentUser = null;
+      conversationSource = null;
+      dashboardCache = null;
+      domainSettingsCache = null;
+      showLogin();
+    });
+  }
 
   /* ---------------- init ---------------- */
 
   (async () => {
-    await loadSources();
-    await loadSchema();
+    showLogin();
+    await loadAuthOptions();
+    const restored = await restoreAuthSession();
+    if (restored) {
+      await bootWorkspace();
+      await loadSchema();
+    }
     updateHistoryBadge();
     renderQueryLog();
     renderSuggestions();
@@ -2228,6 +2692,6 @@
     renderKbOverview();
     renderSchemaConsole();
     renderDebugSteps();
-    showView("assistant-view");
+    if (restored) showView(hasFeature("dashboard") ? "dashboard-view" : "assistant-view");
   })();
 })();

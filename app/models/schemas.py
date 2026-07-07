@@ -32,6 +32,16 @@ class AskRequest(BaseModel):
                                             description="用户收藏的样例 SQL,后端按本次数据源筛选后作为 few-shot 注入")
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=80)
+    password: str = Field(..., min_length=1, max_length=80)
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1, max_length=80)
+    new_password: str = Field(..., min_length=6, max_length=32)
+
+
 class SourceInfo(BaseModel):
     name: str
     label: str

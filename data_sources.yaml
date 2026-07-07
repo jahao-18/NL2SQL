@@ -6,11 +6,11 @@
 # glossary 是相对项目根的 markdown 文件路径,可缺省。
 
 sources:
-  - name: demo_sqlite
-    label: 示例电商 (SQLite)
-    url: sqlite:///data/app.db
-    glossary: data/glossaries/demo_sqlite.md
-    schema_profile: data/schema_profiles/demo_sqlite.yaml
+  - name: teaching
+    label: 教学数据管理平台 (SQLite)
+    url: sqlite:///data/teaching.db
+    glossary: data/glossaries/teaching.md
+    schema_profile: data/schema_profiles/teaching.yaml
 
   # ─────────── BIRD dev 基准库(只读) ───────────
   # url 用 mode=ro&immutable=1:只读 + 当作不可变,跳过加锁/WAL,否则部分库只读打开会失败。

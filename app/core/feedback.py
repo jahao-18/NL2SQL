@@ -102,3 +102,31 @@ def update_feedback(item_id: str, patch: dict[str, Any]) -> dict[str, Any]:
             return found
 
     raise FileNotFoundError(item_id)
+
+
+def delete_feedback(item_id: str) -> dict[str, Any]:
+    if not FEEDBACK_DIR.exists():
+        raise FileNotFoundError(item_id)
+
+    for path in sorted(FEEDBACK_DIR.glob("*.jsonl")):
+        changed = False
+        deleted: dict[str, Any] | None = None
+        lines: list[str] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                lines.append(line)
+                continue
+            if isinstance(obj, dict) and obj.get("id") == item_id:
+                deleted = obj
+                changed = True
+                continue
+            lines.append(json.dumps(obj, ensure_ascii=False) if isinstance(obj, dict) else line)
+        if changed and deleted is not None:
+            atomic_write_text(path, ("\n".join(lines) + "\n") if lines else "")
+            return deleted
+
+    raise FileNotFoundError(item_id)

@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from app.core.chain import generate_sql, repair_sql
+from app.core.business_domains import denied_question_hit, filter_schema_info
 from app.core.config import settings
 from app.core.data_sources import get_source
 from app.core.explain import explain_query
@@ -52,6 +53,10 @@ def ask(
     current_source: str | None = None,
     user_glossary: list[str] | None = None,
     few_shots: list[FewShotExample] | None = None,
+    allowed_tables: set[str] | frozenset[str] | None = None,
+    denied_columns: set[str] | frozenset[str] | None = None,
+    denied_terms: list[str] | tuple[str, ...] | None = None,
+    role_label: str | None = None,
 ) -> dict[str, Any]:
     trimmed_history = (history or [])[-MAX_HISTORY_TURNS:]
     # 上一轮就是 clarify => 本轮是用户的回答,禁止再次 clarify(兼顾路由反问与生成澄清)
@@ -102,10 +107,22 @@ def ask(
         "route_reason": _route_reason(question, ds.name, auto_routed, current_source),
     }
 
+    denied_hit = denied_question_hit(question, denied_terms or [])
+    if denied_hit:
+        return format_error(f"当前身份「{role_label or '未登录'}」无权查询“{denied_hit}”相关数据。", **src_kw)
+
     try:
         schema_info = load_schema(ds.name)
+        if allowed_tables is not None:
+            schema_info = filter_schema_info(schema_info, set(allowed_tables), set(denied_columns or []))
     except (FileNotFoundError, RuntimeError) as e:
         return format_error(str(e), **src_kw)
+
+    if not schema_info.tables:
+        return format_error(
+            f"当前身份「{role_label or '未登录'}」没有可用于该数据源的业务表权限。",
+            **src_kw,
+        )
 
     # 知识库检索:针对问题召回精简 schema 上下文(替代整库 DDL 喂给模型)。
     # 检索 query 以当前问题为主,只带最近 N 条历史提问(让"按城市拆分"这类追问能召回上一轮的表,
@@ -182,6 +199,8 @@ def ask(
         try:
             safe_sql, truncated = validate_and_fix(raw_sql, schema_info.tables, schema_info.blocked_columns)
         except SQLValidationError as e:
+            if str(e).startswith(("引用了未授权的表", "引用了不可用于问数的字段")):
+                return format_error(str(e), sql=raw_sql, **src_kw)
             last_sql, last_err = raw_sql, str(e)
             logger.warning("SQL 校验失败 attempt=%s err=%s sql=%s", attempt, e, raw_sql)
             continue

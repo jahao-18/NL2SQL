@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import threading
+import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -120,6 +121,34 @@ def _judge_worker(jid: str, args: dict) -> None:
             item["done"] = True
 
 
+def _fallback_judge(args: dict) -> JudgeResult:
+    columns = args.get("columns") or []
+    rows = args.get("rows") or []
+    row_count = int(args.get("row_count") or 0)
+    retrieval_used = bool(args.get("retrieval_used"))
+    sql = str(args.get("sql") or "")
+
+    retrieval = 86 if retrieval_used else 92
+    correctness = 82
+    if not sql.strip():
+        correctness = 35
+    elif row_count == 0:
+        correctness = 70
+    elif columns == ["error"]:
+        correctness = 40
+    elif rows:
+        correctness = 86
+
+    weight = settings.judge_weight_correctness
+    final = round(weight * correctness + (1 - weight) * retrieval)
+    return JudgeResult(
+        final=max(0, min(100, final)),
+        retrieval=max(0, min(100, retrieval)),
+        correctness=max(0, min(100, correctness)),
+        reason="裁判模型响应较慢，系统先根据查询是否成功、结果是否返回和数据覆盖情况给出临时估算。",
+    )
+
+
 def stash(
     question: str,
     schema_text: str,
@@ -144,7 +173,7 @@ def stash(
         retrieval_used=retrieval_used,
     )
     with _pending_lock:
-        _pending[jid] = {"done": False, "result": None}
+        _pending[jid] = {"done": False, "result": None, "created_at": time.monotonic(), "args": args}
         while len(_pending) > _PENDING_CAP:
             _pending.popitem(last=False)
     threading.Thread(target=_judge_worker, args=(jid, args), daemon=True, name=f"judge-{jid[:8]}").start()
@@ -166,6 +195,12 @@ def stashed_status(jid: str) -> tuple[str, JudgeResult | None]:
         if item is None:
             return "missing", None
         if not item.get("done"):
+            elapsed = time.monotonic() - float(item.get("created_at") or time.monotonic())
+            if elapsed >= max(3, int(settings.judge_fallback_seconds or 12)):
+                result = _fallback_judge(item.get("args") or {})
+                _pending.pop(jid, None)
+                logger.warning("judge fallback used | jid=%s elapsed=%.1fs final=%d", jid[:8], elapsed, result.final)
+                return "done", result
             return "pending", None
         result = item.get("result")
         _pending.pop(jid, None)
