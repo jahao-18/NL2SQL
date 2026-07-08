@@ -195,6 +195,8 @@
   const dashboardLowScoreBody = $("dashboard-low-score-body");
   const dashboardFailRateBody = $("dashboard-fail-rate-body");
   const dashboardWorkloadBody = $("dashboard-workload-body");
+  const dashboardAttendanceRiskBody = $("dashboard-attendance-risk-body");
+  const dashboardWarningBody = $("dashboard-warning-body");
   const domainRefreshBtn = $("domain-refresh-btn");
   const domainCurrent = $("domain-current");
   const domainGrid = $("domain-grid");
@@ -360,18 +362,18 @@
     const c = data.cards || {};
     dashboardCardGrid.innerHTML = "";
     [
-      ["在读学生", formatNumber(c.active_students), "默认 active 学籍"],
-      ["教师数量", formatNumber(c.teacher_count), "覆盖全部学院"],
-      ["课程数量", formatNumber(c.course_count), "含必修/选修/通识"],
-      ["本学期开课", formatNumber(c.current_classes), "2025 春季学期"],
-      ["本学期选课", formatNumber(c.current_enrollments), "选课记录数"],
-      ["平均成绩", formatNumber(c.avg_score, 2), "总评成绩"],
-      ["及格率", pctText(c.pass_rate), "final_score >= 60"],
-      ["挂科率", pctText(c.fail_rate), "final_score < 60"],
-    ].filter(([label]) => {
-      const keyMap = {"在读学生":"active_students","教师数量":"teacher_count","课程数量":"course_count","本学期开课":"current_classes","本学期选课":"current_enrollments","平均成绩":"avg_score","及格率":"pass_rate","挂科率":"fail_rate"};
-      return Object.prototype.hasOwnProperty.call(c, keyMap[label]);
-    }).forEach(([label, value, sub]) => dashboardCardGrid.appendChild(renderDashboardCard(label, value, sub)));
+      ["在读学生", "active_students", formatNumber(c.active_students), "默认 active 学籍"],
+      ["本学期开课", "current_classes", formatNumber(c.current_classes), "2025 春季学期"],
+      ["本学期选课", "current_enrollments", formatNumber(c.current_enrollments), "选课记录数"],
+      ["平均成绩", "avg_score", formatNumber(c.avg_score, 2), "总评成绩"],
+      ["及格率", "pass_rate", pctText(c.pass_rate), "final_score >= 60"],
+      ["挂科率", "fail_rate", pctText(c.fail_rate), "final_score < 60"],
+      ["作业提交率", "assignment_submit_rate", pctText(c.assignment_submit_rate), "非 missing 提交"],
+      ["出勤率", "attendance_rate", pctText(c.attendance_rate), "present 考勤占比"],
+      ["未解除预警", "open_warnings", formatNumber(c.open_warnings), "学业风险"],
+      ["学习行为记录", "activity_records", formatNumber(c.activity_records), "平台活跃数据"],
+    ].filter(([, key]) => Object.prototype.hasOwnProperty.call(c, key))
+      .forEach(([label, , value, sub]) => dashboardCardGrid.appendChild(renderDashboardCard(label, value, sub)));
 
     renderDashboardBars(dashboardStudentsBars, data.students_by_college || []);
     renderDashboardBars(dashboardScoreBars, data.score_distribution || []);
@@ -394,6 +396,16 @@
       { key: "teacher_name" },
       { key: "teaching_class_count", number: true, align: "right" },
       { key: "enrollment_count", number: true, align: "right" },
+    ]);
+    renderDashboardTable(dashboardAttendanceRiskBody, data.attendance_risk_courses || [], [
+      { key: "course_name" },
+      { key: "absent_rate", percent: true, align: "right" },
+      { key: "attendance_count", number: true, align: "right" },
+    ]);
+    renderDashboardTable(dashboardWarningBody, data.warning_by_major || [], [
+      { key: "major_name" },
+      { key: "warning_count", number: true, align: "right" },
+      { key: "avg_risk_score", number: true, digits: 1, align: "right" },
     ]);
   }
 
@@ -1543,60 +1555,60 @@
   }
   const SUGGESTIONS = {
     admin: [
-      "各学院学生人数是多少？",
-      "2025 年春季学期挂科率最高的 5 门课程是什么？",
-      "统计每位教师的授课班级数和选课学生人次。",
-      "教学评价分最高的 10 位教师是谁？",
-      "各学院平均成绩和挂科率是多少？",
-      "本学期开设了多少门课程？",
+      "各学院在读学生人数、平均分和挂科率分别是多少？",
+      "哪些课程的作业提交率最低？",
+      "按课程统计缺勤率最高的前 10 门课。",
+      "各课程的学习活跃度和平均分有什么关系？",
+      "哪些专业的未解除学业预警人数最多？",
+      "各学院获得奖助金额总额是多少？",
     ],
     academic_office: [
-      "各学院在读学生人数是多少？",
       "2025 年春季学期选课人数最多的 10 门课程是什么？",
-      "哪些课程的平均分低于 70？",
-      "各课程类型的平均成绩是多少？",
-      "各学院课程开设数量是多少？",
-      "2025 年春季学期各课程挂科率是多少？",
+      "哪些课程平均分低于 70 且作业提交率低？",
+      "按学院统计本学期出勤率和缺勤率。",
+      "哪些专业的学业预警人数最多？",
+      "各学院课程开设数量、选课人次和平均容量是多少？",
+      "按课程类型统计平均成绩、挂科率和优秀率。",
     ],
     college_manager: [
       "本学院课程平均成绩排名前 10 的课程有哪些？",
-      "本学院课程挂科率最高的 5 门课程是什么？",
-      "本学院本学期开设了多少个教学班？",
-      "本学院各课程类型的选课人次是多少？",
+      "本学院哪些课程缺勤率和挂科率都比较高？",
+      "本学院各课程的作业迟交率是多少？",
+      "本学院学习活跃度最高的课程有哪些？",
       "本学院教学评价平均分最高的课程有哪些？",
-      "本学院低于 70 分的课程有哪些？",
+      "本学院未解除学业预警学生主要集中在哪些专业？",
     ],
     teacher: [
-      "我负责课程的平均成绩是多少？",
-      "我负责课程的挂科率是多少？",
-      "我负责的教学班选课人次是多少？",
-      "我负责课程的成绩分布是什么？",
+      "我负责课程的平均成绩和挂科率是多少？",
+      "我负责课程的作业提交率和迟交率是多少？",
+      "我负责课程的出勤率、迟到率和缺勤率是多少？",
+      "我负责课程的学习活跃度趋势如何？",
       "我负责课程的教学评价平均分是多少？",
       "我负责课程中平均分低于 70 的课程有哪些？",
     ],
     student: [
       "我本学期选择了哪些课程？",
       "我各门课程的成绩是多少？",
-      "我已完成课程的平均成绩是多少？",
-      "我课程的成绩分布是什么？",
-      "我可以评价哪些课程？",
-      "我选修课和必修课分别有多少门？",
+      "我的作业还有哪些未提交或迟交？",
+      "我的课程出勤情况怎么样？",
+      "我的学习平台活跃度最高的是哪些课程？",
+      "我是否有未解除的学业预警？",
     ],
     teaching: [
       "各学院学生人数是多少？",
       "2025 年春季学期挂科率最高的 5 门课程是什么？",
-      "哪些课程的平均分低于 70？",
-      "各学院平均成绩和挂科率是多少？",
-      "2025 年春季学期选课人数最多的 10 门课程是什么？",
-      "本学期开设了多少门课程？",
+      "哪些课程的作业提交率最低？",
+      "按课程统计缺勤率最高的前 10 门课。",
+      "各课程的学习活跃度和平均分有什么关系？",
+      "哪些专业的未解除学业预警人数最多？",
     ],
     auto: [
       "各学院学生人数是多少？",
       "本学期开设了多少门课程？",
       "2025 年春季学期选课人数最多的 10 门课程是什么？",
-      "各学院平均成绩和挂科率是多少？",
-      "哪些课程的平均分低于 70？",
-      "2025 年春季学期各课程挂科率是多少？",
+      "哪些课程的作业提交率最低？",
+      "按课程统计缺勤率最高的前 10 门课。",
+      "哪些专业的未解除学业预警人数最多？",
     ],
   };
 
@@ -1613,17 +1625,37 @@
     if (suggestionRoleLabel) {
       suggestionRoleLabel.textContent = currentUser ? `· ${currentUser.role_label}` : "";
     }
-    suggestionList.innerHTML = "";
+    const groups = [
+      ["成绩质量", ["成绩", "平均分", "挂科", "及格", "分布", "低于"]],
+      ["教学运行", ["开设", "教学班", "选课", "课程类型", "授课", "人次"]],
+      ["学习过程", ["作业", "考勤", "出勤", "缺勤", "迟交", "活跃度"]],
+      ["风险反馈", ["预警", "评价", "风险", "奖助"]],
+      ["常用", []],
+    ].map(([title, words]) => ({ title, words, items: [] }));
     list.forEach((text) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "suggestion-chip";
-      btn.textContent = text;
-      btn.addEventListener("click", () => {
-        input.value = text;
-        input.focus();
+      const group = groups.find((g) => g.words.some((w) => text.includes(w))) || groups[groups.length - 1];
+      group.items.push(text);
+    });
+    suggestionList.innerHTML = "";
+    groups.filter((g) => g.items.length).forEach((group) => {
+      const section = document.createElement("div");
+      section.className = "suggestion-group";
+      section.innerHTML = `<div class="suggestion-group-title">${escapeHtml(group.title)}</div>`;
+      const body = document.createElement("div");
+      body.className = "suggestion-group-body";
+      group.items.forEach((text) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "suggestion-chip";
+        btn.textContent = text;
+        btn.addEventListener("click", () => {
+          input.value = text;
+          input.focus();
+        });
+        body.appendChild(btn);
       });
-      suggestionList.appendChild(btn);
+      section.appendChild(body);
+      suggestionList.appendChild(section);
     });
   }
 
@@ -2321,6 +2353,7 @@
   /* ---------------- process log ---------------- */
   // 后端当前不是流式返回,这里按真实流水线阶段追加过程日志,让用户知道系统还在推进。
   let progressTimers = [];
+  let progressHeartbeat = null;
   const PROGRESS_AUTO = [
     "接收问题,准备识别可用数据源和当前角色权限。",
     "根据问题和会话上下文判断要查询的教学数据域。",
@@ -2344,6 +2377,10 @@
   function clearProgressTimers() {
     progressTimers.forEach((t) => clearTimeout(t));
     progressTimers = [];
+    if (progressHeartbeat) {
+      clearInterval(progressHeartbeat);
+      progressHeartbeat = null;
+    }
   }
 
   function appendProcessLog(text, kind) {
@@ -2370,10 +2407,26 @@
       }, delay));
       delay += 850 + i * 260;
     });
+    progressTimers.push(setTimeout(() => {
+      const waitingMessages = [
+        "查询仍在处理中，系统正在等待模型或数据库返回。",
+        "正在检查返回行数和字段权限，避免展示越权或过量数据。",
+        "正在保持请求连接，请不要重复点击查询按钮。",
+        "复杂问题可能正在进行 SQL 校验、修复或二次执行。",
+        "正在整理结果元数据，完成后会立即渲染表格。",
+      ];
+      let waitingIndex = 0;
+      appendProcessLog("执行时间略长，已切换为持续状态同步。", "active");
+      progressHeartbeat = setInterval(() => {
+        appendProcessLog(waitingMessages[waitingIndex % waitingMessages.length], "active");
+        waitingIndex += 1;
+      }, 2800);
+    }, delay + 900));
   }
 
   function finishProgress() {
     clearProgressTimers();
+    progressBox.classList.remove("failed");
     progressBox.classList.add("done");
     appendProcessLog("查询执行完成,正在渲染结果。", "done");
   }
@@ -2381,6 +2434,7 @@
   function failProgress() {
     clearProgressTimers();
     if (progressBox && !progressBox.hidden) {
+      progressBox.classList.remove("done");
       progressBox.classList.add("failed");
       appendProcessLog("流程已停止,请查看错误提示。", "failed");
     }

@@ -1,45 +1,14 @@
 [
   {
-    "id": "d451a5ee5b7e47009136252946a41b75",
-    "source": "teaching",
-    "source_label": "教学数据管理平台 (SQLite)",
-    "question": "我选修课和必修课分别有多少门？",
-    "sql": "SELECT c.course_type, COUNT(DISTINCT c.id) AS course_count FROM enrollment e JOIN teaching_class tc ON e.teaching_class_id = tc.id JOIN course c ON tc.course_id = c.id WHERE e.student_id = 1 GROUP BY c.course_type LIMIT 200",
-    "tags": [
-      "governance",
-      "confirmed_example"
-    ],
-    "enabled": true,
-    "created_at": "2026-07-07T09:16:39.338765+00:00",
-    "updated_at": "2026-07-07T09:16:39.338765+00:00"
-  },
-  {
-    "id": "1783414201015",
-    "source": "teaching",
-    "source_label": "教学数据管理平台 (SQLite)",
-    "question": "我已完成课程的平均成绩是多少？",
-    "sql": "SELECT AVG(sc.final_score) AS avg_final_score FROM score sc JOIN enrollment e ON sc.enrollment_id = e.id WHERE e.student_id = 1 LIMIT 200",
-    "tags": [
-      "confirmed"
-    ],
-    "enabled": true,
-    "created_at": "2026-07-07T08:56:20.263922+00:00",
-    "updated_at": "2026-07-07T08:56:20.263922+00:00"
-  },
-  {
     "id": "teaching_students_by_college",
     "source": "teaching",
     "source_label": "教学数据管理平台 (SQLite)",
-    "question": "各学院学生人数是多少？",
+    "question": "各学院在读学生人数是多少？",
     "sql": "SELECT c.name AS college_name, COUNT(s.id) AS student_count FROM student s JOIN college c ON s.college_id = c.id WHERE s.status = 'active' GROUP BY c.id, c.name ORDER BY student_count DESC",
-    "tags": [
-      "teaching",
-      "student",
-      "confirmed"
-    ],
+    "tags": ["teaching", "student", "confirmed"],
     "enabled": true,
-    "created_at": "2026-07-07T00:00:00+00:00",
-    "updated_at": "2026-07-07T00:00:00+00:00"
+    "created_at": "2026-07-08T00:00:00+00:00",
+    "updated_at": "2026-07-08T00:00:00+00:00"
   },
   {
     "id": "teaching_fail_rate_top_courses",
@@ -47,43 +16,64 @@
     "source_label": "教学数据管理平台 (SQLite)",
     "question": "2025 年春季学期挂科率最高的 5 门课程是什么？",
     "sql": "SELECT c.name AS course_name, AVG(CASE WHEN sc.final_score < 60 THEN 1.0 ELSE 0.0 END) AS fail_rate, COUNT(e.id) AS enrollment_count FROM score sc JOIN enrollment e ON sc.enrollment_id = e.id JOIN teaching_class tc ON e.teaching_class_id = tc.id JOIN course c ON tc.course_id = c.id WHERE tc.year = 2025 AND tc.semester = 'spring' GROUP BY c.id, c.name HAVING COUNT(e.id) > 0 ORDER BY fail_rate DESC, enrollment_count DESC LIMIT 5",
-    "tags": [
-      "teaching",
-      "score",
-      "confirmed"
-    ],
+    "tags": ["teaching", "score", "confirmed"],
     "enabled": true,
-    "created_at": "2026-07-07T00:00:00+00:00",
-    "updated_at": "2026-07-07T00:00:00+00:00"
+    "created_at": "2026-07-08T00:00:00+00:00",
+    "updated_at": "2026-07-08T00:00:00+00:00"
   },
   {
-    "id": "teaching_teacher_workload",
+    "id": "teaching_assignment_submit_rate",
     "source": "teaching",
     "source_label": "教学数据管理平台 (SQLite)",
-    "question": "统计每位教师的授课班级数和选课学生人次。",
-    "sql": "SELECT t.name AS teacher_name, COUNT(DISTINCT tc.id) AS teaching_class_count, COUNT(e.id) AS enrollment_count FROM teacher t JOIN teaching_class tc ON t.id = tc.teacher_id LEFT JOIN enrollment e ON tc.id = e.teaching_class_id GROUP BY t.id, t.name ORDER BY teaching_class_count DESC, enrollment_count DESC",
-    "tags": [
-      "teaching",
-      "teacher",
-      "confirmed"
-    ],
+    "question": "哪些课程的作业提交率最低？",
+    "sql": "SELECT c.name AS course_name, ROUND(AVG(CASE WHEN s.status <> 'missing' THEN 1.0 ELSE 0.0 END), 3) AS submit_rate, COUNT(s.id) AS submission_count FROM assignment_submission s JOIN assignment a ON s.assignment_id = a.id JOIN teaching_class tc ON a.teaching_class_id = tc.id JOIN course c ON tc.course_id = c.id GROUP BY c.id, c.name ORDER BY submit_rate ASC, submission_count DESC LIMIT 10",
+    "tags": ["teaching", "assignment", "confirmed"],
     "enabled": true,
-    "created_at": "2026-07-07T00:00:00+00:00",
-    "updated_at": "2026-07-07T00:00:00+00:00"
+    "created_at": "2026-07-08T00:00:00+00:00",
+    "updated_at": "2026-07-08T00:00:00+00:00"
   },
   {
-    "id": "teaching_low_avg_score_courses",
+    "id": "teaching_attendance_risk",
     "source": "teaching",
     "source_label": "教学数据管理平台 (SQLite)",
-    "question": "哪些课程的平均分低于 70？",
-    "sql": "SELECT c.name AS course_name, AVG(sc.final_score) AS avg_final_score, COUNT(e.id) AS enrollment_count FROM score sc JOIN enrollment e ON sc.enrollment_id = e.id JOIN teaching_class tc ON e.teaching_class_id = tc.id JOIN course c ON tc.course_id = c.id GROUP BY c.id, c.name HAVING AVG(sc.final_score) < 70 ORDER BY avg_final_score ASC",
-    "tags": [
-      "teaching",
-      "score",
-      "confirmed"
-    ],
+    "question": "按课程统计缺勤率最高的前 10 门课。",
+    "sql": "SELECT c.name AS course_name, ROUND(AVG(CASE WHEN a.status = 'absent' THEN 1.0 ELSE 0.0 END), 3) AS absent_rate, COUNT(a.id) AS attendance_count FROM attendance a JOIN teaching_class tc ON a.teaching_class_id = tc.id JOIN course c ON tc.course_id = c.id GROUP BY c.id, c.name ORDER BY absent_rate DESC, attendance_count DESC LIMIT 10",
+    "tags": ["teaching", "attendance", "confirmed"],
     "enabled": true,
-    "created_at": "2026-07-07T00:00:00+00:00",
-    "updated_at": "2026-07-07T00:00:00+00:00"
+    "created_at": "2026-07-08T00:00:00+00:00",
+    "updated_at": "2026-07-08T00:00:00+00:00"
+  },
+  {
+    "id": "teaching_learning_activity_score",
+    "source": "teaching",
+    "source_label": "教学数据管理平台 (SQLite)",
+    "question": "各课程的学习活跃度和平均分有什么关系？",
+    "sql": "SELECT c.name AS course_name, SUM(la.login_count + la.resource_views + la.discussion_posts) AS activity_score, ROUND(AVG(sc.final_score), 2) AS avg_final_score FROM learning_activity la JOIN teaching_class tc ON la.teaching_class_id = tc.id JOIN course c ON tc.course_id = c.id JOIN enrollment e ON e.teaching_class_id = tc.id AND e.student_id = la.student_id JOIN score sc ON sc.enrollment_id = e.id GROUP BY c.id, c.name ORDER BY activity_score DESC LIMIT 10",
+    "tags": ["teaching", "learning_activity", "score", "confirmed"],
+    "enabled": true,
+    "created_at": "2026-07-08T00:00:00+00:00",
+    "updated_at": "2026-07-08T00:00:00+00:00"
+  },
+  {
+    "id": "teaching_academic_warning_major",
+    "source": "teaching",
+    "source_label": "教学数据管理平台 (SQLite)",
+    "question": "哪些专业的未解除学业预警人数最多？",
+    "sql": "SELECT m.name AS major_name, COUNT(w.id) AS warning_count, ROUND(AVG(w.risk_score), 1) AS avg_risk_score FROM academic_warning w JOIN student s ON w.student_id = s.id JOIN major m ON s.major_id = m.id WHERE w.resolved = 0 GROUP BY m.id, m.name ORDER BY warning_count DESC, avg_risk_score DESC LIMIT 10",
+    "tags": ["teaching", "warning", "confirmed"],
+    "enabled": true,
+    "created_at": "2026-07-08T00:00:00+00:00",
+    "updated_at": "2026-07-08T00:00:00+00:00"
+  },
+  {
+    "id": "teaching_scholarship_by_college",
+    "source": "teaching",
+    "source_label": "教学数据管理平台 (SQLite)",
+    "question": "各学院获得奖助金额总额是多少？",
+    "sql": "SELECT c.name AS college_name, COUNT(sh.id) AS scholarship_count, SUM(sh.amount) AS total_amount FROM scholarship sh JOIN student s ON sh.student_id = s.id JOIN college c ON s.college_id = c.id GROUP BY c.id, c.name ORDER BY total_amount DESC",
+    "tags": ["teaching", "scholarship", "confirmed"],
+    "enabled": true,
+    "created_at": "2026-07-08T00:00:00+00:00",
+    "updated_at": "2026-07-08T00:00:00+00:00"
   }
 ]

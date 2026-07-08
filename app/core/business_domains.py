@@ -1,6 +1,7 @@
 """Demo role and business-domain permissions for the teaching platform."""
 from __future__ import annotations
 
+
 import json
 import re
 from dataclasses import dataclass
@@ -17,10 +18,17 @@ ALL_TABLES = {
     "student",
     "teacher",
     "course",
+    "course_prerequisite",
     "teaching_class",
     "enrollment",
     "score",
     "evaluation",
+    "assignment",
+    "assignment_submission",
+    "attendance",
+    "learning_activity",
+    "scholarship",
+    "academic_warning",
 }
 
 
@@ -41,7 +49,12 @@ PROTECTED_RESOURCES: dict[str, dict[str, Any]] = {
             "student name", "student names", "student list", "student roster", "student no",
             "student number", "student id", "students who", "failed students",
         ],
-        "columns": ["student.id", "student.name", "student.student_no"],
+        "columns": [
+            "student.id", "student.name", "student.student_no",
+            "assignment_submission.student_id", "attendance.student_id",
+            "learning_activity.student_id", "scholarship.student_id",
+            "academic_warning.student_id",
+        ],
     },
     "evaluation_raw": {
         "label": "评教原文",
@@ -74,31 +87,31 @@ BUSINESS_DOMAINS: dict[str, dict[str, Any]] = {
         "name": "student_affairs",
         "label": "学生学籍域",
         "description": "面向学籍、学院、专业、班级和学生规模分析。",
-        "tables": ["college", "major", "class_group", "student"],
+        "tables": ["college", "major", "class_group", "student", "scholarship", "academic_warning"],
     },
     "teaching_operation": {
         "name": "teaching_operation",
         "label": "教学运行域",
         "description": "面向课程、开课班、选课容量和教学安排分析。",
-        "tables": ["college", "teacher", "course", "teaching_class", "enrollment"],
+        "tables": ["college", "teacher", "course", "course_prerequisite", "teaching_class", "enrollment", "assignment", "assignment_submission", "attendance", "learning_activity"],
     },
     "grade_quality": {
         "name": "grade_quality",
         "label": "成绩质量域",
         "description": "面向成绩分布、及格率、挂科率和课程质量分析。",
-        "tables": ["college", "major", "student", "course", "teaching_class", "enrollment", "score"],
+        "tables": ["college", "major", "student", "course", "teaching_class", "enrollment", "score", "assignment_submission", "attendance", "learning_activity", "academic_warning"],
     },
     "evaluation_feedback": {
         "name": "evaluation_feedback",
         "label": "评教反馈域",
         "description": "面向学生评教、教师授课反馈和课程体验分析。",
-        "tables": ["college", "teacher", "course", "teaching_class", "evaluation"],
+        "tables": ["college", "teacher", "course", "teaching_class", "evaluation", "attendance", "learning_activity"],
     },
     "personal_learning": {
         "name": "personal_learning",
         "label": "个人学习域",
         "description": "面向学生个人选课、成绩和课程评价查询演示。",
-        "tables": ["course", "teaching_class", "enrollment", "score", "evaluation"],
+        "tables": ["course", "course_prerequisite", "teaching_class", "enrollment", "score", "evaluation", "assignment", "assignment_submission", "attendance", "learning_activity", "scholarship", "academic_warning"],
     },
 }
 
@@ -150,7 +163,7 @@ DEMO_USERS: dict[str, dict[str, Any]] = {
     "admin": {"username": "admin", "display_name": "校级管理员", "role": "admin", "password": "123456", "scope": {}},
     "jwc": {"username": "jwc", "display_name": "教务处老师", "role": "academic_office", "password": "123456", "scope": {}},
     "college": {"username": "college", "display_name": "学院负责人", "role": "college_manager", "password": "123456", "scope": {"college_id": 1}},
-    "teacher": {"username": "teacher", "display_name": "任课教师", "role": "teacher", "password": "123456", "scope": {"teacher_id": 1}},
+    "teacher": {"username": "teacher", "display_name": "任课教师", "role": "teacher", "password": "123456", "scope": {"teacher_id": 37}},
     "student": {"username": "student", "display_name": "学生用户", "role": "student", "password": "123456", "scope": {"student_id": 1}},
 }
 

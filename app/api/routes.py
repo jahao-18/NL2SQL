@@ -113,7 +113,7 @@ def business_domains(ctx=Header(None, alias="X-Demo-Token")) -> dict:
 def get_teaching_dashboard(ctx=Header(None, alias="X-Demo-Token")) -> dict:
     auth = user_from_token(ctx)
     try:
-        data = teaching_dashboard("teaching", allowed_tables=auth.allowed_tables)
+        data = teaching_dashboard("teaching", allowed_tables=auth.allowed_tables, row_scope=auth.row_scope)
         data["permission"] = {
             "role": auth.role,
             "role_label": auth.role_label,

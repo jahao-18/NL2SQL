@@ -6,8 +6,12 @@ data/*.db
 !data/teaching.db
 data/feedback/
 data/governance/
+data/audit/
+data/uploads/
+data/managed/*.db
 .idea/
 .vscode/
+uvicorn*.log
 
 # BIRD benchmark: raw datasets can be several GB; generated work dirs are not tracked.
 /bird_dev/

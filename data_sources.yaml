@@ -1,9 +1,9 @@
 # 数据源注册表
-# 每个 source 描述一个可查询的数据库。前端会显示 name,后端按 url 连接。
+# 每个 source 描述一个可查询的数据库。前端会显示 name，后端按 url 连接。
 # url 用 SQLAlchemy 风格连接串:
 #   SQLite:     sqlite:///data/app.db        (相对路径基于项目根)
 #   PostgreSQL: postgresql+psycopg://user:password@host:5432/dbname
-# glossary 是相对项目根的 markdown 文件路径,可缺省。
+# glossary 是相对项目根的 markdown 文件路径，可缺省。
 
 sources:
   - name: teaching
@@ -12,10 +12,10 @@ sources:
     glossary: data/glossaries/teaching.md
     schema_profile: data/schema_profiles/teaching.yaml
 
-  # ─────────── BIRD dev 基准库(只读) ───────────
-  # url 用 mode=ro&immutable=1:只读 + 当作不可变,跳过加锁/WAL,否则部分库只读打开会失败。
+  # BIRD dev 基准库(只读)
+  # url 用 mode=ro&immutable=1: 只读 + 当作不可变，跳过加锁/WAL。
   # glossary 由 scripts/eval_bird.py --gen-sources 从 database_description 生成在 data/bird/。
-  # 库文件指向 D:\dev,换机器需改这些绝对路径(或重跑 --gen-sources 后从中拷贝)。
+  # 库文件指向 D:\dev，换机器需改这些绝对路径，或重跑 --gen-sources。
   - name: california_schools
     label: "BIRD: california_schools"
     url: sqlite:///file:D:/dev/dev_databases/california_schools/california_schools.sqlite?mode=ro&immutable=1&uri=true
@@ -61,7 +61,7 @@ sources:
     url: sqlite:///file:D:/dev/dev_databases/toxicology/toxicology.sqlite?mode=ro&immutable=1&uri=true
     glossary: data/bird/glossaries/toxicology.md
 
-  # 示例:取消注释并填好凭据即可挂载一个 PostgreSQL 源
+  # 示例: 取消注释并填好凭据即可挂载一个 PostgreSQL 源
   # - name: prod_pg
   #   label: 生产库 (PostgreSQL)
   #   url: postgresql+psycopg://readonly_user:password@127.0.0.1:5432/mydb

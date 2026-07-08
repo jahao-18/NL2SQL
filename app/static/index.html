@@ -12,18 +12,30 @@
 
 <section class="login-screen" id="login-screen">
   <div class="login-panel">
-    <div class="login-brand">
-      <div class="brand-icon">&Sigma;</div>
-      <div>
-        <div class="brand-name">教学问数平台</div>
-        <div class="brand-sub">Role-Based Teaching Analytics</div>
+    <section class="login-intro">
+      <div class="login-brand">
+        <div class="brand-icon">&Sigma;</div>
+        <div>
+          <div class="brand-name">教学问数平台</div>
+          <div class="brand-sub">Role-Based Teaching Analytics</div>
+        </div>
       </div>
-    </div>
-    <div class="login-copy">
-      <h1>基于角色的教学数据问数入口</h1>
-      <p>使用账号密码进入系统，平台会根据账号绑定的角色自动控制业务域、可见数据表、问数范围和管理功能。</p>
-    </div>
+      <div class="login-copy">
+        <span>Teaching Data Intelligence</span>
+        <h1>按角色进入你的教学数据工作台</h1>
+        <p>账号会自动绑定业务域、可见表和问数范围，用于演示学生、教师、学院和教务处的差异化数据权限。</p>
+      </div>
+      <div class="login-metrics">
+        <div><b>5</b><span>演示身份</span></div>
+        <div><b>17</b><span>教学数据表</span></div>
+        <div><b>RBAC</b><span>权限控制</span></div>
+      </div>
+    </section>
     <form class="login-form" id="login-form">
+      <div class="login-form-head">
+        <b>账号登录</b>
+        <span>默认密码均为 123456</span>
+      </div>
       <label>
         <span>账号</span>
         <input id="login-username" type="text" placeholder="请输入账号，例如 admin" autocomplete="username" />
@@ -34,8 +46,15 @@
       </label>
       <button class="nav-btn login-submit" type="submit">进入平台</button>
       <div class="login-error" id="login-error"></div>
+      <div class="login-demo-accounts">
+        <b>演示账号</b>
+        <span>管理员 admin / 123456</span>
+        <span>教务处 jwc / 123456</span>
+        <span>学院负责人 college / 123456</span>
+        <span>教师 teacher / 123456</span>
+        <span>学生 student / 123456</span>
+      </div>
     </form>
-    <div class="login-domain-list" id="login-domain-list"></div>
   </div>
 </section>
 
@@ -53,11 +72,11 @@
       <button class="side-nav-item active" data-view-target="dashboard-view" type="button"><span>▧</span>数据总览</button>
       <button class="side-nav-item" data-view-target="assistant-view" type="button"><span>⌕</span>智能问数</button>
       <button class="side-nav-item" data-view-target="kb-list-view" type="button"><span>▦</span>教学知识库</button>
-      <button class="side-nav-item" data-view-target="kb-overview-view" type="button"><span>◫</span>知识库概览</button>
       <button class="side-nav-item" data-view-target="schema-console-view" type="button"><span>▤</span>Schema 配置</button>
+      <button class="side-nav-item" data-view-target="data-access-view" type="button"><span>D</span>数据接入</button>
       <button class="side-nav-item" data-view-target="debug-view" type="button"><span>✦</span>召回调试</button>
-      <button class="side-nav-item" data-view-target="domain-settings-view" type="button"><span>◎</span>业务域设置</button>
-      <button class="side-nav-item" data-view-target="role-management-view" type="button"><span>◉</span>角色管理</button>
+      <button class="side-nav-item" data-view-target="domain-settings-view" type="button"><span>◎</span>权限矩阵</button>
+      <button class="side-nav-item" data-view-target="role-management-view" type="button"><span>◉</span>账号管理</button>
       <div class="nav-group-label">治理</div>
       <button class="side-nav-item" data-view-target="governance-queue-view" type="button"><span>✓</span>待审队列</button>
       <button class="side-nav-item" data-view-target="governance-settings-view" type="button"><span>⚙</span>设置</button>
@@ -156,6 +175,30 @@
                 <table class="dashboard-table">
                   <thead><tr><th>教师</th><th>班级数</th><th>学生人次</th></tr></thead>
                   <tbody id="dashboard-workload-body"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel-card dashboard-panel">
+              <div class="section-head">
+                <span class="section-icon">A</span>
+                <div><h2>考勤风险课程</h2><p>按缺勤率定位需要关注的课程。</p></div>
+              </div>
+              <div class="dashboard-table-wrap">
+                <table class="dashboard-table">
+                  <thead><tr><th>课程</th><th>缺勤率</th><th>考勤记录</th></tr></thead>
+                  <tbody id="dashboard-attendance-risk-body"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel-card dashboard-panel">
+              <div class="section-head">
+                <span class="section-icon">W</span>
+                <div><h2>学业预警分布</h2><p>按专业统计未解除预警人数。</p></div>
+              </div>
+              <div class="dashboard-table-wrap">
+                <table class="dashboard-table">
+                  <thead><tr><th>专业</th><th>预警数</th><th>平均风险分</th></tr></thead>
+                  <tbody id="dashboard-warning-body"></tbody>
                 </table>
               </div>
             </section>
@@ -593,6 +636,92 @@
         </div>
       </section>
 
+      <section class="work-view" id="data-access-view" data-page-title="数据接入与维护" data-breadcrumb="教学数据 / 数据接入">
+        <div class="dashboard-shell data-access-shell">
+          <section class="dashboard-hero">
+            <div>
+              <div class="panel-kicker">Data Access</div>
+              <h2>数据接入与维护中心</h2>
+              <p>接入新的 SQLite/CSV 数据源，浏览和维护可写表数据，并保留所有修改审计记录。</p>
+            </div>
+            <button class="nav-btn" type="button" id="access-refresh-btn">刷新</button>
+          </section>
+
+          <div class="access-flow" aria-label="数据接入流程">
+            <div><i>01</i><b>接入数据源</b><span>注册 SQLite 或导入 CSV</span></div>
+            <div><i>02</i><b>扫描 Schema</b><span>生成表结构和初始画像</span></div>
+            <div><i>03</i><b>治理发布</b><span>完善术语、关系和指标</span></div>
+            <div><i>04</i><b>数据维护</b><span>受控增删改并记录审计</span></div>
+          </div>
+
+          <div class="access-workbench">
+            <section class="panel-card access-source-panel">
+              <div class="section-head">
+                <span class="section-icon">S</span>
+                <div><h2>数据源列表</h2><p>已注册数据源、表数量和维护状态。</p></div>
+              </div>
+              <div class="access-source-list" id="access-source-list"></div>
+            </section>
+
+            <section class="panel-card access-register-panel">
+              <div class="section-head">
+                <span class="section-icon">N</span>
+                <div><h2>新增数据源</h2><p>支持接入现有 SQLite 文件，或把 CSV 转为托管 SQLite。</p></div>
+              </div>
+              <div class="access-tabs">
+                <button class="access-tab active" data-access-tab="sqlite" type="button">SQLite</button>
+                <button class="access-tab" data-access-tab="csv" type="button">CSV</button>
+              </div>
+              <form class="access-form" id="sqlite-source-form">
+                <input id="sqlite-source-name" placeholder="数据源标识，例如 teaching_ext" />
+                <input id="sqlite-source-label" placeholder="展示名称，例如 教学扩展库" />
+                <input id="sqlite-source-path" placeholder="SQLite 路径，例如 data/managed/demo.db" />
+                <label class="access-check"><input id="sqlite-source-writable" type="checkbox" />允许维护数据</label>
+                <button class="nav-btn" type="submit">接入 SQLite</button>
+              </form>
+              <form class="access-form" id="csv-source-form" hidden>
+                <input id="csv-source-name" placeholder="数据源标识，例如 survey_data" />
+                <input id="csv-source-label" placeholder="展示名称，例如 问卷数据" />
+                <input id="csv-table-name" placeholder="表名，例如 survey_result" value="imported_data" />
+                <input id="csv-file-input" type="file" accept=".csv,text/csv" />
+                <label class="access-check"><input id="csv-source-writable" type="checkbox" checked />允许维护数据</label>
+                <button class="nav-btn" type="submit">导入 CSV</button>
+              </form>
+              <div class="access-message" id="access-message"></div>
+            </section>
+          </div>
+
+          <div class="access-maintenance-grid">
+            <section class="panel-card access-table-panel">
+              <div class="section-head">
+                <span class="section-icon">T</span>
+                <div><h2>表数据维护</h2><p>选择数据源和表后，可分页浏览、新增、修改和删除记录。</p></div>
+              </div>
+              <div class="access-toolbar">
+                <select id="access-source-select"></select>
+                <select id="access-table-select"></select>
+                <button class="nav-btn secondary" type="button" id="access-load-table-btn">加载表数据</button>
+                <button class="nav-btn" type="button" id="access-add-row-btn">新增行</button>
+              </div>
+              <div class="access-table-wrap">
+                <table class="dashboard-table access-table">
+                  <thead id="access-table-head"></thead>
+                  <tbody id="access-table-body"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel-card access-audit-panel">
+              <div class="section-head">
+                <span class="section-icon">A</span>
+                <div><h2>修改审计</h2><p>记录操作人、表、主键和修改时间。</p></div>
+              </div>
+              <div class="access-audit-list" id="access-audit-list"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
       <section class="work-view" id="debug-view" data-page-title="召回调试" data-breadcrumb="智能问数 / 调试">
         <div class="panel-card">
           <div class="section-head">
@@ -630,6 +759,7 @@
 <script src="/api.js"></script>
 <script src="/modal.js"></script>
 <script src="/governance-view.js"></script>
+<script src="/data-access-view.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

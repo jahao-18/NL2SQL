@@ -69,5 +69,15 @@
     examples: (source) => request(`/api/examples?source=${encodeURIComponent(source)}`),
     saveExample: (source, item) => json("POST", `/api/examples?source=${encodeURIComponent(source)}`, item),
     deleteExample: (source, id) => request(`/api/examples/${encodeURIComponent(id)}?source=${encodeURIComponent(source)}`, { method: "DELETE" }),
+    accessSources: () => request("/api/data-access/sources"),
+    testAccessConnection: (payload) => json("POST", "/api/data-access/test", payload),
+    registerSqliteSource: (payload) => json("POST", "/api/data-access/sources/sqlite", payload),
+    importCsvSource: (payload) => json("POST", "/api/data-access/sources/csv", payload),
+    scanAccessSource: (source) => json("POST", `/api/data-access/sources/${encodeURIComponent(source)}/scan`, {}),
+    tableRows: (source, table, params) => request(`/api/data-access/sources/${encodeURIComponent(source)}/tables/${encodeURIComponent(table)}/rows${qs(params)}`),
+    createTableRow: (source, table, values) => json("POST", `/api/data-access/sources/${encodeURIComponent(source)}/tables/${encodeURIComponent(table)}/rows`, { values }),
+    updateTableRow: (source, table, pk, values) => json("PATCH", `/api/data-access/sources/${encodeURIComponent(source)}/tables/${encodeURIComponent(table)}/rows/${encodeURIComponent(pk)}`, { values }),
+    deleteTableRow: (source, table, pk) => request(`/api/data-access/sources/${encodeURIComponent(source)}/tables/${encodeURIComponent(table)}/rows/${encodeURIComponent(pk)}`, { method: "DELETE" }),
+    dataAudit: () => request("/api/data-access/audit"),
   };
 })();
