@@ -13,11 +13,10 @@ pyyaml>=6.0
 numpy>=1.26
 rank-bm25>=0.2.2
 networkx>=3.0
-# 检索后端 = server 时才需要(本地后端不依赖,可不装)
-# 客户端大版本须与 docker-compose 里的服务对齐:Milvus 2.4.x / ES 8.13。
-# 装 elasticsearch 9.x 客户端连 8.x 服务端会被拒(HEAD / 返回 400 -> ping 失败 -> 静默回退)。
+pytest>=8.0
+
+# Optional server retrieval backend. Versions match docker-compose services:
+# Milvus 2.4.x and Elasticsearch 8.13.x.
 pymilvus>=2.4,<3.1
 elasticsearch>=8.13,<9
-# 业务术语词表检索(第 4 路)= PostgreSQL + pgvector。psycopg 上面已装,这里加 vector 类型适配器。
 pgvector>=0.2.5
-
