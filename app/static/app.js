@@ -255,6 +255,7 @@
   let lastTrace = null;
   let activeSchemaTable = "";
   let dashboardCache = null;
+  let dashboardCacheKey = "";
   let currentUser = null;
   let domainSettingsCache = null;
 
@@ -382,9 +383,14 @@
     if (!select) return;
     const current = select.value;
     const uniq = Array.from(new Set((values || []).filter(Boolean)));
+    const normalized = uniq.map((item) => (
+      typeof item === "object"
+        ? { value: String(item.value || ""), label: String(item.label || item.value || "") }
+        : { value: String(item), label: String(item) }
+    )).filter((item) => item.value);
     select.innerHTML = `<option value="">${escapeHtml(placeholder || "全部")}</option>` +
-      uniq.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
-    if (uniq.includes(current)) select.value = current;
+      normalized.map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`).join("");
+    if (normalized.some((item) => item.value === current)) select.value = current;
   }
 
   function dashboardFilters() {
@@ -392,17 +398,20 @@
       term: dashboardTermFilter ? dashboardTermFilter.value : "",
       college: dashboardCollegeFilter ? dashboardCollegeFilter.value : "",
       major: dashboardMajorFilter ? dashboardMajorFilter.value : "",
-      courseType: dashboardCourseTypeFilter ? dashboardCourseTypeFilter.value : "",
+      course_type: dashboardCourseTypeFilter ? dashboardCourseTypeFilter.value : "",
     };
   }
 
   function enrichDashboardQuestion(question) {
     const f = dashboardFilters();
     const parts = [];
+    const courseTypeLabel = dashboardCourseTypeFilter && dashboardCourseTypeFilter.selectedOptions[0]
+      ? dashboardCourseTypeFilter.selectedOptions[0].textContent
+      : f.course_type;
     if (f.term === "2025-spring") parts.push("只看 2025 年春季学期");
     if (f.college) parts.push(`只看${f.college}`);
     if (f.major) parts.push(`只看${f.major}专业`);
-    if (f.courseType) parts.push(`只看${f.courseType}课程`);
+    if (f.course_type) parts.push(`只看${courseTypeLabel}课程`);
     return parts.length ? `${question} ${parts.join("，")}。` : question;
   }
 
@@ -415,17 +424,26 @@
 
   function populateDashboardFilters(data) {
     if (!data) return;
-    setSelectOptions(dashboardCollegeFilter, [
+    const opts = data.filter_options || {};
+    setSelectOptions(dashboardTermFilter, opts.terms || [{ value: "2025-spring", label: "2025 春季学期" }], "全部学期");
+    setSelectOptions(dashboardCollegeFilter, opts.colleges || [
       ...(data.students_by_college || []).map((x) => x.label),
       ...(data.college_quality || []).map((x) => x.college_name),
     ], "全部学院");
-    setSelectOptions(dashboardMajorFilter, (data.warning_by_major || []).map((x) => x.major_name), "全部专业");
+    const selectedCollege = dashboardCollegeFilter ? dashboardCollegeFilter.value : "";
+    const majors = (opts.majors || (data.warning_by_major || []).map((x) => x.major_name))
+      .filter((item) => !selectedCollege || typeof item !== "object" || item.college === selectedCollege);
+    setSelectOptions(dashboardMajorFilter, majors, "全部专业");
+    setSelectOptions(dashboardCourseTypeFilter, opts.course_types || [
+      { value: "required", label: "必修" },
+      { value: "elective", label: "选修" },
+      { value: "general", label: "通识/实践" },
+    ], "全部课程类型");
   }
 
   function renderDashboard(data) {
     if (!dashboardCardGrid || !data) return;
     populateDashboardFilters(data);
-    const filters = dashboardFilters();
     const c = data.cards || {};
     dashboardCardGrid.innerHTML = "";
     [
@@ -442,9 +460,9 @@
     ].filter(([, key]) => Object.prototype.hasOwnProperty.call(c, key))
       .forEach(([label, , value, sub]) => dashboardCardGrid.appendChild(renderDashboardCard(label, value, sub)));
 
-    const studentsByCollege = (data.students_by_college || []).filter((x) => !filters.college || x.label === filters.college);
-    const collegeQuality = (data.college_quality || []).filter((x) => !filters.college || x.college_name === filters.college);
-    const warningByMajor = (data.warning_by_major || []).filter((x) => !filters.major || x.major_name === filters.major);
+    const studentsByCollege = data.students_by_college || [];
+    const collegeQuality = data.college_quality || [];
+    const warningByMajor = data.warning_by_major || [];
     renderDashboardBars(dashboardStudentsBars, studentsByCollege, { emptyText: "当前筛选条件下暂无学院学生人数数据" });
     renderDashboardBars(dashboardScoreBars, data.score_distribution || [], { emptyText: "当前角色暂无成绩分布数据" });
     renderDashboardTable(dashboardQualityBody, collegeQuality, [
@@ -480,7 +498,9 @@
   }
 
   async function loadDashboard(force) {
-    if (!force && dashboardCache) {
+    const filters = dashboardFilters();
+    const cacheKey = JSON.stringify(filters);
+    if (!force && dashboardCache && dashboardCacheKey === cacheKey) {
       renderDashboard(dashboardCache);
       return dashboardCache;
     }
@@ -488,7 +508,8 @@
       dashboardCardGrid.innerHTML = '<div class="dashboard-loading">正在加载教学数据总览...</div>';
     }
     try {
-      dashboardCache = await api.teachingDashboard();
+      dashboardCache = await api.teachingDashboard(filters);
+      dashboardCacheKey = cacheKey;
       renderDashboard(dashboardCache);
     } catch (err) {
       if (dashboardCardGrid) {
@@ -496,6 +517,13 @@
       }
     }
     return dashboardCache;
+  }
+
+  function handleDashboardFilterChange(changed) {
+    if (changed === "college" && dashboardMajorFilter) {
+      dashboardMajorFilter.value = "";
+    }
+    loadDashboard(true);
   }
 
   function renderDomainSettings(data) {
@@ -2689,15 +2717,16 @@
   document.querySelectorAll(".dashboard-ask-btn").forEach((btn) => {
     btn.addEventListener("click", () => askDashboardQuestion(btn.dataset.question || ""));
   });
-  [dashboardTermFilter, dashboardCollegeFilter, dashboardMajorFilter, dashboardCourseTypeFilter].forEach((el) => {
-    if (el) el.addEventListener("change", () => renderDashboard(dashboardCache));
-  });
+  if (dashboardTermFilter) dashboardTermFilter.addEventListener("change", () => handleDashboardFilterChange("term"));
+  if (dashboardCollegeFilter) dashboardCollegeFilter.addEventListener("change", () => handleDashboardFilterChange("college"));
+  if (dashboardMajorFilter) dashboardMajorFilter.addEventListener("change", () => handleDashboardFilterChange("major"));
+  if (dashboardCourseTypeFilter) dashboardCourseTypeFilter.addEventListener("change", () => handleDashboardFilterChange("course_type"));
   if (dashboardFilterReset) {
     dashboardFilterReset.addEventListener("click", () => {
       [dashboardTermFilter, dashboardCollegeFilter, dashboardMajorFilter, dashboardCourseTypeFilter].forEach((el) => {
         if (el) el.value = "";
       });
-      renderDashboard(dashboardCache);
+      loadDashboard(true);
     });
   }
   if (sqlToggle) {

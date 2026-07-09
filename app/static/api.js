@@ -43,7 +43,7 @@
     changePassword: (payload) => json("POST", "/api/auth/password", payload),
     businessDomains: () => request("/api/business-domains"),
     sources: () => request("/api/sources"),
-    teachingDashboard: () => request("/api/teaching/dashboard"),
+    teachingDashboard: (params) => request(`/api/teaching/dashboard${qs(params)}`),
     ask: (payload) => json("POST", "/api/ask", payload),
     judge: (judgeId) => json("POST", "/api/judge", { judge_id: judgeId }),
     debugRetrieval: (payload) => json("POST", "/api/debug/retrieval", payload),
