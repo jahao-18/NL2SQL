@@ -1,5 +1,6 @@
 $ErrorActionPreference = "Continue"
-Set-Location "D:\python\NL2SQL"
+$ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+Set-Location $ProjectRoot
 
 # The current Codex shell can expose both Path and PATH. PowerShell's process
 # launcher treats them as duplicate keys, so keep the canonical Windows one.
