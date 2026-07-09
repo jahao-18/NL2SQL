@@ -122,14 +122,14 @@ ROLES: dict[str, dict[str, Any]] = {
         "label": "校级管理员",
         "description": "可查看全部教学业务域和治理配置。",
         "domains": list(BUSINESS_DOMAINS),
-        "features": ["dashboard", "ask", "knowledge", "schema", "governance", "domain_settings", "role_management"],
+        "features": ["dashboard", "ask", "knowledge", "schema", "governance", "data_access", "domain_settings", "role_management"],
     },
     "academic_office": {
         "name": "academic_office",
         "label": "教务处老师",
         "description": "关注学籍、教学运行和成绩质量。",
         "domains": ["student_affairs", "teaching_operation", "grade_quality"],
-        "features": ["dashboard", "ask", "knowledge", "schema", "domain_settings", "role_management"],
+        "features": ["dashboard", "ask", "knowledge", "schema", "data_access", "domain_settings", "role_management"],
         "denied_resources": ["evaluation_raw", "teacher_private_id"],
     },
     "college_manager": {
@@ -137,7 +137,7 @@ ROLES: dict[str, dict[str, Any]] = {
         "label": "学院负责人",
         "description": "关注本学院教学运行、成绩质量和评教反馈。",
         "domains": ["teaching_operation", "grade_quality", "evaluation_feedback"],
-        "features": ["dashboard", "ask", "knowledge", "domain_settings", "role_management"],
+        "features": ["dashboard", "ask", "knowledge", "data_access", "domain_settings", "role_management"],
         "denied_resources": ["schoolwide_scope", "evaluation_raw", "teacher_private_id"],
     },
     "teacher": {
@@ -145,7 +145,7 @@ ROLES: dict[str, dict[str, Any]] = {
         "label": "任课教师",
         "description": "关注授课班级、成绩质量和评教反馈。",
         "domains": ["teaching_operation", "grade_quality", "evaluation_feedback"],
-        "features": ["dashboard", "ask", "domain_settings", "role_management"],
+        "features": ["dashboard", "ask", "data_access", "domain_settings", "role_management"],
         "denied_resources": ["schoolwide_scope", "student_identity", "evaluation_raw", "teacher_private_id"],
     },
     "student": {

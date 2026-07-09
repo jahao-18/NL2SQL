@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>教学数据智能问数平台</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:opsz,wght@14..32,200;14..32,300;14..32,400;14..32,500;14..32,600&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css?v=p0-product-1" />
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
@@ -68,18 +68,20 @@
       </div>
     </div>
     <nav class="side-nav">
-      <div class="nav-group-label">教学数据</div>
-      <button class="side-nav-item active" data-view-target="dashboard-view" type="button"><span>▧</span>数据总览</button>
-      <button class="side-nav-item" data-view-target="assistant-view" type="button"><span>⌕</span>智能问数</button>
-      <button class="side-nav-item" data-view-target="kb-list-view" type="button"><span>▦</span>教学知识库</button>
-      <button class="side-nav-item" data-view-target="schema-console-view" type="button"><span>▤</span>Schema 配置</button>
-      <button class="side-nav-item" data-view-target="data-access-view" type="button"><span>D</span>数据接入</button>
-      <button class="side-nav-item" data-view-target="debug-view" type="button"><span>✦</span>召回调试</button>
-      <button class="side-nav-item" data-view-target="domain-settings-view" type="button"><span>◎</span>权限矩阵</button>
-      <button class="side-nav-item" data-view-target="role-management-view" type="button"><span>◉</span>账号管理</button>
+      <div class="nav-group-label">业务工作台</div>
+      <button class="side-nav-item active" data-view-target="dashboard-view" type="button"><span>D</span>教学驾驶舱</button>
+      <button class="side-nav-item" data-view-target="assistant-view" type="button"><span>Q</span>智能问数</button>
+      <button class="side-nav-item" data-view-target="data-access-view" type="button"><span>M</span>数据维护</button>
+      <div class="nav-group-label">数据与知识</div>
+      <button class="side-nav-item" data-view-target="kb-list-view" type="button"><span>K</span>问数知识库</button>
+      <button class="side-nav-item" data-view-target="schema-console-view" type="button"><span>S</span>Schema 画像</button>
       <div class="nav-group-label">治理</div>
-      <button class="side-nav-item" data-view-target="governance-queue-view" type="button"><span>✓</span>待审队列</button>
-      <button class="side-nav-item" data-view-target="governance-settings-view" type="button"><span>⚙</span>设置</button>
+      <button class="side-nav-item" data-view-target="governance-queue-view" type="button"><span>G</span>质量治理</button>
+      <button class="side-nav-item" data-view-target="governance-settings-view" type="button"><span>C</span>治理设置</button>
+      <div class="nav-group-label">系统</div>
+      <button class="side-nav-item" data-view-target="domain-settings-view" type="button"><span>P</span>权限矩阵</button>
+      <button class="side-nav-item" data-view-target="role-management-view" type="button"><span>U</span>账号管理</button>
+      <button class="side-nav-item" data-view-target="debug-view" type="button"><span>T</span>召回调试</button>
     </nav>
     <div class="sidebar-foot">
       <div class="user-avatar">本</div>
@@ -114,12 +116,20 @@
             </div>
             <button class="nav-btn" type="button" id="dashboard-refresh-btn">刷新数据</button>
           </section>
+          <section class="dashboard-filter-panel">
+            <label><span>学年学期</span><select id="dashboard-term-filter"><option value="">全部学期</option><option value="2025-spring">2025 春季学期</option></select></label>
+            <label><span>学院</span><select id="dashboard-college-filter"><option value="">全部学院</option></select></label>
+            <label><span>专业</span><select id="dashboard-major-filter"><option value="">全部专业</option></select></label>
+            <label><span>课程类型</span><select id="dashboard-course-type-filter"><option value="">全部课程类型</option><option value="必修">必修</option><option value="选修">选修</option><option value="实践">实践</option></select></label>
+            <button class="nav-btn secondary" type="button" id="dashboard-filter-reset">重置</button>
+          </section>
           <div class="dashboard-card-grid" id="dashboard-card-grid"></div>
           <div class="dashboard-grid">
             <section class="panel-card dashboard-panel">
               <div class="section-head">
                 <span class="section-icon">S</span>
                 <div><h2>学院学生人数</h2><p>默认统计在读学生。</p></div>
+                <button class="panel-action dashboard-ask-btn" type="button" data-question="各学院在读学生人数是多少？">去问数</button>
               </div>
               <div class="dashboard-bars" id="dashboard-students-bars"></div>
             </section>
@@ -127,6 +137,7 @@
               <div class="section-head">
                 <span class="section-icon">G</span>
                 <div><h2>成绩分布</h2><p>按总评成绩区间统计。</p></div>
+                <button class="panel-action dashboard-ask-btn" type="button" data-question="按总评成绩区间统计成绩分布。">去问数</button>
               </div>
               <div class="dashboard-bars" id="dashboard-score-bars"></div>
             </section>
@@ -134,6 +145,7 @@
               <div class="section-head">
                 <span class="section-icon">Q</span>
                 <div><h2>学院教学质量</h2><p>平均分和挂科率对比。</p></div>
+                <button class="panel-action dashboard-ask-btn" type="button" data-question="各学院平均分和挂科率分别是多少？">去问数</button>
               </div>
               <div class="dashboard-table-wrap">
                 <table class="dashboard-table">
@@ -146,6 +158,7 @@
               <div class="section-head">
                 <span class="section-icon">L</span>
                 <div><h2>低分课程</h2><p>按课程平均分升序。</p></div>
+                <button class="panel-action dashboard-ask-btn" type="button" data-question="平均分最低的 10 门课程有哪些？">去问数</button>
               </div>
               <div class="dashboard-table-wrap">
                 <table class="dashboard-table">
@@ -158,6 +171,7 @@
               <div class="section-head">
                 <span class="section-icon">F</span>
                 <div><h2>挂科率排行</h2><p>定位需要关注的课程。</p></div>
+                <button class="panel-action dashboard-ask-btn" type="button" data-question="挂科率最高的 10 门课程有哪些？">去问数</button>
               </div>
               <div class="dashboard-table-wrap">
                 <table class="dashboard-table">
@@ -170,6 +184,7 @@
               <div class="section-head">
                 <span class="section-icon">T</span>
                 <div><h2>教师授课工作量</h2><p>开课班数与选课学生人次。</p></div>
+                <button class="panel-action dashboard-ask-btn" type="button" data-question="统计每位教师的授课班级数和选课学生人次。">去问数</button>
               </div>
               <div class="dashboard-table-wrap">
                 <table class="dashboard-table">
@@ -182,6 +197,7 @@
               <div class="section-head">
                 <span class="section-icon">A</span>
                 <div><h2>考勤风险课程</h2><p>按缺勤率定位需要关注的课程。</p></div>
+                <button class="panel-action dashboard-ask-btn" type="button" data-question="缺勤率最高的课程有哪些？">去问数</button>
               </div>
               <div class="dashboard-table-wrap">
                 <table class="dashboard-table">
@@ -194,6 +210,7 @@
               <div class="section-head">
                 <span class="section-icon">W</span>
                 <div><h2>学业预警分布</h2><p>按专业统计未解除预警人数。</p></div>
+                <button class="panel-action dashboard-ask-btn" type="button" data-question="哪些专业的未解除学业预警人数最多？">去问数</button>
               </div>
               <div class="dashboard-table-wrap">
                 <table class="dashboard-table">
@@ -326,7 +343,10 @@
               <div class="sql-block" id="sql-block">
                 <div class="sql-header">
                   <span class="sql-header-title">Generated SQL</span>
-                  <button class="sql-copy" id="sql-copy" type="button">复制</button>
+                  <div class="sql-actions">
+                    <button class="sql-copy" id="sql-toggle" type="button">展开 SQL</button>
+                    <button class="sql-copy" id="sql-copy" type="button">复制</button>
+                  </div>
                 </div>
                 <div class="sql-body"><pre id="sql-code"></pre></div>
                 <div class="sql-meta" id="sql-meta"></div>
@@ -654,6 +674,21 @@
             <div><i>04</i><b>数据维护</b><span>受控增删改并记录审计</span></div>
           </div>
 
+          <section class="access-object-panel">
+            <div class="section-head">
+              <span class="section-icon">O</span>
+              <div><h2>教学对象视图</h2><p>按业务对象快速定位维护表，避免只从数据库表名进入。</p></div>
+            </div>
+            <div class="access-object-tabs" id="access-object-tabs">
+              <button type="button" data-object-table="student">学生</button>
+              <button type="button" data-object-table="teacher">教师</button>
+              <button type="button" data-object-table="course">课程</button>
+              <button type="button" data-object-table="score">成绩</button>
+              <button type="button" data-object-table="attendance">考勤</button>
+              <button type="button" data-object-table="academic_warning">预警</button>
+            </div>
+          </section>
+
           <div class="access-workbench">
             <section class="panel-card access-source-panel">
               <div class="section-head">
@@ -756,10 +791,44 @@
   </section>
 </div>
 
-<script src="/api.js"></script>
-<script src="/modal.js"></script>
-<script src="/governance-view.js"></script>
-<script src="/data-access-view.js"></script>
-<script src="/app.js"></script>
+<div class="modal-backdrop" id="feedback-modal" hidden>
+  <section class="modal-panel feedback-modal-panel" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
+    <div class="modal-head">
+      <div>
+        <div class="panel-kicker">Result Feedback</div>
+        <h2 id="feedback-modal-title">反馈查询结果问题</h2>
+      </div>
+      <button class="modal-close" id="feedback-modal-close" type="button">关闭</button>
+    </div>
+    <div class="modal-body">
+      <label class="feedback-field">
+        <span>错误类型</span>
+        <select id="feedback-category">
+          <option value="字段理解错误">字段理解错误</option>
+          <option value="指标口径错误">指标口径错误</option>
+          <option value="过滤条件错误">过滤条件错误</option>
+          <option value="关联关系错误">关联关系错误</option>
+          <option value="数据源错误">数据源错误</option>
+          <option value="结果看不懂">结果看不懂</option>
+          <option value="其他">其他</option>
+        </select>
+      </label>
+      <label class="feedback-field">
+        <span>问题说明</span>
+        <textarea id="feedback-reason" rows="5" placeholder="请说明哪里不符合预期，例如应统计在读学生、应按本学期过滤、课程口径不对等。"></textarea>
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="nav-btn secondary" id="feedback-modal-cancel" type="button">取消</button>
+      <button class="nav-btn" id="feedback-modal-submit" type="button">提交反馈</button>
+    </div>
+  </section>
+</div>
+
+<script src="/api.js?v=p0-product-1"></script>
+<script src="/modal.js?v=p0-product-1"></script>
+<script src="/governance-view.js?v=p0-product-1"></script>
+<script src="/data-access-view.js?v=p0-product-1"></script>
+<script src="/app.js?v=p0-product-1"></script>
 </body>
 </html>

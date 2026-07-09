@@ -124,6 +124,7 @@
   const sqlCode = $("sql-code");
   const sqlMeta = $("sql-meta");
   const sqlCopy = $("sql-copy");
+  const sqlToggle = $("sql-toggle");
 
   const resultWrap = $("result-table-wrap");
   const resultTitle = $("result-table-title");
@@ -197,6 +198,11 @@
   const dashboardWorkloadBody = $("dashboard-workload-body");
   const dashboardAttendanceRiskBody = $("dashboard-attendance-risk-body");
   const dashboardWarningBody = $("dashboard-warning-body");
+  const dashboardTermFilter = $("dashboard-term-filter");
+  const dashboardCollegeFilter = $("dashboard-college-filter");
+  const dashboardMajorFilter = $("dashboard-major-filter");
+  const dashboardCourseTypeFilter = $("dashboard-course-type-filter");
+  const dashboardFilterReset = $("dashboard-filter-reset");
   const domainRefreshBtn = $("domain-refresh-btn");
   const domainCurrent = $("domain-current");
   const domainGrid = $("domain-grid");
@@ -210,6 +216,12 @@
   const newPassword = $("new-password");
   const confirmPassword = $("confirm-password");
   const passwordMessage = $("password-message");
+  const feedbackModal = $("feedback-modal");
+  const feedbackCategory = $("feedback-category");
+  const feedbackReason = $("feedback-reason");
+  const feedbackModalClose = $("feedback-modal-close");
+  const feedbackModalCancel = $("feedback-modal-cancel");
+  const feedbackModalSubmit = $("feedback-modal-submit");
 
   const HISTORY_KEY = "nl2sql.history.v1";
   const QUERY_LOG_KEY = "nl2sql.queryLog.v1";
@@ -284,6 +296,7 @@
       "kb-list-view": "knowledge",
       "kb-overview-view": "knowledge",
       "schema-console-view": "schema",
+      "data-access-view": "data_access",
       "debug-view": "schema",
       "governance-queue-view": "governance",
       "governance-settings-view": "governance",
@@ -326,18 +339,26 @@
   function renderDashboardBars(el, items, options) {
     if (!el) return;
     const rows = Array.isArray(items) ? items : [];
-    const max = Math.max(1, ...rows.map((x) => Number(x.value || 0)));
     el.innerHTML = "";
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "dashboard-empty";
+      empty.textContent = (options && options.emptyText) || "暂无可展示数据";
+      el.appendChild(empty);
+      return;
+    }
+    const max = Math.max(1, ...rows.map((x) => Number(x.value || 0)));
     rows.forEach((item) => {
       const value = Number(item.value || 0);
       const row = document.createElement("div");
       row.className = "dashboard-bar-row";
+      const width = value > 0 ? Math.max(6, value / max * 100) : 0;
       row.innerHTML = `
         <div class="dashboard-bar-meta">
           <span>${escapeHtml(item.label || "")}</span>
           <b>${escapeHtml(options && options.percent ? pctText(value) : formatNumber(value))}</b>
         </div>
-        <div class="dashboard-bar-track"><i style="width:${Math.max(3, value / max * 100)}%"></i></div>
+        <div class="dashboard-bar-track" style="background:linear-gradient(90deg,#c74e3a 0%,#5a8a4c ${width}%,#eee8e1 ${width}%,#eee8e1 100%)"><i style="width:${width}%;background:linear-gradient(90deg,#c74e3a,#5a8a4c)"></i></div>
       `;
       el.appendChild(row);
     });
@@ -357,8 +378,54 @@
     });
   }
 
+  function setSelectOptions(select, values, placeholder) {
+    if (!select) return;
+    const current = select.value;
+    const uniq = Array.from(new Set((values || []).filter(Boolean)));
+    select.innerHTML = `<option value="">${escapeHtml(placeholder || "全部")}</option>` +
+      uniq.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    if (uniq.includes(current)) select.value = current;
+  }
+
+  function dashboardFilters() {
+    return {
+      term: dashboardTermFilter ? dashboardTermFilter.value : "",
+      college: dashboardCollegeFilter ? dashboardCollegeFilter.value : "",
+      major: dashboardMajorFilter ? dashboardMajorFilter.value : "",
+      courseType: dashboardCourseTypeFilter ? dashboardCourseTypeFilter.value : "",
+    };
+  }
+
+  function enrichDashboardQuestion(question) {
+    const f = dashboardFilters();
+    const parts = [];
+    if (f.term === "2025-spring") parts.push("只看 2025 年春季学期");
+    if (f.college) parts.push(`只看${f.college}`);
+    if (f.major) parts.push(`只看${f.major}专业`);
+    if (f.courseType) parts.push(`只看${f.courseType}课程`);
+    return parts.length ? `${question} ${parts.join("，")}。` : question;
+  }
+
+  function askDashboardQuestion(question) {
+    if (!input) return;
+    input.value = enrichDashboardQuestion(question);
+    showView("assistant-view");
+    input.focus();
+  }
+
+  function populateDashboardFilters(data) {
+    if (!data) return;
+    setSelectOptions(dashboardCollegeFilter, [
+      ...(data.students_by_college || []).map((x) => x.label),
+      ...(data.college_quality || []).map((x) => x.college_name),
+    ], "全部学院");
+    setSelectOptions(dashboardMajorFilter, (data.warning_by_major || []).map((x) => x.major_name), "全部专业");
+  }
+
   function renderDashboard(data) {
     if (!dashboardCardGrid || !data) return;
+    populateDashboardFilters(data);
+    const filters = dashboardFilters();
     const c = data.cards || {};
     dashboardCardGrid.innerHTML = "";
     [
@@ -375,9 +442,12 @@
     ].filter(([, key]) => Object.prototype.hasOwnProperty.call(c, key))
       .forEach(([label, , value, sub]) => dashboardCardGrid.appendChild(renderDashboardCard(label, value, sub)));
 
-    renderDashboardBars(dashboardStudentsBars, data.students_by_college || []);
-    renderDashboardBars(dashboardScoreBars, data.score_distribution || []);
-    renderDashboardTable(dashboardQualityBody, data.college_quality || [], [
+    const studentsByCollege = (data.students_by_college || []).filter((x) => !filters.college || x.label === filters.college);
+    const collegeQuality = (data.college_quality || []).filter((x) => !filters.college || x.college_name === filters.college);
+    const warningByMajor = (data.warning_by_major || []).filter((x) => !filters.major || x.major_name === filters.major);
+    renderDashboardBars(dashboardStudentsBars, studentsByCollege, { emptyText: "当前筛选条件下暂无学院学生人数数据" });
+    renderDashboardBars(dashboardScoreBars, data.score_distribution || [], { emptyText: "当前角色暂无成绩分布数据" });
+    renderDashboardTable(dashboardQualityBody, collegeQuality, [
       { key: "college_name" },
       { key: "avg_score", number: true, digits: 2, align: "right" },
       { key: "fail_rate", percent: true, align: "right" },
@@ -402,7 +472,7 @@
       { key: "absent_rate", percent: true, align: "right" },
       { key: "attendance_count", number: true, align: "right" },
     ]);
-    renderDashboardTable(dashboardWarningBody, data.warning_by_major || [], [
+    renderDashboardTable(dashboardWarningBody, warningByMajor, [
       { key: "major_name" },
       { key: "warning_count", number: true, align: "right" },
       { key: "avg_risk_score", number: true, digits: 1, align: "right" },
@@ -1964,13 +2034,33 @@
       await clearCurrentFeedback();
       return;
     }
-    const reason = prompt("请简要说明哪里不对: 口径不对 / 字段选错 / 过滤条件错 / 数据源错 / 其他", "");
-    if (reason == null) return;
-    const category = prompt("错误类型(可选): 选错库 / 字段理解错 / JOIN错 / 过滤条件错 / 指标口径错 / 结果看不懂", "") || "";
+    openFeedbackModal();
+  }
+
+  function openFeedbackModal() {
+    if (!feedbackModal) return;
+    if (feedbackReason) feedbackReason.value = "";
+    feedbackModal.hidden = false;
+    if (feedbackReason) feedbackReason.focus();
+  }
+
+  function closeFeedbackModal() {
+    if (feedbackModal) feedbackModal.hidden = true;
+  }
+
+  async function submitFeedbackModal() {
+    if (!currentResult) return;
+    const reason = (feedbackReason && feedbackReason.value || "").trim();
+    const category = (feedbackCategory && feedbackCategory.value || "其他").trim();
+    if (!reason) {
+      if (feedbackReason) feedbackReason.focus();
+      return;
+    }
     if (currentResult.feedbackKind === "correct") {
       await clearCurrentFeedback();
     }
-    await saveFeedback("incorrect", reason.trim(), category.trim());
+    await saveFeedback("incorrect", reason, category);
+    closeFeedbackModal();
   }
 
   function textTokens(text) {
@@ -2058,6 +2148,12 @@
     chartPanel.hidden = !chartPanel.hidden;
     if (!chartPanel.hidden) drawChart();
     if (chartToggleBtn) chartToggleBtn.textContent = chartPanel.hidden ? "图表视图" : "收起图表";
+  }
+
+  function setSqlExpanded(expanded) {
+    if (!sqlBlock) return;
+    sqlBlock.classList.toggle("is-collapsed", !expanded);
+    if (sqlToggle) sqlToggle.textContent = expanded ? "收起 SQL" : "展开 SQL";
   }
 
   /* ---------------- data fetching ---------------- */
@@ -2507,6 +2603,7 @@
         appendProcessLog("SQL 已生成并通过安全校验,准备展示执行语句。", "done");
         sqlCode.innerHTML = highlightSQL(data.sql);
         sqlBlock.classList.add("visible");
+        setSqlExpanded(false);
       }
 
       if (data.error) {
@@ -2589,6 +2686,32 @@
   navTargets.forEach((btn) => {
     btn.addEventListener("click", () => showView(btn.dataset.viewTarget));
   });
+  document.querySelectorAll(".dashboard-ask-btn").forEach((btn) => {
+    btn.addEventListener("click", () => askDashboardQuestion(btn.dataset.question || ""));
+  });
+  [dashboardTermFilter, dashboardCollegeFilter, dashboardMajorFilter, dashboardCourseTypeFilter].forEach((el) => {
+    if (el) el.addEventListener("change", () => renderDashboard(dashboardCache));
+  });
+  if (dashboardFilterReset) {
+    dashboardFilterReset.addEventListener("click", () => {
+      [dashboardTermFilter, dashboardCollegeFilter, dashboardMajorFilter, dashboardCourseTypeFilter].forEach((el) => {
+        if (el) el.value = "";
+      });
+      renderDashboard(dashboardCache);
+    });
+  }
+  if (sqlToggle) {
+    sqlToggle.addEventListener("click", () => setSqlExpanded(sqlBlock && sqlBlock.classList.contains("is-collapsed")));
+  }
+  [feedbackModalClose, feedbackModalCancel].forEach((btn) => {
+    if (btn) btn.addEventListener("click", closeFeedbackModal);
+  });
+  if (feedbackModalSubmit) feedbackModalSubmit.addEventListener("click", submitFeedbackModal);
+  if (feedbackModal) {
+    feedbackModal.addEventListener("click", (event) => {
+      if (event.target === feedbackModal) closeFeedbackModal();
+    });
+  }
   if (kbSearch) kbSearch.addEventListener("input", renderKbList);
   if (kbRefreshBtn) {
     kbRefreshBtn.addEventListener("click", async () => {
