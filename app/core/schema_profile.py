@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+import re
 
 import yaml
 
@@ -343,12 +344,19 @@ def _version_dir(source_name: str) -> Path:
     return ROOT_DIR / "data" / "schema_profiles" / ".versions" / source_name
 
 
+def _safe_version_id(version_id: str) -> str:
+    value = (version_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,80}", value):
+        raise ValueError("非法版本号")
+    return value
+
+
 def _version_meta_path(source_name: str, version_id: str) -> Path:
-    return _version_dir(source_name) / f"{version_id}.meta.yaml"
+    return _version_dir(source_name) / f"{_safe_version_id(version_id)}.meta.yaml"
 
 
 def _version_yaml_path(source_name: str, version_id: str) -> Path:
-    return _version_dir(source_name) / f"{version_id}.yaml"
+    return _version_dir(source_name) / f"{_safe_version_id(version_id)}.yaml"
 
 
 def _write_version_snapshot(source_name: str, content: str, meta: dict[str, Any] | None = None) -> str:

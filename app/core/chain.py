@@ -92,6 +92,7 @@ class ChatQwenMultiModal(BaseChatModel):
                     model=self.model,
                     messages=self._to_dashscope(messages),
                     temperature=self.temperature,
+                    timeout=settings.llm_timeout_seconds,
                 )
                 if resp.status_code == 200:
                     break
@@ -133,6 +134,8 @@ def make_llm(model: str) -> BaseChatModel:
         model=model,
         dashscope_api_key=settings.dashscope_api_key,
         temperature=0,
+        max_retries=2,
+        model_kwargs={"timeout": settings.llm_timeout_seconds},
     )
 
 

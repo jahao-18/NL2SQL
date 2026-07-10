@@ -18,6 +18,7 @@ from app.core.config import ROOT_DIR
 from app.core import data_sources as ds_cache
 from app.core.schema import clear_cache as clear_schema_cache
 from app.core.schema_profile import empty_profile_dict, save_profile_dict
+from app.core.file_store import atomic_write_text, lock_for
 
 
 DATA_SOURCES_FILE = ROOT_DIR / "data_sources.yaml"
@@ -39,25 +40,32 @@ def _load_yaml() -> dict[str, Any]:
 
 
 def _save_yaml(raw: dict[str, Any]) -> None:
-    DATA_SOURCES_FILE.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    atomic_write_text(DATA_SOURCES_FILE, yaml.safe_dump(raw, allow_unicode=True, sort_keys=False))
+    _clear_runtime_caches()
+
+
+def _clear_runtime_caches() -> None:
     ds_cache.clear_cache()
     clear_schema_cache()
+    try:
+        from app.core.source_router import clear_cache as clear_router_cache
+        clear_router_cache()
+    except Exception:
+        pass
+    try:
+        from app.core.retrieval.pipeline import clear_cache as clear_retrieval_cache
+        clear_retrieval_cache()
+    except Exception:
+        pass
 
 
 def _append_source_entry(entry: dict[str, Any]) -> None:
-    lines = ["", "  - name: " + str(entry["name"])]
-    for key in ["label", "url", "glossary", "schema_profile"]:
-        value = entry.get(key)
-        if value:
-            lines.append(f"    {key}: {value}")
-    if entry.get("writable") is not None:
-        lines.append(f"    writable: {'true' if entry.get('writable') else 'false'}")
-    if entry.get("status"):
-        lines.append(f"    status: {entry.get('status')}")
-    text = DATA_SOURCES_FILE.read_text(encoding="utf-8").rstrip() + "\n" + "\n".join(lines) + "\n"
-    DATA_SOURCES_FILE.write_text(text, encoding="utf-8")
-    ds_cache.clear_cache()
-    clear_schema_cache()
+    with lock_for(DATA_SOURCES_FILE):
+        raw = _load_yaml()
+        if any(item.get("name") == entry.get("name") for item in raw["sources"]):
+            raise ValueError(f"数据源已存在: {entry.get('name')}")
+        raw["sources"].append(entry)
+        _save_yaml(raw)
 
 
 def _source_entry(name: str) -> dict[str, Any]:
@@ -168,9 +176,6 @@ def register_sqlite_source(name: str, label: str, db_path: str, writable: bool =
     path = path if path.is_absolute() else ROOT_DIR / path
     if not path.exists():
         raise FileNotFoundError(str(path))
-    raw = _load_yaml()
-    if any(item.get("name") == name for item in raw["sources"]):
-        raise ValueError(f"数据源已存在: {name}")
     rel_db = _relative(path)
     glossary = ROOT_DIR / "data" / "glossaries" / f"{name}.md"
     glossary.parent.mkdir(parents=True, exist_ok=True)

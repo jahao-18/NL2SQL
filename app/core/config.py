@@ -14,12 +14,16 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(ROOT_DIR / ".env"), env_file_encoding="utf-8", extra="ignore")
 
     dashscope_api_key: str = ""
+    auth_secret: str = "nl2sql-course-project-change-me"
     qwen_model: str = "qwen-max"
     # 数据源路由模型:只做"从库目录里选一个库"的分类小任务,无需主生成那么强,
     # 用快模型砍掉路由这一步的延迟(只影响选库速度,不碰库内 schema 召回质量)。
     router_model: str = "qwen-turbo"
     max_rows: int = 200
     query_timeout_seconds: int = 5
+    llm_timeout_seconds: int = 45
+    max_upload_bytes: int = 20 * 1024 * 1024
+    bird_database_root: str = "data/bird/dev_databases"
     enum_discovery_enabled: bool = True
     enum_discovery_max_tables: int = 20
     enum_discovery_max_columns: int = 120
@@ -32,6 +36,7 @@ class Settings(BaseSettings):
     judge_weight_correctness: float = 0.7   # 最终分 = 此权重*SQL正确性 + (1-此权重)*召回质量
     judge_sample_rows: int = 20             # 喂给裁判的结果行样本上限(控 token)
     judge_fallback_seconds: int = 12        # 裁判模型超过该秒数未返回时,先用规则估算兜底展示
+    judge_workers: int = 4
 
 
     # ── 知识库检索(schema linking)──
@@ -80,7 +85,7 @@ class Settings(BaseSettings):
     retrieval_history_turns: int = 2
     # 启动时后台预热:提前为"会真正走检索的大库"建好原子/检索器/图/术语索引(含嵌入全部原子),
     # 消除每个库首次查询的冷启动延迟。后台线程跑,不阻塞启动;小库/检索关闭时自动跳过。
-    prewarm_enabled: bool = True
+    prewarm_enabled: bool = False
 
 
 settings = Settings()

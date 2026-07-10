@@ -1,4 +1,4 @@
-from app.core.business_domains import denied_question_hit, user_from_token
+from app.core.business_domains import denied_question_hit, token_for, user_from_token
 from app.core.validator import SQLValidationError, validate_and_fix
 
 
@@ -10,10 +10,11 @@ def test_policy_aliases_block_english_bypass_terms():
         ("college_manager", "fail rate across all colleges", "all colleges"),
     ]
     for role, question, expected in cases:
-        ctx = user_from_token({
+        username = {
             "academic_office": "jwc",
             "college_manager": "college",
-        }.get(role, role))
+        }.get(role, role)
+        ctx = user_from_token(token_for(username))
         assert denied_question_hit(question, ctx.denied_terms) == expected
 
 

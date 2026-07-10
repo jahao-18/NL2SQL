@@ -25,6 +25,7 @@ def validate_and_fix(
     sql: str,
     allowed_tables: dict[str, list[str]],
     blocked_columns: set[str] | None = None,
+    row_scope: dict[str, object] | None = None,
 ) -> tuple[str, bool]:
     """校验 SQL 并补 LIMIT,返回 (最终可执行 SQL, truncated)。truncated=True 表示用户请求的 LIMIT 被收紧到 MAX_ROWS。失败抛 SQLValidationError。"""
     sql = sql.strip().rstrip(";").strip()
@@ -57,6 +58,9 @@ def validate_and_fix(
     if blocked_hit:
         raise SQLValidationError(f"引用了不可用于问数的字段: {blocked_hit}")
 
+    # 3.6) 行级范围必须由最终 SQL 明确落实，不能只依赖 LLM prompt。
+    _enforce_row_scope(stmt, sql, row_scope or {})
+
     # 4) 强制 LIMIT,并记录是否截断
     truncated = False
     limit_match = re.search(r"\blimit\s+(\d+)(\s+offset\s+\d+)?\s*$", sql, flags=re.IGNORECASE)
@@ -69,6 +73,75 @@ def validate_and_fix(
             sql = _cap_limit(sql, settings.max_rows)
 
     return sql, truncated
+
+
+_ROW_SCOPE_RULES: dict[str, dict[str, object]] = {
+    "student_id": {
+        "tables": {
+            "student", "enrollment", "score", "evaluation", "assignment_submission",
+            "attendance", "learning_activity", "scholarship", "academic_warning",
+        },
+        "columns": {
+            "student": "id",
+            "enrollment": "student_id",
+            "assignment_submission": "student_id",
+            "attendance": "student_id",
+            "learning_activity": "student_id",
+            "scholarship": "student_id",
+            "academic_warning": "student_id",
+        },
+        "label": "student_id",
+    },
+    "teacher_id": {
+        "tables": {"teacher", "teaching_class", "evaluation", "assignment", "attendance", "learning_activity"},
+        "columns": {"teacher": "id", "teaching_class": "teacher_id"},
+        "label": "teacher_id",
+    },
+    "college_id": {
+        "tables": {
+            "college", "major", "class_group", "student", "teacher", "course", "teaching_class",
+            "enrollment", "score", "evaluation", "assignment", "assignment_submission",
+            "attendance", "learning_activity", "scholarship", "academic_warning",
+        },
+        "columns": {
+            "college": "id", "major": "college_id", "student": "college_id",
+            "teacher": "college_id", "course": "college_id",
+        },
+        "label": "college_id",
+    },
+}
+
+
+def _enforce_row_scope(stmt: Statement, sql: str, row_scope: dict[str, object]) -> None:
+    if not row_scope:
+        return
+    refs = {name.lower() for name in _table_refs(stmt)}
+    aliases = _table_aliases(stmt)
+    for scope_key, scope_value in row_scope.items():
+        rule = _ROW_SCOPE_RULES.get(scope_key)
+        if not rule or not (refs & set(rule["tables"])):
+            continue
+        value = str(scope_value)
+        candidates: list[tuple[str, str]] = []
+        for table, column in dict(rule["columns"]).items():
+            if table not in refs:
+                continue
+            qualifiers = {table, *(alias for alias, real in aliases.items() if real == table)}
+            candidates.extend((qualifier, column) for qualifier in qualifiers)
+            if len(refs) == 1:
+                candidates.append(("", column))
+        if any(_scope_predicate_present(sql, qualifier, column, value) for qualifier, column in candidates):
+            continue
+        raise SQLValidationError(f"当前身份查询这些数据时必须限定 {rule['label']} = {value}")
+
+
+def _scope_predicate_present(sql: str, qualifier: str, column: str, value: str) -> bool:
+    col = rf"{re.escape(qualifier)}\s*\.\s*{re.escape(column)}" if qualifier else rf"(?<!\.)\b{re.escape(column)}"
+    literal = re.escape(value)
+    return bool(
+        re.search(rf"\b{col}\b\s*=\s*{literal}\b", sql, re.IGNORECASE)
+        or re.search(rf"\b{literal}\b\s*=\s*{col}\b", sql, re.IGNORECASE)
+    )
 
 
 def _blocked_output_column_hit(stmt: Statement, blocked_columns: set[str]) -> str | None:

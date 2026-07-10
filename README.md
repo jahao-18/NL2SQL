@@ -90,6 +90,7 @@ Copy-Item .env.example .env
 
 ```env
 DASHSCOPE_API_KEY=sk-你的密钥
+AUTH_SECRET=一段仅本机使用的随机字符串
 ```
 
 可选模型配置：
@@ -98,6 +99,10 @@ DASHSCOPE_API_KEY=sk-你的密钥
 QWEN_MODEL=qwen3.7-plus
 JUDGE_MODEL=qwen3.6-plus
 ROUTER_MODEL=qwen-turbo
+BIRD_DATABASE_ROOT=D:/dev/dev_databases
+LLM_TIMEOUT_SECONDS=45
+MAX_UPLOAD_BYTES=20971520
+PREWARM_ENABLED=false
 ```
 
 > 默认 `RETRIEVAL_BACKEND=local`，不需要 Docker。DashScope API Key 是问数、路由、查询扩展和评估功能的核心依赖。
@@ -153,13 +158,16 @@ sources:
 
 ### BIRD 数据集
 
-`data_sources.yaml` 中还保留了若干 BIRD benchmark 示例源，路径形如：
+`data_sources.yaml` 中还保留了若干 BIRD benchmark 示例源，路径由
+`.env` 的 `BIRD_DATABASE_ROOT` 指定，目录结构形如：
 
 ```text
-data/bird/dev_databases/<db>/<db>.sqlite
+<BIRD_DATABASE_ROOT>/<db>/<db>.sqlite
 ```
 
-这些原始数据库体积较大，未放入 Git 仓库，`data/bird/` 也被 `.gitignore` 忽略。缺少 BIRD 数据不会影响默认教学库启动；只有当你手动选择或评测 BIRD 数据源时才需要下载并放到对应目录。
+这些原始数据库体积较大，未放入 Git 仓库。缺少 BIRD 数据不会影响默认教学库启动；只有当你手动选择或评测 BIRD 数据源时才需要下载并配置对应目录。
+
+登录成功后后端会返回 HMAC 签名的演示令牌。修改 `AUTH_SECRET` 后，浏览器中旧的登录状态会失效，重新登录即可。
 
 如果要重新生成 BIRD 数据源配置，可参考：
 

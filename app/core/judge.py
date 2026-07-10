@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from app.core.chain import make_llm
@@ -21,6 +22,7 @@ logger = logging.getLogger("nl2sql.judge")
 
 _SCHEMA_CHARS_CAP = 4000
 _PENDING_CAP = 256
+_executor = ThreadPoolExecutor(max_workers=max(1, settings.judge_workers), thread_name_prefix="judge")
 
 
 @dataclass
@@ -176,7 +178,7 @@ def stash(
         _pending[jid] = {"done": False, "result": None, "created_at": time.monotonic(), "args": args}
         while len(_pending) > _PENDING_CAP:
             _pending.popitem(last=False)
-    threading.Thread(target=_judge_worker, args=(jid, args), daemon=True, name=f"judge-{jid[:8]}").start()
+    _executor.submit(_judge_worker, jid, args)
     return jid
 
 

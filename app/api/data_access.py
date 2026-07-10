@@ -8,7 +8,8 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.core.business_domains import user_from_token
+from app.core.business_domains import require_admin
+from app.core.config import settings
 from app.core.data_access import (
     audit_logs,
     copy_uploaded_db,
@@ -33,16 +34,16 @@ class TestConnectionRequest(BaseModel):
 
 
 class RegisterSqliteRequest(BaseModel):
-    name: str
-    label: str = ""
-    db_path: str
+    name: str = Field(..., min_length=2, max_length=49)
+    label: str = Field("", max_length=120)
+    db_path: str = Field(..., min_length=1, max_length=1000)
     writable: bool = False
 
 
 class CsvImportRequest(BaseModel):
-    name: str
-    label: str = ""
-    table_name: str = "imported_data"
+    name: str = Field(..., min_length=2, max_length=49)
+    label: str = Field("", max_length=120)
+    table_name: str = Field("imported_data", min_length=2, max_length=49)
     csv_text: str
     writable: bool = True
 
@@ -52,17 +53,11 @@ class RowRequest(BaseModel):
 
 
 def _require_maintainer(token: str | None):
-    ctx = user_from_token(token)
-    if ctx.role not in {"admin", "academic_office", "college_manager", "teacher"}:
-        raise HTTPException(status_code=403, detail="当前角色没有数据接入或维护权限")
-    return ctx
+    return require_admin(token)
 
 
 def _require_admin(token: str | None):
-    ctx = user_from_token(token)
-    if ctx.role != "admin":
-        raise HTTPException(status_code=403, detail="只有管理员可以新增数据源")
-    return ctx
+    return require_admin(token)
 
 
 @router.get("/sources")
@@ -93,6 +88,8 @@ def register_sqlite(req: RegisterSqliteRequest, ctx=Header(None, alias="X-Demo-T
 def import_csv(req: CsvImportRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
     _require_admin(ctx)
     try:
+        if len(req.csv_text.encode("utf-8")) > settings.max_upload_bytes:
+            raise ValueError(f"CSV 文件不能超过 {settings.max_upload_bytes // (1024 * 1024)} MB")
         with NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8", newline="") as f:
             f.write(req.csv_text)
             tmp = Path(f.name)
@@ -113,7 +110,12 @@ def import_db_file(payload: dict[str, Any], ctx=Header(None, alias="X-Demo-Token
         filename = str(payload.get("filename") or f"{name}.db")
         content = str(payload.get("content_base64") or "")
         import base64
-        uploaded = save_upload(filename, base64.b64decode(content))
+        if len(content) > (settings.max_upload_bytes * 4 // 3 + 8):
+            raise ValueError(f"数据库文件不能超过 {settings.max_upload_bytes // (1024 * 1024)} MB")
+        decoded = base64.b64decode(content, validate=True)
+        if len(decoded) > settings.max_upload_bytes:
+            raise ValueError(f"数据库文件不能超过 {settings.max_upload_bytes // (1024 * 1024)} MB")
+        uploaded = save_upload(filename, decoded)
         managed = copy_uploaded_db(name, uploaded)
         return register_sqlite_source(name, label, str(managed), bool(payload.get("writable", False)))
     except Exception as e:

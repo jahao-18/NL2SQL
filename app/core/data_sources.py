@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 
-from app.core.config import ROOT_DIR
+from app.core.config import ROOT_DIR, settings
 
 Dialect = Literal["sqlite", "postgresql", "mysql", "other"]
 
@@ -53,6 +53,10 @@ def _resolve(path_str: str | None) -> Path | None:
     return p if p.is_absolute() else ROOT_DIR / p
 
 
+def _expand_url(url: str) -> str:
+    return url.replace("${BIRD_DATABASE_ROOT}", Path(settings.bird_database_root).as_posix().rstrip("/"))
+
+
 @lru_cache(maxsize=1)
 def load_sources() -> dict[str, DataSource]:
     """读 yaml,返回 name -> DataSource 的有序字典(按 yaml 顺序保留)。"""
@@ -68,7 +72,7 @@ def load_sources() -> dict[str, DataSource]:
     result: dict[str, DataSource] = {}
     for item in items:
         name = item.get("name")
-        url = item.get("url")
+        url = _expand_url(str(item.get("url") or ""))
         if not name or not url:
             raise ValueError(f"数据源缺 name 或 url: {item}")
         if name in result:
@@ -106,11 +110,7 @@ def _engine_for_url(url: str, dialect: Dialect) -> Engine:
     connect_args: dict = {}
 
     if dialect == "sqlite":
-        # SQLite 通过 URI 走 mode=ro;create_engine 透传 uri=True
-        if url.startswith("sqlite:///") and "mode=ro" not in url:
-            # 在路径后追加 query 串,需要走 sqlite uri
-            path = url[len("sqlite:///"):]
-            url = f"sqlite:///file:{path}?mode=ro&uri=true"
+        url = _normalized_sqlite_url(url)
         connect_args["check_same_thread"] = False
     elif dialect == "postgresql":
         # 会话级只读
@@ -118,6 +118,25 @@ def _engine_for_url(url: str, dialect: Dialect) -> Engine:
 
     kwargs["connect_args"] = connect_args
     return create_engine(url, **kwargs)
+
+
+def _normalized_sqlite_url(url: str) -> str:
+    if not url.startswith("sqlite:///"):
+        return url
+    body = url[len("sqlite:///"):]
+    if body.startswith("file:"):
+        body = body[5:]
+    raw_path, separator, query = body.partition("?")
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = ROOT_DIR / path
+    params = [part for part in query.split("&") if part] if separator else []
+    keys = {part.split("=", 1)[0].lower() for part in params}
+    if "mode" not in keys:
+        params.append("mode=ro")
+    if "uri" not in keys:
+        params.append("uri=true")
+    return f"sqlite:///file:{path.resolve().as_posix()}?{'&'.join(params)}"
 
 
 def get_engine(source: DataSource) -> Engine:
