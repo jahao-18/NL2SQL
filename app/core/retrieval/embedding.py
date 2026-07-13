@@ -29,6 +29,7 @@ def _call(texts: list[str]) -> list[list[float]]:
                 model=settings.embedding_model,
                 input=texts,
                 api_key=settings.dashscope_api_key,
+                timeout=settings.llm_timeout_seconds,
             )
             if resp.status_code == 200:
                 break

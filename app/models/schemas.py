@@ -157,12 +157,12 @@ class QualityResponse(BaseModel):
 
 class FeedbackRequest(BaseModel):
     kind: Literal["correct", "incorrect"] = "incorrect"
-    reason: str = ""
-    category: str = ""
-    question: str = ""
-    sql: str = ""
-    source: str = ""
-    source_label: str = ""
+    reason: str = Field("", max_length=2000)
+    category: str = Field("", max_length=100)
+    question: str = Field("", max_length=500)
+    sql: str = Field("", max_length=5000)
+    source: str = Field("", max_length=100)
+    source_label: str = Field("", max_length=120)
     explanation: dict[str, Any] = Field(default_factory=dict)
 
 

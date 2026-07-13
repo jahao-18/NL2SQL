@@ -176,9 +176,19 @@
   const savedExampleList = $("saved-example-list");
   const feedbackList = $("feedback-list");
   const schemaTree = $("schema-tree");
+  const schemaTableSearch = $("schema-table-search");
+  const schemaFieldSearch = $("schema-field-search");
+  const schemaFieldCount = $("schema-field-count");
+  const schemaExpandFields = $("schema-expand-fields");
+  const schemaStatTables = $("schema-stat-tables");
+  const schemaStatFields = $("schema-stat-fields");
+  const schemaStatProfiled = $("schema-stat-profiled");
   const schemaEditorTitle = $("schema-editor-title");
+  const schemaTableSummary = $("schema-table-summary");
   const fieldTableBody = $("field-table-body");
   const llmDraftBtn = $("llm-draft-btn");
+  const schemaConfigTabs = Array.from(document.querySelectorAll("[data-schema-config-tab]"));
+  const schemaConfigPanels = Array.from(document.querySelectorAll("[data-schema-config-panel]"));
   const profileVersionList = $("profile-version-list");
   const metricList = $("metric-list");
   const termList = $("term-list");
@@ -254,6 +264,9 @@
   let selectedKb = "auto";
   let lastTrace = null;
   let activeSchemaTable = "";
+  let schemaTableQuery = "";
+  let schemaFieldQuery = "";
+  const expandedSchemaFields = new Set();
   let dashboardCache = null;
   let dashboardCacheKey = "";
   let currentUser = null;
@@ -614,6 +627,7 @@
       renderKbOverview();
     }
     if (id === "schema-console-view") renderSchemaConsole();
+    if (id === "data-access-view") window.dispatchEvent(new CustomEvent("nl2sql:data-access:show"));
     if (id === "debug-view") renderDebugSteps();
     if (id === "domain-settings-view") loadDomainSettings();
     if (id === "role-management-view") loadDomainSettings();
@@ -999,32 +1013,72 @@
     const summary = schemaSummary(src);
     const tables = summary.tables;
     const names = summary.tableNames;
+    const profile = currentProfile(src);
+    const totalFields = names.reduce((sum, name) => sum + (tables[name] || []).length, 0);
+    const profiledFields = Object.values(profile.columns || {}).reduce((sum, columns) => {
+      return sum + Object.values(columns || {}).filter((item) => item && (item.business_name || item.description || item.semantic_type)).length;
+    }, 0);
+    if (schemaStatTables) schemaStatTables.textContent = names.length;
+    if (schemaStatFields) schemaStatFields.textContent = totalFields;
+    if (schemaStatProfiled) schemaStatProfiled.textContent = profiledFields;
     if (!names.includes(activeSchemaTable)) activeSchemaTable = names[0] || "";
     schemaTree.innerHTML = "";
     if (!names.length) {
       schemaTree.innerHTML = '<div class="empty-note">暂无 Schema。请先选择知识库或刷新数据源。</div>';
     } else {
-      names.forEach((name) => {
+      const visibleNames = names.filter((name) => name.toLowerCase().includes(schemaTableQuery));
+      visibleNames.forEach((name) => {
+        const tableFields = tables[name] || [];
+        const profiledInTable = tableFields.filter((field) => {
+          const profMeta = profileColumn(src, name, field);
+          return profMeta && (profMeta.business_name || profMeta.description || profMeta.semantic_type);
+        }).length;
+        const tableProfile = (profile.tables || {})[name] || {};
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "schema-tree-btn";
         btn.classList.toggle("active", name === activeSchemaTable);
-        btn.innerHTML = `<b>${escapeHtml(name)}</b><span>${(tables[name] || []).length} fields</span>`;
+        btn.innerHTML = `
+          <b>${escapeHtml(tableProfile.business_name || name)}</b>
+          <small>${escapeHtml(name)}</small>
+          <span>${profiledInTable}/${tableFields.length}</span>
+        `;
         btn.addEventListener("click", () => {
           activeSchemaTable = name;
+          schemaFieldQuery = "";
+          if (schemaFieldSearch) schemaFieldSearch.value = "";
+          expandedSchemaFields.clear();
           renderSchemaConsole();
         });
         schemaTree.appendChild(btn);
       });
+      if (!visibleNames.length) schemaTree.innerHTML = '<div class="empty-note">没有匹配的数据表</div>';
     }
 
     schemaEditorTitle.textContent = activeSchemaTable ? `${activeSchemaTable} 字段配置` : "字段配置";
+    if (schemaTableSummary) {
+      if (!activeSchemaTable) {
+        schemaTableSummary.innerHTML = "";
+      } else {
+        const tableProfile = (profile.tables || {})[activeSchemaTable] || {};
+        const fieldCount = (tables[activeSchemaTable] || []).length;
+        const tableProfiled = (tables[activeSchemaTable] || []).filter((field) => {
+          const profMeta = profileColumn(src, activeSchemaTable, field);
+          return profMeta && (profMeta.business_name || profMeta.description || profMeta.semantic_type);
+        }).length;
+        schemaTableSummary.innerHTML = `
+          <span><b>${tableProfiled}/${fieldCount}</b> 已画像字段</span>
+          <span>${escapeHtml(tableProfile.business_name || "未设置业务名")}</span>
+          <span>${escapeHtml(tableProfile.grain || "未设置粒度")}</span>
+          <span>${escapeHtml(tableProfile.default_time_column || "未设置时间字段")}</span>
+        `;
+      }
+    }
     fieldTableBody.innerHTML = "";
-    const profile = currentProfile(src);
     if (activeSchemaTable) {
       const tableProfile = (profile.tables || {})[activeSchemaTable] || {};
       const tableCard = document.createElement("div");
-      tableCard.className = "field-card";
+      tableCard.className = "field-card table-profile-card is-expanded";
       tableCard.innerHTML = `
         <div class="field-card-head">
           <div class="field-identity">
@@ -1074,9 +1128,25 @@
       fieldTableBody.appendChild(tableCard);
     }
     const fieldMeta = loadFieldMeta(src);
-    (tables[activeSchemaTable] || []).forEach((field) => {
+    const allFields = tables[activeSchemaTable] || [];
+    const visibleFields = allFields.filter((field) => {
+      const serverMeta = schemaColumnMeta(src, activeSchemaTable, field);
+      const profMeta = profileColumn(src, activeSchemaTable, field);
+      const localMeta = fieldMeta[fieldMetaId(activeSchemaTable, field)] || {};
+      const haystack = [field, profMeta.business_name, profMeta.description, serverMeta.business_name, serverMeta.description, localMeta.alias, localMeta.desc]
+        .filter(Boolean).join(" ").toLowerCase();
+      return !schemaFieldQuery || haystack.includes(schemaFieldQuery);
+    });
+    if (schemaFieldCount) schemaFieldCount.textContent = `${visibleFields.length} / ${allFields.length} 个字段`;
+    if (schemaExpandFields) {
+      const allExpanded = visibleFields.length > 0 && visibleFields.every((field) => expandedSchemaFields.has(`${activeSchemaTable}.${field}`));
+      schemaExpandFields.textContent = allExpanded ? "收起全部" : "展开全部";
+    }
+    visibleFields.forEach((field) => {
       const card = document.createElement("div");
-      card.className = "field-card";
+      const fieldKey = `${activeSchemaTable}.${field}`;
+      const isExpanded = expandedSchemaFields.has(fieldKey);
+      card.className = `field-card schema-field-card${isExpanded ? " is-expanded" : ""}`;
       const serverMeta = schemaColumnMeta(src, activeSchemaTable, field);
       const role = fieldRoleLabel(serverMeta, field);
       const id = fieldMetaId(activeSchemaTable, field);
@@ -1092,11 +1162,13 @@
       const nullableText = serverMeta.nullable === false ? "NOT NULL" : "可空";
       const defaultText = serverMeta.default_value ? `默认 ${serverMeta.default_value}` : "";
       const keyBadge = serverMeta.is_primary_key ? "主键" : (serverMeta.is_foreign_key ? "外键" : "");
+      const previewText = aliasText || descText || "尚未补充业务说明";
       card.innerHTML = `
         <div class="field-card-head">
           <div class="field-identity">
             <b>${escapeHtml(field)}</b>
             <span>${escapeHtml(nullableText)}${defaultText ? " · " + escapeHtml(defaultText) : ""}</span>
+            <small>${escapeHtml(previewText)}</small>
           </div>
           <div class="field-badges">
             <code>${escapeHtml(serverMeta.data_type || "unknown")}</code>
@@ -1104,6 +1176,7 @@
             <em>${escapeHtml(role)}</em>
             <em>${role === "指标" ? "可聚合" : "可筛选"}</em>
           </div>
+          <button class="field-expand-toggle" type="button" aria-expanded="${isExpanded}">${isExpanded ? "收起" : "编辑"}</button>
           <button class="field-meta-save" type="button">保存</button>
         </div>
         <div class="field-card-grid">
@@ -1145,6 +1218,14 @@
           </label>
         </div>
       `;
+      card.querySelector(".field-expand-toggle").addEventListener("click", () => {
+        const expanded = card.classList.toggle("is-expanded");
+        const toggle = card.querySelector(".field-expand-toggle");
+        toggle.textContent = expanded ? "收起" : "编辑";
+        toggle.setAttribute("aria-expanded", String(expanded));
+        if (expanded) expandedSchemaFields.add(fieldKey);
+        else expandedSchemaFields.delete(fieldKey);
+      });
       card.querySelector(".field-meta-save").addEventListener("click", async () => {
         const next = JSON.parse(JSON.stringify(currentProfile(src)));
         const target = ensureProfileColumn(next, activeSchemaTable, field);
@@ -1166,8 +1247,11 @@
       });
       fieldTableBody.appendChild(card);
     });
-    if (!fieldTableBody.children.length) {
-      fieldTableBody.innerHTML = '<div class="empty-note">暂无字段</div>';
+    if (!visibleFields.length && activeSchemaTable) {
+      const empty = document.createElement("div");
+      empty.className = "empty-note schema-fields-empty";
+      empty.textContent = schemaFieldQuery ? "没有匹配的字段，请尝试其他关键词。" : "当前表暂无字段。";
+      fieldTableBody.appendChild(empty);
     }
 
     if (metricList) {
@@ -2742,6 +2826,49 @@
     });
   }
   if (kbSearch) kbSearch.addEventListener("input", renderKbList);
+  if (schemaTableSearch) {
+    schemaTableSearch.addEventListener("input", () => {
+      schemaTableQuery = schemaTableSearch.value.trim().toLowerCase();
+      renderSchemaConsole();
+    });
+  }
+  if (schemaFieldSearch) {
+    schemaFieldSearch.addEventListener("input", () => {
+      schemaFieldQuery = schemaFieldSearch.value.trim().toLowerCase();
+      renderSchemaConsole();
+    });
+  }
+  if (schemaExpandFields) {
+    schemaExpandFields.addEventListener("click", () => {
+      const src = currentKbSource();
+      const summary = schemaSummary(src);
+      const fieldMeta = loadFieldMeta(src);
+      const visible = (summary.tables[activeSchemaTable] || []).filter((field) => {
+        const serverMeta = schemaColumnMeta(src, activeSchemaTable, field);
+        const profMeta = profileColumn(src, activeSchemaTable, field);
+        const localMeta = fieldMeta[fieldMetaId(activeSchemaTable, field)] || {};
+        const text = [field, profMeta.business_name, profMeta.description, serverMeta.business_name, serverMeta.description, localMeta.alias, localMeta.desc]
+          .filter(Boolean).join(" ").toLowerCase();
+        return !schemaFieldQuery || text.includes(schemaFieldQuery);
+      });
+      const shouldExpand = visible.some((field) => !expandedSchemaFields.has(`${activeSchemaTable}.${field}`));
+      visible.forEach((field) => {
+        const key = `${activeSchemaTable}.${field}`;
+        if (shouldExpand) expandedSchemaFields.add(key);
+        else expandedSchemaFields.delete(key);
+      });
+      renderSchemaConsole();
+    });
+  }
+  schemaConfigTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.schemaConfigTab;
+      schemaConfigTabs.forEach((item) => item.classList.toggle("active", item === tab));
+      schemaConfigPanels.forEach((panel) => {
+        panel.classList.toggle("active", panel.dataset.schemaConfigPanel === target);
+      });
+    });
+  });
   if (kbRefreshBtn) {
     kbRefreshBtn.addEventListener("click", async () => {
       await loadSources();

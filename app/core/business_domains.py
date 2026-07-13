@@ -3,11 +3,14 @@ from __future__ import annotations
 
 
 import json
+import base64
+import hashlib
+import hmac
 import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.config import ROOT_DIR
+from app.core.config import ROOT_DIR, settings
 from app.core.schema import SchemaInfo
 
 
@@ -129,7 +132,7 @@ ROLES: dict[str, dict[str, Any]] = {
         "label": "教务处老师",
         "description": "关注学籍、教学运行和成绩质量。",
         "domains": ["student_affairs", "teaching_operation", "grade_quality"],
-        "features": ["dashboard", "ask", "knowledge", "schema", "data_access", "domain_settings", "role_management"],
+        "features": ["dashboard", "ask", "knowledge", "schema", "domain_settings", "role_management"],
         "denied_resources": ["evaluation_raw", "teacher_private_id"],
     },
     "college_manager": {
@@ -137,7 +140,7 @@ ROLES: dict[str, dict[str, Any]] = {
         "label": "学院负责人",
         "description": "关注本学院教学运行、成绩质量和评教反馈。",
         "domains": ["teaching_operation", "grade_quality", "evaluation_feedback"],
-        "features": ["dashboard", "ask", "knowledge", "data_access", "domain_settings", "role_management"],
+        "features": ["dashboard", "ask", "knowledge", "domain_settings", "role_management"],
         "denied_resources": ["schoolwide_scope", "evaluation_raw", "teacher_private_id"],
     },
     "teacher": {
@@ -145,7 +148,7 @@ ROLES: dict[str, dict[str, Any]] = {
         "label": "任课教师",
         "description": "关注授课班级、成绩质量和评教反馈。",
         "domains": ["teaching_operation", "grade_quality", "evaluation_feedback"],
-        "features": ["dashboard", "ask", "data_access", "domain_settings", "role_management"],
+        "features": ["dashboard", "ask", "domain_settings", "role_management"],
         "denied_resources": ["schoolwide_scope", "student_identity", "evaluation_raw", "teacher_private_id"],
     },
     "student": {
@@ -168,6 +171,14 @@ DEMO_USERS: dict[str, dict[str, Any]] = {
 }
 
 PASSWORD_FILE = ROOT_DIR / "data" / "auth_passwords.json"
+
+
+class AuthenticationError(ValueError):
+    """请求没有携带有效的演示登录令牌。"""
+
+
+class AuthorizationError(PermissionError):
+    """当前演示角色无权执行操作。"""
 
 
 @dataclass(frozen=True)
@@ -230,11 +241,37 @@ def tables_for_domains(domains: list[str] | tuple[str, ...]) -> set[str]:
 
 
 def user_from_token(token: str | None) -> AuthContext:
-    username = (token or "admin").strip() or "admin"
+    raw = (token or "").strip()
+    if not raw or "." not in raw:
+        raise AuthenticationError("请先登录")
+    encoded, signature = raw.split(".", 1)
+    expected = hmac.new(settings.auth_secret.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        raise AuthenticationError("登录状态无效，请重新登录")
+    try:
+        padding = "=" * (-len(encoded) % 4)
+        username = base64.urlsafe_b64decode(encoded + padding).decode("utf-8")
+    except Exception as exc:
+        raise AuthenticationError("登录状态无效，请重新登录") from exc
     user = DEMO_USERS.get(username)
     if not user:
-        user = DEMO_USERS["admin"]
+        raise AuthenticationError("登录状态无效，请重新登录")
     return auth_context(user)
+
+
+def token_for(username: str) -> str:
+    if username not in DEMO_USERS:
+        raise AuthenticationError("账号不存在")
+    encoded = base64.urlsafe_b64encode(username.encode("utf-8")).decode("ascii").rstrip("=")
+    signature = hmac.new(settings.auth_secret.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def require_admin(token: str | None) -> AuthContext:
+    ctx = user_from_token(token)
+    if not ctx.is_admin:
+        raise AuthorizationError("只有管理员可以执行此操作")
+    return ctx
 
 
 def login(username: str, password: str) -> AuthContext:
@@ -308,9 +345,9 @@ def auth_context(user: dict[str, Any]) -> AuthContext:
     )
 
 
-def auth_payload(ctx: AuthContext) -> dict[str, Any]:
+def auth_payload(ctx: AuthContext, token: str | None = None) -> dict[str, Any]:
     return {
-        "token": ctx.username,
+        "token": token or token_for(ctx.username),
         "user": {
             "username": ctx.username,
             "display_name": ctx.display_name,

@@ -26,11 +26,20 @@
     const tableSelect = $("access-table-select");
     if (!list || !sourceSelect || !tableSelect) return;
 
+    const sourceCount = $("access-source-count");
+    const writableCount = $("access-writable-count");
+    if (sourceCount) sourceCount.textContent = state.sources.length;
+    if (writableCount) writableCount.textContent = state.sources.filter((s) => s.writable).length;
+
     list.innerHTML = state.sources.map((s) => `
       <button class="access-source-card ${s.name === state.selectedSource ? "active" : ""}" data-source="${esc(s.name)}" type="button">
+        <span class="access-source-card-top">
+          <i>${esc((s.label || s.name || "D").slice(0, 1).toUpperCase())}</i>
+          <em class="${s.writable ? "is-write" : ""}">${s.writable ? "可维护" : "只读"}</em>
+        </span>
         <b>${esc(s.label || s.name)}</b>
-        <span>${esc(s.name)} · ${esc(s.dialect)} · ${s.table_count || 0} 表</span>
-        <small>${s.writable ? "可维护" : "只读"} · ${esc(s.status || "published")}</small>
+        <span class="access-source-code">${esc(s.name)} · ${esc(s.dialect)}</span>
+        <small><strong>${s.table_count || 0}</strong> 张表 · ${esc(s.status || "published")}</small>
       </button>
     `).join("");
     list.querySelectorAll("[data-source]").forEach((btn) => {
@@ -48,6 +57,8 @@
     const tables = (selected && selected.tables) || [];
     tableSelect.innerHTML = tables.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
     tableSelect.value = state.selectedTable || tables[0] || "";
+    const addButton = $("access-add-row-btn");
+    if (addButton) addButton.disabled = !(selected && selected.writable);
     renderObjectTabs();
   }
 
@@ -81,8 +92,10 @@
     if (!head || !body) return;
     const columns = data && data.columns || [];
     const rows = data && data.rows || [];
+    const summary = $("access-table-summary");
+    if (summary) summary.textContent = `${state.selectedSource} / ${state.selectedTable} · 共 ${data.total || 0} 条记录，本页 ${rows.length} 条`;
     head.innerHTML = `<tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}<th>操作</th></tr>`;
-    body.innerHTML = rows.map((row) => `
+    body.innerHTML = rows.length ? rows.map((row) => `
       <tr data-pk="${esc(row[columns[0]])}">
         ${columns.map((c) => `<td><input data-col="${esc(c)}" value="${esc(row[c])}" ${c === columns[0] ? "disabled" : ""}></td>`).join("")}
         <td class="access-row-actions">
@@ -90,7 +103,7 @@
           <button type="button" data-action="delete">删除</button>
         </td>
       </tr>
-    `).join("");
+    `).join("") : `<tr><td class="access-table-empty" colspan="${Math.max(1, columns.length + 1)}">当前表暂无数据</td></tr>`;
     body.querySelectorAll("[data-action='save']").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const tr = btn.closest("tr");
@@ -129,9 +142,11 @@
     state.selectedSource = $("access-source-select").value;
     state.selectedTable = $("access-table-select").value;
     if (!state.selectedSource || !state.selectedTable) return;
+    msg("正在加载表数据…");
     const data = await api.tableRows(state.selectedSource, state.selectedTable, { limit: 50 });
     state.rows = data;
     renderTable(data);
+    msg("");
   }
 
   async function loadAudit() {
@@ -141,8 +156,9 @@
     const items = data.items || [];
     box.innerHTML = items.length ? items.map((item) => `
       <div class="access-audit-item">
-        <b>${esc(item.action)} · ${esc(item.source)}.${esc(item.table)}</b>
-        <span>${esc(item.actor)} · ${esc(item.created_at)} · pk=${esc(item.pk)}</span>
+        <i></i>
+        <div><b>${esc(item.action)} · ${esc(item.source)}.${esc(item.table)}</b>
+        <span>${esc(item.actor)} · ${esc(item.created_at)} · pk=${esc(item.pk)}</span></div>
       </div>
     `).join("") : '<div class="access-empty">暂无审计记录</div>';
   }
@@ -166,6 +182,14 @@
     $("access-refresh-btn").addEventListener("click", async () => {
       await loadSources();
       await loadAudit();
+    });
+    window.addEventListener("nl2sql:data-access:show", async () => {
+      try {
+        await loadSources();
+        await loadAudit();
+      } catch (err) {
+        msg(err.message, "err");
+      }
     });
     $("access-load-table-btn").addEventListener("click", loadTable);
     $("access-add-row-btn").addEventListener("click", addRow);

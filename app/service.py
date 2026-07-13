@@ -57,6 +57,7 @@ def ask(
     denied_columns: set[str] | frozenset[str] | None = None,
     denied_terms: list[str] | tuple[str, ...] | None = None,
     role_label: str | None = None,
+    row_scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     trimmed_history = (history or [])[-MAX_HISTORY_TURNS:]
     # 上一轮就是 clarify => 本轮是用户的回答,禁止再次 clarify(兼顾路由反问与生成澄清)
@@ -197,7 +198,9 @@ def ask(
 
         raw_sql = content
         try:
-            safe_sql, truncated = validate_and_fix(raw_sql, schema_info.tables, schema_info.blocked_columns)
+            safe_sql, truncated = validate_and_fix(
+                raw_sql, schema_info.tables, schema_info.blocked_columns, row_scope=row_scope
+            )
         except SQLValidationError as e:
             if str(e).startswith(("引用了未授权的表", "引用了不可用于问数的字段")):
                 return format_error(str(e), sql=raw_sql, **src_kw)

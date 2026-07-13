@@ -36,6 +36,7 @@ def test_error_feedback_respects_auto_queue_setting(isolated_governance):
 
 def test_publish_review_is_approved_before_publish(isolated_governance, monkeypatch):
     monkeypatch.setattr(governance, "load_profile_dict", lambda source: {"tables": {"orders": {}}, "relations": [], "metrics": {}})
+    monkeypatch.setattr(governance, "save_profile_dict", lambda source, profile: profile)
     published = {}
 
     def fake_publish(source, label="", description=""):
