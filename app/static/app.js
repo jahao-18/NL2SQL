@@ -184,8 +184,11 @@
   const schemaStatFields = $("schema-stat-fields");
   const schemaStatProfiled = $("schema-stat-profiled");
   const schemaEditorTitle = $("schema-editor-title");
+  const schemaTableSummary = $("schema-table-summary");
   const fieldTableBody = $("field-table-body");
   const llmDraftBtn = $("llm-draft-btn");
+  const schemaConfigTabs = Array.from(document.querySelectorAll("[data-schema-config-tab]"));
+  const schemaConfigPanels = Array.from(document.querySelectorAll("[data-schema-config-panel]"));
   const profileVersionList = $("profile-version-list");
   const metricList = $("metric-list");
   const termList = $("term-list");
@@ -1025,11 +1028,21 @@
     } else {
       const visibleNames = names.filter((name) => name.toLowerCase().includes(schemaTableQuery));
       visibleNames.forEach((name) => {
+        const tableFields = tables[name] || [];
+        const profiledInTable = tableFields.filter((field) => {
+          const profMeta = profileColumn(src, name, field);
+          return profMeta && (profMeta.business_name || profMeta.description || profMeta.semantic_type);
+        }).length;
+        const tableProfile = (profile.tables || {})[name] || {};
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "schema-tree-btn";
         btn.classList.toggle("active", name === activeSchemaTable);
-        btn.innerHTML = `<b>${escapeHtml(name)}</b><span>${(tables[name] || []).length} fields</span>`;
+        btn.innerHTML = `
+          <b>${escapeHtml(tableProfile.business_name || name)}</b>
+          <small>${escapeHtml(name)}</small>
+          <span>${profiledInTable}/${tableFields.length}</span>
+        `;
         btn.addEventListener("click", () => {
           activeSchemaTable = name;
           schemaFieldQuery = "";
@@ -1043,6 +1056,24 @@
     }
 
     schemaEditorTitle.textContent = activeSchemaTable ? `${activeSchemaTable} 字段配置` : "字段配置";
+    if (schemaTableSummary) {
+      if (!activeSchemaTable) {
+        schemaTableSummary.innerHTML = "";
+      } else {
+        const tableProfile = (profile.tables || {})[activeSchemaTable] || {};
+        const fieldCount = (tables[activeSchemaTable] || []).length;
+        const tableProfiled = (tables[activeSchemaTable] || []).filter((field) => {
+          const profMeta = profileColumn(src, activeSchemaTable, field);
+          return profMeta && (profMeta.business_name || profMeta.description || profMeta.semantic_type);
+        }).length;
+        schemaTableSummary.innerHTML = `
+          <span><b>${tableProfiled}/${fieldCount}</b> 已画像字段</span>
+          <span>${escapeHtml(tableProfile.business_name || "未设置业务名")}</span>
+          <span>${escapeHtml(tableProfile.grain || "未设置粒度")}</span>
+          <span>${escapeHtml(tableProfile.default_time_column || "未设置时间字段")}</span>
+        `;
+      }
+    }
     fieldTableBody.innerHTML = "";
     if (activeSchemaTable) {
       const tableProfile = (profile.tables || {})[activeSchemaTable] || {};
@@ -2829,6 +2860,15 @@
       renderSchemaConsole();
     });
   }
+  schemaConfigTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.schemaConfigTab;
+      schemaConfigTabs.forEach((item) => item.classList.toggle("active", item === tab));
+      schemaConfigPanels.forEach((panel) => {
+        panel.classList.toggle("active", panel.dataset.schemaConfigPanel === target);
+      });
+    });
+  });
   if (kbRefreshBtn) {
     kbRefreshBtn.addEventListener("click", async () => {
       await loadSources();

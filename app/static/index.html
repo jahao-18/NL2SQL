@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>教学数据智能问数平台</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:opsz,wght@14..32,200;14..32,300;14..32,400;14..32,500;14..32,600&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css?v=workspace-product-4" />
+  <link rel="stylesheet" href="/style.css?v=schema-workbench-1" />
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
@@ -494,8 +494,8 @@
         <section class="schema-hero">
           <div>
             <div class="panel-kicker">Semantic Modeling</div>
-            <h2>Schema 语义画像</h2>
-            <p>把数据库字段整理成业务可理解、可检索、可治理的语义资产。</p>
+            <h2>Schema 配置工作台</h2>
+            <p>按表梳理字段语义、关系、指标和发布版本，把数据库结构整理成可交付的问数资产。</p>
           </div>
           <div class="schema-hero-stats">
             <span><b id="schema-stat-tables">0</b> 张表</span>
@@ -503,51 +503,58 @@
             <span><b id="schema-stat-profiled">0</b> 已画像</span>
           </div>
         </section>
+        <div class="schema-workspace-bar">
+          <label class="schema-search-box"><span>⌕</span><input id="schema-table-search" placeholder="搜索表名" /></label>
+          <label class="schema-search-box"><span>⌕</span><input id="schema-field-search" placeholder="搜索字段名、中文名或描述" /></label>
+          <span id="schema-field-count">0 个字段</span>
+          <button type="button" id="schema-expand-fields">展开全部</button>
+          <button class="nav-btn secondary" type="button" id="llm-draft-btn">发布 Profile</button>
+        </div>
         <div class="schema-console">
           <aside class="schema-tree-panel">
             <div class="schema-pane-head">
-              <span>Tables</span>
-              <b>数据表目录</b>
+              <span>Objects</span>
+              <b>业务对象</b>
             </div>
-            <label class="schema-search-box"><span>⌕</span><input id="schema-table-search" placeholder="搜索表名" /></label>
             <div class="schema-tree" id="schema-tree"></div>
           </aside>
           <section class="panel-card schema-editor">
-            <div class="panel-toolbar">
+            <div class="schema-editor-head">
               <div>
-                <div class="panel-kicker">Schema Metadata</div>
+                <div class="panel-kicker">Field Workspace</div>
                 <h2 id="schema-editor-title">表 / 字段</h2>
               </div>
-              <button class="nav-btn secondary" type="button" id="llm-draft-btn">生成描述草稿</button>
-            </div>
-            <div class="schema-field-toolbar">
-              <label class="schema-search-box"><span>⌕</span><input id="schema-field-search" placeholder="搜索字段名、中文名或描述" /></label>
-              <span id="schema-field-count">0 个字段</span>
-              <button type="button" id="schema-expand-fields">展开全部</button>
+              <div class="schema-table-summary" id="schema-table-summary"></div>
             </div>
             <div class="field-card-list" id="field-table-body"></div>
           </section>
           <aside class="schema-governance">
-            <details class="governance-card" open>
-              <summary class="governance-head"><span>Release</span><h3>发布与版本</h3><i>⌄</i></summary>
-              <div id="profile-version-list" class="version-list"></div>
-            </details>
-            <details class="governance-card" open>
-              <summary class="governance-head"><span>Relations</span><h3>表关系</h3><i>⌄</i></summary>
+            <div class="schema-governance-tabs" role="tablist" aria-label="Schema 配置面板">
+              <button class="active" type="button" data-schema-config-tab="relations">关系</button>
+              <button type="button" data-schema-config-tab="metrics">指标</button>
+              <button type="button" data-schema-config-tab="release">发布</button>
+              <button type="button" data-schema-config-tab="terms">术语</button>
+            </div>
+            <section class="governance-card schema-config-panel active" data-schema-config-panel="relations">
+              <div class="governance-head"><span>Relations</span><h3>表关系</h3></div>
               <div class="relation-add">
                 <input id="relation-input" class="toolbar-input" placeholder="例如: orders.user_id = users.id" />
                 <button class="nav-btn secondary" id="relation-add-btn" type="button">添加</button>
               </div>
               <div id="relation-list" class="relation-list"></div>
-            </details>
-            <details class="governance-card">
-              <summary class="governance-head"><span>Metrics</span><h3>计算指标</h3><i>⌄</i></summary>
+            </section>
+            <section class="governance-card schema-config-panel" data-schema-config-panel="metrics">
+              <div class="governance-head"><span>Metrics</span><h3>计算指标</h3></div>
               <div id="metric-list" class="tag-list"></div>
-            </details>
-            <details class="governance-card">
-              <summary class="governance-head"><span>Terms</span><h3>业务术语</h3><i>⌄</i></summary>
+            </section>
+            <section class="governance-card schema-config-panel" data-schema-config-panel="release">
+              <div class="governance-head"><span>Release</span><h3>发布与版本</h3></div>
+              <div id="profile-version-list" class="version-list"></div>
+            </section>
+            <section class="governance-card schema-config-panel" data-schema-config-panel="terms">
+              <div class="governance-head"><span>Terms</span><h3>业务术语</h3></div>
               <div id="term-list" class="tag-list"></div>
-            </details>
+            </section>
           </aside>
         </div>
       </section>
@@ -850,7 +857,7 @@
 <script src="/api.js?v=p0-product-3"></script>
 <script src="/modal.js?v=p0-product-3"></script>
 <script src="/governance-view.js?v=p0-product-3"></script>
-<script src="/data-access-view.js?v=workspace-product-4"></script>
-<script src="/app.js?v=workspace-product-4"></script>
+<script src="/data-access-view.js?v=schema-workbench-1"></script>
+<script src="/app.js?v=schema-workbench-1"></script>
 </body>
 </html>
