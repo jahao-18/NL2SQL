@@ -36,6 +36,20 @@
     });
   }
 
+  async function download(path, fileName) {
+    const headers = new Headers();
+    const token = localStorage.getItem("nl2sql.auth.token");
+    if (token) headers.set("X-Demo-Token", token);
+    const resp = await fetch(path, { headers });
+    if (!resp.ok) throw new Error(`附件下载失败: HTTP ${resp.status}`);
+    const url = URL.createObjectURL(await resp.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName || "attachment";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   window.NL2SQLApi = {
     authOptions: () => request("/api/auth/options"),
     login: (payload) => json("POST", "/api/auth/login", payload),
@@ -44,6 +58,33 @@
     businessDomains: () => request("/api/business-domains"),
     sources: () => request("/api/sources"),
     teachingDashboard: (params) => request(`/api/teaching/dashboard${qs(params)}`),
+    teachingClass: (id) => request(`/api/teaching/classes/${encodeURIComponent(id)}`),
+    myTeachingClasses: () => request("/api/teaching/classes"),
+    courseAnalyticsContexts: () => request("/api/teaching/analytics/contexts"),
+    courseAnalyticsSummary: (id) => request(`/api/teaching/analytics/summary?teaching_class_id=${encodeURIComponent(id)}`),
+    askCourseAnalytics: (payload) => json("POST", "/api/teaching/analytics/ask", payload),
+    courseAnalyticsHistory: (id) => request(`/api/teaching/analytics/history?teaching_class_id=${encodeURIComponent(id)}`),
+    feedbackCourseAnalytics: (id, feedback) => json("PATCH", `/api/teaching/analytics/history/${encodeURIComponent(id)}/feedback`, { feedback }),
+    teachingClassAssignments: (id) => request(`/api/teaching/classes/${encodeURIComponent(id)}/assignments`),
+    teachingClassSubmissions: (id) => request(`/api/teaching/classes/${encodeURIComponent(id)}/submissions`),
+    createTeachingAssignment: (id, payload) => json("POST", `/api/teaching/classes/${encodeURIComponent(id)}/assignments`, payload),
+    myTeachingAssignments: () => request("/api/teaching/assignments/my"),
+    teachingAssignment: (id) => request(`/api/teaching/assignments/${encodeURIComponent(id)}`),
+    updateTeachingAssignment: (id, payload) => json("PUT", `/api/teaching/assignments/${encodeURIComponent(id)}`, payload),
+    submitTeachingAssignment: (id, payload) => json("POST", `/api/teaching/assignments/${encodeURIComponent(id)}/submit`, payload),
+    teachingAssignmentRoster: (id) => request(`/api/teaching/assignments/${encodeURIComponent(id)}/roster`),
+    downloadTeachingSubmissionFile: (submissionId, versionNo, fileName) => download(`/api/teaching/submissions/${encodeURIComponent(submissionId)}/versions/${encodeURIComponent(versionNo)}/file`, fileName),
+    publishTeachingAssignment: (id) => json("POST", `/api/teaching/assignments/${encodeURIComponent(id)}/publish`, {}),
+    publishTeachingGrades: (id) => json("POST", `/api/teaching/assignments/${encodeURIComponent(id)}/publish-grades`, {}),
+    returnTeachingSubmission: (id, payload) => json("POST", `/api/teaching/submissions/${encodeURIComponent(id)}/return`, payload),
+    gradeTeachingSubmission: (id, payload) => json("POST", `/api/teaching/submissions/${encodeURIComponent(id)}/grade`, payload),
+    supportCases: (status) => request(`/api/teaching/support/cases${status && status !== "all" ? `?status=${encodeURIComponent(status)}` : ""}`),
+    supportCase: (id) => request(`/api/teaching/support/cases/${encodeURIComponent(id)}`),
+    refreshSupportCases: () => json("POST", "/api/teaching/support/cases/refresh", {}),
+    transitionSupportCase: (id, payload) => json("POST", `/api/teaching/support/cases/${encodeURIComponent(id)}/transition`, payload),
+    supportRequests: () => request("/api/teaching/support/requests"),
+    createSupportRequest: (payload) => json("POST", "/api/teaching/support/requests", payload),
+    updateSupportRequest: (id, payload) => json("PATCH", `/api/teaching/support/requests/${encodeURIComponent(id)}`, payload),
     ask: (payload) => json("POST", "/api/ask", payload),
     judge: (judgeId) => json("POST", "/api/judge", { judge_id: judgeId }),
     debugRetrieval: (payload) => json("POST", "/api/debug/retrieval", payload),

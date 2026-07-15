@@ -213,6 +213,68 @@
   const dashboardMajorFilter = $("dashboard-major-filter");
   const dashboardCourseTypeFilter = $("dashboard-course-type-filter");
   const dashboardFilterReset = $("dashboard-filter-reset");
+  const assignmentRefreshBtn = $("assignment-refresh-btn");
+  const assignmentStudentPanel = $("assignment-student-panel");
+  const assignmentTeacherPanel = $("assignment-teacher-panel");
+  const assignmentStudentList = $("assignment-student-list");
+  const assignmentTeacherList = $("assignment-teacher-list");
+  const assignmentCreateForm = $("assignment-create-form");
+  const assignmentCreateTitle = $("assignment-create-title");
+  const assignmentCreateDue = $("assignment-create-due");
+  const assignmentCreateScore = $("assignment-create-score");
+  const assignmentCreateInstructions = $("assignment-create-instructions");
+  const assignmentCreateAllowLate = $("assignment-create-allow-late");
+  const assignmentScopeTitle = $("assignment-scope-title");
+  const assignmentScopeDesc = $("assignment-scope-desc");
+  const assignmentMetricPending = $("assignment-metric-pending");
+  const assignmentMetricDone = $("assignment-metric-done");
+  const assignmentMetricTotal = $("assignment-metric-total");
+  const assignmentCoursePicker = $("assignment-course-picker");
+  const assignmentCoursePickerWrap = $("assignment-course-picker-wrap");
+  const assignmentRoleContext = $("assignment-role-context");
+  const assignmentPageHeading = $("assignment-page-heading");
+  const assignmentPageLead = $("assignment-page-lead");
+  const assignmentStudentFilters = $("assignment-student-filters");
+  const assignmentTeacherTitle = $("assignment-teacher-title");
+  const assignmentTeacherSubtitle = $("assignment-teacher-subtitle");
+  const assignmentCreateToggle = $("assignment-create-toggle");
+  const assignmentCreateClose = $("assignment-create-close");
+  const assignmentDetailPane = $("assignment-detail-pane");
+  const assignmentListCount = $("assignment-list-count");
+  const analyticsCoursePicker = $("analytics-course-picker");
+  const analyticsRefreshBtn = $("analytics-refresh-btn");
+  const analyticsScopeCopy = $("analytics-scope-copy");
+  const analyticsMeta = $("analytics-meta");
+  const analyticsMetrics = $("analytics-metrics");
+  const analyticsDetailTitle = $("analytics-detail-title");
+  const analyticsDetailHead = $("analytics-detail-head");
+  const analyticsDetailBody = $("analytics-detail-body");
+  const analyticsQuestionTemplates = $("analytics-question-templates");
+  const analyticsAskForm = $("analytics-ask-form");
+  const analyticsQuestionInput = $("analytics-question-input");
+  const analyticsAnswer = $("analytics-answer");
+  const analyticsHistoryList = $("analytics-history-list");
+  const supportRefreshBtn = $("support-refresh-btn");
+  const supportRoleContext = $("support-role-context");
+  const supportPageHeading = $("support-page-heading");
+  const supportPageLead = $("support-page-lead");
+  const supportMetricOpen = $("support-metric-open");
+  const supportMetricTracking = $("support-metric-tracking");
+  const supportMetricReview = $("support-metric-review");
+  const supportMetricRequests = $("support-metric-requests");
+  const supportCounselorPanel = $("support-counselor-panel");
+  const supportStudentPanel = $("support-student-panel");
+  const supportStatusFilter = $("support-status-filter");
+  const supportCaseCount = $("support-case-count");
+  const supportCaseList = $("support-case-list");
+  const supportCaseDetail = $("support-case-detail");
+  const supportCounselorRequests = $("support-counselor-requests");
+  const supportStudentCases = $("support-student-cases");
+  const supportStudentRequests = $("support-student-requests");
+  const supportRequestForm = $("support-request-form");
+  const supportRequestType = $("support-request-type");
+  const supportRequestTime = $("support-request-time");
+  const supportRequestMessage = $("support-request-message");
   const domainRefreshBtn = $("domain-refresh-btn");
   const domainCurrent = $("domain-current");
   const domainGrid = $("domain-grid");
@@ -271,6 +333,15 @@
   let dashboardCacheKey = "";
   let currentUser = null;
   let domainSettingsCache = null;
+  let assignmentClasses = [];
+  let assignmentStudentItems = [];
+  let assignmentStudentFilter = "all";
+  let selectedTeachingClassId = null;
+  let selectedAssignmentId = null;
+  let analyticsContexts = [];
+  let selectedAnalyticsClassId = null;
+  let supportCaseItems = [];
+  let selectedSupportCaseId = null;
 
   /* ---------------- helpers ---------------- */
 
@@ -300,12 +371,22 @@
     return !!currentUser && Array.isArray(currentUser.features) && currentUser.features.includes(feature);
   }
 
+  function preferredHomeView() {
+    if (hasFeature("student_support") && currentUser?.role === "counselor") return "support-workbench-view";
+    if (hasFeature("assignments") && ["teacher", "student"].includes(currentUser?.role)) return "assignment-workflow-view";
+    if (hasFeature("dashboard")) return "dashboard-view";
+    return "assistant-view";
+  }
+
   function applyUserUi() {
     if (!currentUser) return;
     if (currentUserName) currentUserName.textContent = currentUser.display_name || currentUser.username || "演示用户";
     if (currentUserRole) currentUserRole.textContent = `${currentUser.role_label || "角色"} · ${currentUser.domain_items?.length || 0} 个业务域`;
     const featureMap = {
       "dashboard-view": "dashboard",
+      "assignment-workflow-view": "assignments",
+      "course-analytics-view": "course_analytics",
+      "support-workbench-view": "student_support",
       "assistant-view": "ask",
       "kb-list-view": "knowledge",
       "kb-overview-view": "knowledge",
@@ -539,6 +620,559 @@
     loadDashboard(true);
   }
 
+  function assignmentStatusLabel(status) {
+    const map = {
+      draft: "草稿",
+      published: "已发布",
+      closed: "已截止",
+      submitted: "已提交",
+      late_submitted: "迟交",
+      returned: "已退回",
+      resubmitted: "已重交",
+      graded_unpublished: "已评分未发布",
+      graded_published: "成绩已发布",
+      missing: "未提交",
+    };
+    return map[status] || status || "未提交";
+  }
+
+  function assignmentStatusTone(status) {
+    if (["graded_published", "submitted", "resubmitted"].includes(status)) return "good";
+    if (["returned", "late_submitted"].includes(status)) return "warn";
+    if (["missing", "not_submitted"].includes(status || "missing")) return "danger";
+    return "muted";
+  }
+
+  function setAssignmentOverview(title, desc, pending, done) {
+    if (assignmentScopeTitle) assignmentScopeTitle.textContent = title;
+    if (assignmentScopeDesc) assignmentScopeDesc.textContent = desc;
+    if (assignmentMetricPending) assignmentMetricPending.textContent = formatNumber(pending || 0);
+    if (assignmentMetricDone) assignmentMetricDone.textContent = formatNumber(done || 0);
+  }
+
+  function renderAssignmentStudent(items) {
+    if (!assignmentStudentList) return;
+    assignmentStudentList.innerHTML = "";
+    if (!items.length) {
+      assignmentStudentList.innerHTML = '<div class="dashboard-empty">暂无作业待办</div>';
+      return;
+    }
+    items.forEach((item) => {
+      const card = document.createElement("div");
+      card.className = "assignment-item";
+      const status = item.submission_status || "missing";
+      const scoreText = item.score == null ? "" : `<b>成绩 ${escapeHtml(item.score)}</b>`;
+      const canSubmit = !["graded_published", "graded_unpublished"].includes(status);
+      card.innerHTML = `
+        <div class="assignment-item-head">
+          <div>
+            <strong>${escapeHtml(item.title)}</strong>
+            <span>${escapeHtml(item.course_name)} · 截止 ${escapeHtml(item.due_time)}</span>
+          </div>
+          <em class="assignment-status is-${assignmentStatusTone(status)}">${escapeHtml(assignmentStatusLabel(status))}</em>
+        </div>
+        <div class="assignment-feedback">
+          ${item.feedback ? `<span>${escapeHtml(item.feedback)}</span>` : "<span>暂无教师反馈</span>"}
+          ${scoreText}
+        </div>
+        ${canSubmit ? `
+          <form class="assignment-inline-form" data-submit-assignment="${escapeHtml(item.id)}">
+            <input name="file_name" placeholder="附件名，例如 report.pdf" />
+            <input name="content" placeholder="提交说明" />
+            <button class="nav-btn" type="submit">${status === "returned" ? "重新提交" : "提交作业"}</button>
+          </form>
+        ` : ""}
+      `;
+      assignmentStudentList.appendChild(card);
+    });
+    assignmentStudentList.querySelectorAll("[data-submit-assignment]").forEach((form) => {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const id = form.dataset.submitAssignment;
+        const payload = {
+          file_name: form.elements.file_name.value,
+          content: form.elements.content.value,
+        };
+        await api.submitTeachingAssignment(id, payload);
+        await loadAssignmentProduct(true);
+      });
+    });
+  }
+
+  function renderAssignmentTeacher(items) {
+    if (!assignmentTeacherList) return;
+    assignmentTeacherList.innerHTML = "";
+    if (!items.length) {
+      assignmentTeacherList.innerHTML = '<div class="dashboard-empty">暂无提交记录</div>';
+      return;
+    }
+    const table = document.createElement("table");
+    table.className = "assignment-manage-table";
+    table.innerHTML = `
+      <thead><tr><th>作业</th><th>学生</th><th>状态</th><th>批阅</th><th>操作</th></tr></thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector("tbody");
+    items.forEach((item) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(item.assignment_title)}</td>
+        <td>${escapeHtml(item.student_name)}</td>
+        <td><em class="assignment-status is-${assignmentStatusTone(item.status)}">${escapeHtml(assignmentStatusLabel(item.status))}</em></td>
+        <td>
+          <div class="assignment-row-controls">
+            <input type="number" min="0" max="1000" step="1" value="${item.score == null ? "" : escapeHtml(item.score)}" placeholder="分数" data-score-for="${escapeHtml(item.id)}" />
+            <input type="text" value="${escapeHtml(item.feedback || "")}" placeholder="评语或退回原因" data-feedback-for="${escapeHtml(item.id)}" />
+          </div>
+        </td>
+        <td>
+          <button type="button" data-return-submission="${escapeHtml(item.id)}">退回</button>
+          <button type="button" data-grade-submission="${escapeHtml(item.id)}">评分</button>
+          <button class="is-primary" type="button" data-publish-assignment="${escapeHtml(item.assignment_id)}">发布</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+    assignmentTeacherList.appendChild(table);
+    assignmentTeacherList.querySelectorAll("[data-return-submission]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const feedbackInput = assignmentTeacherList.querySelector(`[data-feedback-for="${CSS.escape(btn.dataset.returnSubmission)}"]`);
+        const feedback = feedbackInput ? feedbackInput.value.trim() : "";
+        if (!feedback) return;
+        await api.returnTeachingSubmission(btn.dataset.returnSubmission, { feedback });
+        await loadAssignmentProduct(true);
+      });
+    });
+    assignmentTeacherList.querySelectorAll("[data-grade-submission]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const scoreInput = assignmentTeacherList.querySelector(`[data-score-for="${CSS.escape(btn.dataset.gradeSubmission)}"]`);
+        const feedbackInput = assignmentTeacherList.querySelector(`[data-feedback-for="${CSS.escape(btn.dataset.gradeSubmission)}"]`);
+        const score = scoreInput ? scoreInput.value : "";
+        if (score === "") return;
+        const feedback = feedbackInput ? feedbackInput.value : "";
+        await api.gradeTeachingSubmission(btn.dataset.gradeSubmission, { score: Number(score), feedback });
+        await loadAssignmentWorkflow(true);
+      });
+    });
+    assignmentTeacherList.querySelectorAll("[data-publish-assignment]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        await api.publishTeachingGrades(btn.dataset.publishAssignment);
+        await loadAssignmentWorkflow(true);
+      });
+    });
+  }
+
+  async function loadAssignmentWorkflow(force) {
+    if (!currentUser || !hasFeature("assignments")) return;
+    if (assignmentStudentPanel) assignmentStudentPanel.classList.toggle("hidden", currentUser.role !== "student");
+    if (assignmentTeacherPanel) assignmentTeacherPanel.classList.toggle("hidden", currentUser.role !== "teacher");
+    try {
+      if (currentUser.role === "student") {
+        const data = await api.myTeachingAssignments();
+        const items = data.items || [];
+        const pending = items.filter((item) => !["submitted", "resubmitted", "graded_published"].includes(item.submission_status || "missing")).length;
+        const done = items.length - pending;
+        setAssignmentOverview("我的课程任务", "仅统计本人选课和本人提交", pending, done);
+        renderAssignmentStudent(items);
+      } else if (currentUser.role === "teacher") {
+        const data = await api.teachingClassSubmissions(900001);
+        const items = data.items || [];
+        const pending = items.filter((item) => ["submitted", "late_submitted", "resubmitted"].includes(item.status)).length;
+        const done = items.filter((item) => item.status === "graded_published").length;
+        setAssignmentOverview("数据库系统-1班", "任课教师仅处理本人开课班", pending, done);
+        renderAssignmentTeacher(items);
+      }
+    } catch (err) {
+      const target = currentUser.role === "student" ? assignmentStudentList : assignmentTeacherList;
+      if (target) target.innerHTML = `<div class="dashboard-loading is-error">作业数据加载失败: ${escapeHtml(err.message || err)}</div>`;
+    }
+  }
+
+  function assignmentDate(value) {
+    if (!value) return "--";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value.replace("T", " ").slice(0, 16);
+    return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+
+  function assignmentFileBase64(file) {
+    if (!file) return Promise.resolve(null);
+    if (file.size > 5 * 1024 * 1024) return Promise.reject(new Error("附件不能超过 5MB"));
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",", 2)[1] || "");
+      reader.onerror = () => reject(new Error("附件读取失败"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function assignmentFileSize(value) {
+    const size = Number(value || 0);
+    if (!size) return "";
+    if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+    return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function setAssignmentProductOverview(title, desc, pending, done, total) {
+    if (assignmentScopeTitle) assignmentScopeTitle.textContent = title;
+    if (assignmentScopeDesc) assignmentScopeDesc.textContent = desc;
+    if (assignmentMetricPending) assignmentMetricPending.textContent = formatNumber(pending || 0);
+    if (assignmentMetricDone) assignmentMetricDone.textContent = formatNumber(done || 0);
+    if (assignmentMetricTotal) assignmentMetricTotal.textContent = formatNumber(total || 0);
+  }
+
+  function studentAssignmentGroup(item) {
+    const status = item.submission_status || "missing";
+    if (status === "graded_published") return "finished";
+    if (["submitted", "resubmitted", "late_submitted", "graded_unpublished"].includes(status)) return "submitted";
+    return "pending";
+  }
+
+  function renderAssignmentStudentProduct(items) {
+    if (!assignmentStudentList) return;
+    assignmentStudentItems = items;
+    assignmentStudentList.innerHTML = "";
+    const visible = assignmentStudentFilter === "all" ? items : items.filter((item) => studentAssignmentGroup(item) === assignmentStudentFilter);
+    if (!visible.length) {
+      assignmentStudentList.innerHTML = '<div class="assignment-empty"><b>当前分类没有任务</b><span>新的课程作业发布后会出现在这里</span></div>';
+      return;
+    }
+    visible.forEach((item) => {
+      const card = document.createElement("article");
+      const status = item.submission_status || "missing";
+      const group = studentAssignmentGroup(item);
+      const canEdit = item.assignment_status === "published" && !["graded_published", "graded_unpublished"].includes(status);
+      const hasSubmission = Boolean(item.submission_id);
+      const formHidden = hasSubmission && status !== "returned";
+      card.className = `assignment-item is-${group}`;
+      card.innerHTML = `
+        <div class="assignment-item-head">
+          <div><span class="assignment-course-code">${escapeHtml(item.course_code || "COURSE")}</span><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.course_name)} · ${assignmentDate(item.due_time)} 截止</span></div>
+          <em class="assignment-status is-${assignmentStatusTone(status)}">${escapeHtml(assignmentStatusLabel(status))}</em>
+        </div>
+        ${item.instructions ? `<p class="assignment-instructions">${escapeHtml(item.instructions)}</p>` : ""}
+        ${hasSubmission ? `<div class="assignment-current-submission"><div><span class="assignment-current-label">当前提交 · 版本 ${item.latest_version_no || item.version_count || 1}</span><p>${escapeHtml(item.latest_content || "未填写提交说明")}</p></div>${item.latest_file_name ? `<button type="button" class="assignment-attachment-chip" data-download-submission="${item.submission_id}" data-version="${item.latest_version_no}" data-file-name="${escapeHtml(item.latest_file_name)}"><b>附件</b><span>${escapeHtml(item.latest_file_name)}</span><small>${assignmentFileSize(item.latest_file_size)}</small></button>` : '<span class="assignment-no-file">本版本无附件</span>'}</div>` : ""}
+        <div class="assignment-feedback">${item.feedback ? `<span><b>教师反馈</b>${escapeHtml(item.feedback)}</span>` : "<span>尚无教师反馈</span>"}${item.score == null ? "" : `<b>成绩 ${escapeHtml(item.score)} / ${escapeHtml(item.max_score)}</b>`}</div>
+        ${canEdit && hasSubmission && status !== "returned" ? `<button class="assignment-edit-submit" type="button" data-toggle-submit="${item.id}">修改提交</button>` : ""}
+        ${canEdit ? `<form class="assignment-inline-form${formHidden ? " hidden" : ""}" data-submit-assignment="${item.id}"><label class="assignment-file-field"><input name="file" type="file" accept=".pdf,.doc,.docx,.zip,.png,.jpg,.jpeg,.txt" /><span>${item.latest_file_name ? "保留当前附件，或选择新附件" : "选择附件"}</span></label><textarea name="content" placeholder="填写提交说明">${escapeHtml(item.latest_content || "")}</textarea><button class="nav-btn" type="submit">${hasSubmission ? "保存新版本" : "提交作业"}</button></form>` : `<div class="assignment-submitted-note">${status === "graded_published" ? "成绩与评语已发布" : "教师已评分，当前提交不可再修改"}</div>`}
+      `;
+      assignmentStudentList.appendChild(card);
+    });
+    assignmentStudentList.querySelectorAll("[data-submit-assignment]").forEach((form) => {
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const file = form.elements.file.files[0];
+        const fileContent = await assignmentFileBase64(file);
+        await api.submitTeachingAssignment(form.dataset.submitAssignment, { file_name: file ? file.name : null, file_content_base64: fileContent, retain_existing_file: true, content: form.elements.content.value });
+        await loadAssignmentProduct(true);
+      });
+    });
+    assignmentStudentList.querySelectorAll("[data-toggle-submit]").forEach((button) => button.addEventListener("click", () => {
+      const form = assignmentStudentList.querySelector(`[data-submit-assignment="${button.dataset.toggleSubmit}"]`);
+      form?.classList.toggle("hidden");
+      button.textContent = form?.classList.contains("hidden") ? "修改提交" : "收起修改";
+    }));
+    assignmentStudentList.querySelectorAll(".assignment-file-field input").forEach((input) => input.addEventListener("change", () => {
+      const label = input.closest(".assignment-file-field")?.querySelector("span");
+      if (label) label.textContent = input.files[0] ? `已选择：${input.files[0].name} · ${assignmentFileSize(input.files[0].size)}` : "选择附件";
+      input.closest(".assignment-file-field")?.classList.toggle("has-file", Boolean(input.files[0]));
+    }));
+    assignmentStudentList.querySelectorAll("[data-download-submission]").forEach((button) => button.addEventListener("click", () => api.downloadTeachingSubmissionFile(button.dataset.downloadSubmission, button.dataset.version, button.dataset.fileName)));
+  }
+
+  function renderAssignmentTeacherProduct(items) {
+    if (!assignmentTeacherList) return;
+    assignmentTeacherList.innerHTML = "";
+    if (assignmentListCount) assignmentListCount.textContent = `${items.length} 项`;
+    if (!items.length) {
+      assignmentTeacherList.innerHTML = '<div class="assignment-empty compact"><b>还没有作业</b><span>点击“新建作业”创建第一项课程任务</span></div>';
+      return;
+    }
+    items.forEach((item) => {
+      const button = document.createElement("button");
+      const missing = Math.max(0, Number(item.student_count) - Number(item.submitted_count));
+      button.type = "button";
+      button.className = `assignment-master-item${Number(selectedAssignmentId) === Number(item.id) ? " active" : ""}`;
+      button.dataset.assignmentId = item.id;
+      button.innerHTML = `<span class="assignment-master-top"><b>${escapeHtml(item.title)}</b><em class="assignment-status is-${assignmentStatusTone(item.status)}">${assignmentStatusLabel(item.status)}</em></span><span class="assignment-master-time">${assignmentDate(item.due_time)} 截止</span><span class="assignment-master-progress"><i style="width:${item.student_count ? Math.round(item.submitted_count / item.student_count * 100) : 0}%"></i></span><span class="assignment-master-meta"><span>${item.submitted_count}/${item.student_count} 已交</span><span>${item.pending_grade_count} 待批</span><span>${missing} 未交</span></span>`;
+      assignmentTeacherList.appendChild(button);
+    });
+    assignmentTeacherList.querySelectorAll("[data-assignment-id]").forEach((button) => button.addEventListener("click", () => loadTeacherAssignmentDetail(button.dataset.assignmentId)));
+  }
+
+  async function loadTeacherAssignmentList(selectFirst) {
+    const data = await api.teachingClassAssignments(selectedTeachingClassId);
+    const items = data.items || [];
+    const pending = items.reduce((sum, item) => sum + Number(item.pending_grade_count || 0), 0);
+    const done = items.reduce((sum, item) => sum + Number(item.published_count || 0), 0);
+    const course = assignmentClasses.find((item) => Number(item.id) === Number(selectedTeachingClassId));
+    setAssignmentProductOverview(course ? course.course_name : "我的开课班", "任课教师仅能处理本人开课班", pending, done, items.length);
+    renderAssignmentTeacherProduct(items);
+    if (selectFirst && items.length) await loadTeacherAssignmentDetail(items[0].id, items);
+    return items;
+  }
+
+  async function loadTeacherAssignmentDetail(assignmentId, knownItems) {
+    selectedAssignmentId = Number(assignmentId);
+    if (!assignmentDetailPane) return;
+    assignmentDetailPane.innerHTML = '<div class="dashboard-loading">正在加载学生名单...</div>';
+    const [detailData, rosterData] = await Promise.all([api.teachingAssignment(assignmentId), api.teachingAssignmentRoster(assignmentId)]);
+    const detail = detailData.item;
+    const items = rosterData.items || [];
+    const submitted = items.filter((item) => item.submission_id).length;
+    const pending = items.filter((item) => ["submitted", "late_submitted", "resubmitted"].includes(item.status)).length;
+    const unpublished = items.filter((item) => item.status === "graded_unpublished").length;
+    assignmentDetailPane.innerHTML = `
+      <div class="assignment-detail-head"><div><span>${escapeHtml(detail.course_name)}</span><h3>${escapeHtml(detail.title)}</h3><p>${escapeHtml(detail.instructions || "未填写作业说明")}</p></div><div class="assignment-detail-actions">${detail.status === "draft" ? `<button class="nav-btn secondary" type="button" data-edit-draft="${detail.id}">编辑草稿</button><button class="nav-btn" type="button" data-publish-draft="${detail.id}">发布作业</button>` : ""}${unpublished ? `<button class="nav-btn" type="button" data-publish-grades="${detail.id}">发布 ${unpublished} 份成绩</button>` : ""}</div></div>
+      <div class="assignment-detail-metrics"><span><b>${submitted}/${items.length}</b>已提交</span><span><b>${pending}</b>待批阅</span><span><b>${items.length - submitted}</b>未提交</span><span><b>${unpublished}</b>待发布成绩</span></div>
+      <div class="assignment-roster-wrap"><table class="assignment-manage-table"><thead><tr><th>学生</th><th>提交情况</th><th>状态</th><th>评分与反馈</th><th>操作</th></tr></thead><tbody>${items.map((item) => {
+        const canReview = item.submission_id && ["submitted", "late_submitted", "resubmitted"].includes(item.status);
+        return `<tr class="${canReview ? "is-awaiting-review" : ""}"><td><b>${escapeHtml(item.student_name)}</b><small>${escapeHtml(item.student_no)}</small></td><td>${item.submit_time ? `<b>${assignmentDate(item.submit_time)}</b><small>版本 ${item.version_no || 1} · 共 ${item.version_count || 1} 个版本</small>${item.content ? `<p class="assignment-roster-content">${escapeHtml(item.content)}</p>` : ""}${item.file_name ? `<button class="assignment-teacher-attachment" type="button" data-download-submission="${item.submission_id}" data-version="${item.file_version_no}" data-file-name="${escapeHtml(item.file_name)}"><b>附件</b><span>${escapeHtml(item.file_name)}</span><small>${assignmentFileSize(item.file_size)}</small></button>` : ""}` : '<span class="assignment-missing-text">尚未提交</span>'}</td><td><em class="assignment-status is-${assignmentStatusTone(item.status)}">${assignmentStatusLabel(item.status)}</em></td><td>${canReview ? `<div class="assignment-row-controls"><input type="number" min="0" max="${escapeHtml(detail.max_score)}" value="${item.score == null ? "" : escapeHtml(item.score)}" placeholder="分数" data-score-for="${item.submission_id}" /><input value="${escapeHtml(item.feedback || "")}" placeholder="评语或退回原因" data-feedback-for="${item.submission_id}" /></div>` : escapeHtml(item.feedback || (item.score == null ? "--" : `${item.score} 分`))}</td><td>${canReview ? `<button type="button" data-return-submission="${item.submission_id}">退回</button><button class="is-primary" type="button" data-grade-submission="${item.submission_id}">评分</button>` : "--"}</td></tr>`;
+      }).join("")}</tbody></table></div>`;
+    renderAssignmentTeacherProduct(knownItems || await loadTeacherAssignmentList(false));
+    assignmentDetailPane.querySelectorAll("[data-return-submission]").forEach((button) => button.addEventListener("click", async () => {
+      const feedback = assignmentDetailPane.querySelector(`[data-feedback-for="${button.dataset.returnSubmission}"]`)?.value.trim() || "";
+      if (!feedback) return;
+      await api.returnTeachingSubmission(button.dataset.returnSubmission, { feedback });
+      await loadTeacherAssignmentDetail(selectedAssignmentId);
+    }));
+    assignmentDetailPane.querySelectorAll("[data-grade-submission]").forEach((button) => button.addEventListener("click", async () => {
+      const score = assignmentDetailPane.querySelector(`[data-score-for="${button.dataset.gradeSubmission}"]`)?.value;
+      const feedback = assignmentDetailPane.querySelector(`[data-feedback-for="${button.dataset.gradeSubmission}"]`)?.value || "";
+      if (score === "" || score == null) return;
+      await api.gradeTeachingSubmission(button.dataset.gradeSubmission, { score: Number(score), feedback });
+      await loadTeacherAssignmentDetail(selectedAssignmentId);
+    }));
+    assignmentDetailPane.querySelectorAll("[data-download-submission]").forEach((button) => button.addEventListener("click", () => api.downloadTeachingSubmissionFile(button.dataset.downloadSubmission, button.dataset.version, button.dataset.fileName)));
+    assignmentDetailPane.querySelector("[data-publish-grades]")?.addEventListener("click", async (event) => {
+      await api.publishTeachingGrades(event.currentTarget.dataset.publishGrades);
+      await loadTeacherAssignmentDetail(selectedAssignmentId);
+    });
+    assignmentDetailPane.querySelector("[data-publish-draft]")?.addEventListener("click", async (event) => {
+      await api.publishTeachingAssignment(event.currentTarget.dataset.publishDraft);
+      await loadTeacherAssignmentDetail(selectedAssignmentId);
+    });
+    assignmentDetailPane.querySelector("[data-edit-draft]")?.addEventListener("click", () => {
+      assignmentCreateForm.dataset.editingId = detail.id;
+      assignmentCreateTitle.value = detail.title;
+      const localDue = new Date(detail.due_time);
+      localDue.setMinutes(localDue.getMinutes() - localDue.getTimezoneOffset());
+      assignmentCreateDue.value = localDue.toISOString().slice(0, 16);
+      assignmentCreateScore.value = detail.max_score;
+      assignmentCreateInstructions.value = detail.instructions || "";
+      assignmentCreateAllowLate.checked = Boolean(detail.allow_late);
+      assignmentCreateForm.classList.remove("hidden");
+      assignmentCreateForm.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  async function loadAssignmentProduct(force) {
+    if (!currentUser || !hasFeature("assignments")) return;
+    assignmentStudentPanel?.classList.toggle("hidden", currentUser.role !== "student");
+    assignmentTeacherPanel?.classList.toggle("hidden", currentUser.role !== "teacher");
+    assignmentCoursePickerWrap?.classList.toggle("hidden", currentUser.role !== "teacher");
+    try {
+      if (currentUser.role === "student") {
+        if (assignmentRoleContext) assignmentRoleContext.textContent = "学生学习空间";
+        if (assignmentPageHeading) assignmentPageHeading.textContent = "我的课程作业";
+        if (assignmentPageLead) assignmentPageLead.textContent = "按截止时间安排任务，提交后查看批阅进度和成绩反馈。";
+        const data = await api.myTeachingAssignments();
+        const items = data.items || [];
+        setAssignmentProductOverview("本学期课程", "仅统计本人选课和本人提交", items.filter((item) => studentAssignmentGroup(item) === "pending").length, items.filter((item) => studentAssignmentGroup(item) === "finished").length, items.length);
+        renderAssignmentStudentProduct(items);
+      } else if (currentUser.role === "teacher") {
+        if (assignmentRoleContext) assignmentRoleContext.textContent = "教师教学空间";
+        if (assignmentPageHeading) assignmentPageHeading.textContent = "作业与批阅";
+        if (assignmentPageLead) assignmentPageLead.textContent = "围绕开课班发布任务、跟踪提交并完成成绩反馈。";
+        const classData = await api.myTeachingClasses();
+        assignmentClasses = classData.items || [];
+        if (!assignmentClasses.length) throw new Error("当前账号没有可管理的开课班");
+        if (!selectedTeachingClassId || !assignmentClasses.some((item) => Number(item.id) === Number(selectedTeachingClassId))) selectedTeachingClassId = assignmentClasses[0].id;
+        if (assignmentCoursePicker) {
+          assignmentCoursePicker.innerHTML = assignmentClasses.map((item) => `<option value="${item.id}">${escapeHtml(item.course_name)} · ${item.year} ${item.semester === "spring" ? "春" : "秋"}</option>`).join("");
+          assignmentCoursePicker.value = selectedTeachingClassId;
+        }
+        const course = assignmentClasses.find((item) => Number(item.id) === Number(selectedTeachingClassId));
+        if (assignmentTeacherTitle) assignmentTeacherTitle.textContent = course?.course_name || "课程作业";
+        if (assignmentTeacherSubtitle) assignmentTeacherSubtitle.textContent = course ? `${course.student_count} 名学生 · ${course.classroom} · ${course.course_code}` : "";
+        await loadTeacherAssignmentList(true);
+      }
+    } catch (err) {
+      const target = currentUser.role === "student" ? assignmentStudentList : assignmentDetailPane;
+      if (target) target.innerHTML = `<div class="dashboard-loading is-error">作业数据加载失败: ${escapeHtml(err.message || err)}</div>`;
+    }
+  }
+
+  function supportStatusLabel(status) {
+    const labels = { open: "待确认", contacted: "已联系", tracking: "跟进中", improved: "已改善", closed: "已关闭", submitted: "待受理", accepted: "已受理", completed: "已完成", declined: "未受理" };
+    return labels[status] || status || "--";
+  }
+
+  function supportStatusTone(status) {
+    if (["improved", "completed"].includes(status)) return "good";
+    if (["open", "submitted"].includes(status)) return "warn";
+    if (["tracking", "accepted"].includes(status)) return "info";
+    return "muted";
+  }
+
+  function supportEvidenceSummary(evidence) {
+    if (!evidence) return "暂无事实依据";
+    if (typeof evidence === "string") return evidence;
+    return [evidence.course, evidence.fact, evidence.summary].filter(Boolean).join(" · ") || "已记录事实依据";
+  }
+
+  function supportEvidenceEvents(evidence) {
+    if (!evidence || typeof evidence === "string" || !Array.isArray(evidence.events)) return "";
+    return evidence.events.map((event) => {
+      if (typeof event === "string") return `<li>${escapeHtml(event)}</li>`;
+      const text = event.assignment ? `${event.assignment} · 截止 ${assignmentDate(event.due_time)}` : `第 ${event.session} 次课 · ${escapeHtml(event.date || "")}`;
+      return `<li>${escapeHtml(text)}</li>`;
+    }).join("");
+  }
+
+  function supportNextStatuses(status) {
+    const transitions = { open: ["contacted", "closed"], contacted: ["tracking", "closed"], tracking: ["improved", "closed"], improved: ["closed"], closed: [] };
+    return transitions[status] || [];
+  }
+
+  function renderSupportCaseList(items) {
+    if (!supportCaseList) return;
+    supportCaseList.innerHTML = "";
+    if (supportCaseCount) supportCaseCount.textContent = `${items.length} 项`;
+    if (!items.length) {
+      supportCaseList.innerHTML = '<div class="support-empty compact"><b>当前没有事项</b><span>规则检查不会生成正式警告，只创建待确认事项</span></div>';
+      return;
+    }
+    items.forEach((item) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.supportCase = item.id;
+      button.className = `support-case-item${Number(selectedSupportCaseId) === Number(item.id) ? " active" : ""}`;
+      button.innerHTML = `
+        <span class="support-case-top"><b>${escapeHtml(item.student_name)}</b><em class="support-status is-${supportStatusTone(item.status)}">${supportStatusLabel(item.status)}</em></span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <span>${escapeHtml(item.class_name)} · ${escapeHtml(supportEvidenceSummary(item.evidence))}</span>
+        <small>${item.review_at ? `复查 ${assignmentDate(item.review_at)}` : `创建 ${assignmentDate(item.created_at)}`}${item.visible_to_student ? " · 已共享" : " · 内部待办"}</small>`;
+      supportCaseList.appendChild(button);
+    });
+    supportCaseList.querySelectorAll("[data-support-case]").forEach((button) => button.addEventListener("click", () => loadSupportCaseDetail(button.dataset.supportCase)));
+  }
+
+  async function loadSupportCaseDetail(caseId) {
+    selectedSupportCaseId = Number(caseId);
+    if (!supportCaseDetail) return;
+    supportCaseDetail.innerHTML = '<div class="dashboard-loading">正在加载事项详情...</div>';
+    const data = await api.supportCase(caseId);
+    const item = data.item;
+    const events = supportEvidenceEvents(item.evidence);
+    const nextStatuses = supportNextStatuses(item.status);
+    supportCaseDetail.innerHTML = `
+      <div class="support-detail-head">
+        <div><span>${escapeHtml(item.student_name)} · ${escapeHtml(item.code)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(supportEvidenceSummary(item.evidence))}</p></div>
+        <em class="support-status is-${supportStatusTone(item.status)}">${supportStatusLabel(item.status)}</em>
+      </div>
+      <div class="support-fact-grid">
+        <section><span>事实依据</span><b>${escapeHtml(item.evidence?.fact || item.evidence?.summary || supportEvidenceSummary(item.evidence))}</b>${events ? `<ul>${events}</ul>` : ""}</section>
+        <section><span>建议动作</span><b>${escapeHtml(item.suggested_action || "先确认事实，再与学生制定后续计划。")}</b><small>${item.visible_to_student ? "该建议已对学生可见" : "当前仅辅导员可见"}</small></section>
+      </div>
+      <section class="support-timeline"><div class="support-detail-title"><b>处理记录</b><span>${(item.logs || []).length} 条</span></div>${(item.logs || []).length ? item.logs.map((log) => `<div class="support-log"><i></i><div><b>${supportStatusLabel(log.action)} · ${escapeHtml(log.actor_user)}</b><p>${escapeHtml(log.note)}</p>${log.student_feedback ? `<p><span>学生反馈：</span>${escapeHtml(log.student_feedback)}</p>` : ""}<small>${assignmentDate(log.created_at)}${log.contact_method ? ` · ${escapeHtml(log.contact_method)}` : ""}${log.follow_up_at ? ` · 复查 ${assignmentDate(log.follow_up_at)}` : ""}</small></div></div>`).join("") : '<div class="support-empty compact"><span>尚无联系记录</span></div>'}</section>
+      ${nextStatuses.length ? `<form class="support-action-form" id="support-action-form"><div class="support-detail-title"><b>记录本次处理</b><span>状态变化将写入审计日志</span></div><div class="support-action-grid"><label><span>下一状态</span><select name="target_status">${nextStatuses.map((status) => `<option value="${status}">${supportStatusLabel(status)}</option>`).join("")}</select></label><label><span>联系方式</span><select name="contact_method"><option value="">非首次联系</option><option value="phone">电话</option><option value="message">即时消息</option><option value="meeting">面谈</option></select></label><label><span>复查时间</span><input name="follow_up_at" type="datetime-local" /></label><label class="wide"><span>处理记录</span><textarea name="note" placeholder="记录已核实的情况、处理动作或关闭原因"></textarea></label><label class="wide"><span>学生反馈</span><textarea name="student_feedback" placeholder="记录学生反馈；学生端不会直接看到这段内部记录"></textarea></label></div><div class="support-action-message" role="status"></div><div class="support-action-foot"><label><input name="visible_to_student" type="checkbox" />同步更新学生端支持建议</label><button class="nav-btn" type="submit">保存处理记录</button></div></form>` : `<div class="support-closed-note">事项已关闭，历史记录将继续保留。</div>`}`;
+    renderSupportCaseList(supportCaseItems);
+    const form = $("support-action-form");
+    if (form) form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = form.querySelector(".support-action-message");
+      try {
+        await api.transitionSupportCase(item.id, {
+          target_status: form.elements.target_status.value,
+          note: form.elements.note.value,
+          contact_method: form.elements.contact_method.value || null,
+          student_feedback: form.elements.student_feedback.value || null,
+          follow_up_at: form.elements.follow_up_at.value || null,
+          visible_to_student: form.elements.visible_to_student.checked,
+        });
+        await loadSupportWorkbench(true, item.id);
+      } catch (err) {
+        if (message) message.textContent = err.message || "保存失败";
+      }
+    });
+  }
+
+  function renderCounselorSupportRequests(items) {
+    if (!supportCounselorRequests) return;
+    if (!items.length) {
+      supportCounselorRequests.innerHTML = '<div class="support-empty compact"><span>暂无学生沟通请求</span></div>';
+      return;
+    }
+    supportCounselorRequests.innerHTML = `<div class="support-request-table">${items.map((item) => `<div class="support-request-row"><div><b>${escapeHtml(item.student_name)} · ${item.request_type === "appointment" ? "预约沟通" : "问题咨询"}</b><p>${escapeHtml(item.message)}</p><small>${item.preferred_time ? `希望时间 ${assignmentDate(item.preferred_time)}` : "未指定时间"}</small></div><em class="support-status is-${supportStatusTone(item.status)}">${supportStatusLabel(item.status)}</em>${item.status === "submitted" ? `<div class="support-request-reply"><input placeholder="填写给学生的回复" data-request-response="${item.id}" /><button type="button" data-accept-request="${item.id}">受理</button></div>` : `<span class="support-response">${escapeHtml(item.counselor_response || "暂无回复")}</span>`}</div>`).join("")}</div>`;
+    supportCounselorRequests.querySelectorAll("[data-accept-request]").forEach((button) => button.addEventListener("click", async () => {
+      const response = supportCounselorRequests.querySelector(`[data-request-response="${button.dataset.acceptRequest}"]`)?.value.trim() || "";
+      if (!response) return;
+      await api.updateSupportRequest(button.dataset.acceptRequest, { status: "accepted", response });
+      await loadSupportWorkbench(true);
+    }));
+  }
+
+  function renderStudentSupportCases(items) {
+    if (!supportStudentCases) return;
+    if (!items.length) {
+      supportStudentCases.innerHTML = '<div class="support-empty"><b>暂无需要处理的支持事项</b><span>你仍可以主动发起预约或咨询</span></div>';
+      return;
+    }
+    supportStudentCases.innerHTML = items.map((item) => `<article class="support-student-card"><div><span>${escapeHtml(item.counselor_name || "辅导员")}</span><em class="support-status is-${supportStatusTone(item.status)}">${supportStatusLabel(item.status)}</em></div><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(supportEvidenceSummary(item.evidence))}</p><section><b>建议行动</b><span>${escapeHtml(item.suggested_action || "请按约定完成后续学习任务。")}</span></section>${item.review_at ? `<small>计划复查：${assignmentDate(item.review_at)}</small>` : ""}</article>`).join("");
+  }
+
+  function renderStudentSupportRequests(items) {
+    if (!supportStudentRequests) return;
+    if (!items.length) {
+      supportStudentRequests.innerHTML = '<div class="support-empty compact"><span>还没有沟通记录</span></div>';
+      return;
+    }
+    supportStudentRequests.innerHTML = `<div class="support-request-table">${items.map((item) => `<div class="support-request-row"><div><b>${item.request_type === "appointment" ? "预约沟通" : "问题咨询"}</b><p>${escapeHtml(item.message)}</p><small>${assignmentDate(item.created_at)}${item.preferred_time ? ` · 希望时间 ${assignmentDate(item.preferred_time)}` : ""}</small></div><em class="support-status is-${supportStatusTone(item.status)}">${supportStatusLabel(item.status)}</em><span class="support-response">${escapeHtml(item.counselor_response || "等待辅导员回复")}</span></div>`).join("")}</div>`;
+  }
+
+  async function loadSupportWorkbench(force, keepCaseId) {
+    if (!currentUser || !hasFeature("student_support")) return;
+    supportCounselorPanel?.classList.toggle("hidden", currentUser.role !== "counselor");
+    supportStudentPanel?.classList.toggle("hidden", currentUser.role !== "student");
+    supportRefreshBtn?.classList.toggle("hidden", currentUser.role !== "counselor");
+    try {
+      if (currentUser.role === "counselor") {
+        if (supportRoleContext) supportRoleContext.textContent = "辅导员工作空间";
+        if (supportPageHeading) supportPageHeading.textContent = "学习支持待办";
+        if (supportPageLead) supportPageLead.textContent = "以事实为依据开展确认、联系、跟进和复查，不自动生成正式学业警告。";
+        const [caseData, requestData] = await Promise.all([api.supportCases(supportStatusFilter?.value || "all"), api.supportRequests()]);
+        supportCaseItems = caseData.items || [];
+        const requests = requestData.items || [];
+        if (supportMetricOpen) supportMetricOpen.textContent = supportCaseItems.filter((item) => item.status === "open").length;
+        if (supportMetricTracking) supportMetricTracking.textContent = supportCaseItems.filter((item) => ["contacted", "tracking"].includes(item.status)).length;
+        if (supportMetricReview) supportMetricReview.textContent = supportCaseItems.filter((item) => item.review_at && item.status !== "closed").length;
+        if (supportMetricRequests) supportMetricRequests.textContent = requests.filter((item) => item.status === "submitted").length;
+        selectedSupportCaseId = keepCaseId || (supportCaseItems.some((item) => Number(item.id) === Number(selectedSupportCaseId)) ? selectedSupportCaseId : supportCaseItems[0]?.id);
+        renderSupportCaseList(supportCaseItems);
+        renderCounselorSupportRequests(requests);
+        if (selectedSupportCaseId) await loadSupportCaseDetail(selectedSupportCaseId);
+        else if (supportCaseDetail) supportCaseDetail.innerHTML = '<div class="support-empty"><b>当前没有事项</b><span>可以检查最新教学事实</span></div>';
+      } else if (currentUser.role === "student") {
+        if (supportRoleContext) supportRoleContext.textContent = "学生个人空间";
+        if (supportPageHeading) supportPageHeading.textContent = "我的学习支持";
+        if (supportPageLead) supportPageLead.textContent = "查看已共享的支持建议，也可以主动预约辅导员沟通。";
+        const [caseData, requestData] = await Promise.all([api.supportCases("all"), api.supportRequests()]);
+        const cases = caseData.items || [];
+        const requests = requestData.items || [];
+        if (supportMetricOpen) supportMetricOpen.textContent = cases.filter((item) => ["contacted", "tracking"].includes(item.status)).length;
+        if (supportMetricTracking) supportMetricTracking.textContent = cases.filter((item) => item.status === "tracking").length;
+        if (supportMetricReview) supportMetricReview.textContent = cases.filter((item) => item.review_at).length;
+        if (supportMetricRequests) supportMetricRequests.textContent = requests.filter((item) => ["submitted", "accepted"].includes(item.status)).length;
+        renderStudentSupportCases(cases);
+        renderStudentSupportRequests(requests);
+      }
+    } catch (err) {
+      const target = currentUser.role === "counselor" ? supportCaseDetail : supportStudentCases;
+      if (target) target.innerHTML = `<div class="dashboard-loading is-error">学习支持数据加载失败: ${escapeHtml(err.message || err)}</div>`;
+    }
+  }
+
   function renderDomainSettings(data) {
     if (!domainCurrent || !domainGrid || !domainRoleBody || !data) return;
     const user = data.current_user || currentUser || {};
@@ -605,10 +1239,98 @@
     return domainSettingsCache;
   }
 
+  function analyticsStatusLabel(status) {
+    return ({ missing: "未提交", returned: "需修改", submitted: "已提交", late_submitted: "迟交", graded: "成绩已发布", graded_unpublished: "已批阅待发布" })[status] || status || "-";
+  }
+
+  function analyticsMetric(label, value, definition) {
+    return `<article><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b><small>${escapeHtml(definition)}</small></article>`;
+  }
+
+  function renderCourseAnalytics(data) {
+    const teacher = data.role === "teacher";
+    const metrics = data.metrics || {};
+    if (analyticsScopeCopy) analyticsScopeCopy.textContent = teacher
+      ? `仅汇总本人授课班“${data.scope.course_name || "当前课程"}”的作业级数据，不展示学生身份。`
+      : `仅展示本人在“${data.scope.course_name || "当前课程"}”的任务和已发布成绩。`;
+    if (analyticsMeta) analyticsMeta.innerHTML = `<span>统计范围：当前开课班</span><span>更新时间：${escapeHtml(assignmentDate(data.refreshed_at))}</span><span>数据源：${escapeHtml(data.definitions.source)}</span>`;
+    const pending = teacher ? metrics.pending_grade_count : metrics.pending_task_count;
+    if (analyticsMetrics) analyticsMetrics.innerHTML = [
+      analyticsMetric("作业完成率", `${formatNumber(metrics.completion_rate, 2)}%`, data.definitions.completion_rate),
+      analyticsMetric("迟交率", `${formatNumber(metrics.late_rate, 2)}%`, data.definitions.late_rate),
+      analyticsMetric(teacher ? "待批阅" : "待完成", formatNumber(pending), data.definitions.pending),
+      analyticsMetric(teacher ? "得分分布" : "已发布平均分", teacher ? (() => { const d = data.score_summary.distribution || {}; return `90+ ${d["90_plus"] || 0} · 80-89 ${d["80_89"] || 0} · <60 ${d["lt_60"] || 0}`; })() : (data.score_summary.average == null ? "暂无" : formatNumber(data.score_summary.average, 2)), data.definitions.score),
+    ].join("");
+    if (analyticsDetailTitle) analyticsDetailTitle.textContent = teacher ? "各作业执行情况" : "我的课程任务";
+    if (analyticsDetailHead) analyticsDetailHead.innerHTML = teacher
+      ? "<tr><th>作业</th><th>截止时间</th><th>已交 / 应交</th><th>未交</th><th>迟交率</th><th>待批阅</th><th>平均分</th></tr>"
+      : "<tr><th>作业</th><th>截止时间</th><th>状态</th><th>是否迟交</th><th>已发布成绩</th></tr>";
+    const items = data.items || [];
+    if (analyticsDetailBody) analyticsDetailBody.innerHTML = items.length ? items.map((item) => teacher
+      ? `<tr><td><b>${escapeHtml(item.assignment_title)}</b></td><td>${escapeHtml(assignmentDate(item.due_time))}</td><td>${item.submitted_count} / ${item.enrolled_count}</td><td>${item.missing_count}</td><td>${formatNumber(item.late_rate, 2)}%</td><td>${item.pending_grade_count}</td><td>${item.average_score == null ? "-" : formatNumber(item.average_score, 2)}</td></tr>`
+      : `<tr><td><b>${escapeHtml(item.assignment_title)}</b></td><td>${escapeHtml(assignmentDate(item.due_time))}</td><td><span class="analytics-state is-${escapeHtml(item.task_status)}">${escapeHtml(analyticsStatusLabel(item.task_status))}</span></td><td>${item.late ? "是" : "否"}</td><td>${item.published_score == null ? "未发布" : `${formatNumber(item.published_score, 2)} / ${formatNumber(item.max_score)}`}</td></tr>`
+    ).join("") : '<tr><td colspan="7" class="analytics-empty">当前课程暂无已发布作业</td></tr>';
+    const templates = teacher ? ["本班各作业未交情况", "哪些作业迟交率高", "还有多少提交待批阅"] : ["我的课程还剩哪些任务", "查看我的已发布作业成绩"];
+    if (analyticsQuestionTemplates) analyticsQuestionTemplates.innerHTML = templates.map((item) => `<button type="button" data-analytics-question="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("");
+  }
+
+  function renderAnalyticsAnswer(result) {
+    if (!analyticsAnswer) return;
+    if (result.error || result.clarify) {
+      analyticsAnswer.innerHTML = `<div class="analytics-error"><b>本次查询未完成</b><p>${escapeHtml(result.error || result.clarify)}</p></div>`;
+      return;
+    }
+    const columns = result.columns || [];
+    const rows = result.rows || [];
+    const table = rows.length ? `<div class="analytics-answer-table"><table><thead><tr>${columns.map((col) => `<th>${escapeHtml(col)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell == null ? "-" : cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : '<p class="analytics-empty">没有符合当前课程范围的数据。</p>';
+    const feedback = result.query_log_id ? `<div class="analytics-answer-feedback"><span>结果是否有帮助？</span><button type="button" data-analytics-feedback="helpful" data-log-id="${result.query_log_id}">有帮助</button><button type="button" data-analytics-feedback="not_helpful" data-log-id="${result.query_log_id}">需改进</button></div>` : "";
+    analyticsAnswer.innerHTML = `<div class="analytics-answer-meta"><span>${result.query_mode === "context_template" ? "课程问题模板" : "受限 NL2SQL"}</span><span>${result.row_count || 0} 行</span></div>${table}<details><summary>查看执行 SQL</summary><code>${escapeHtml(result.sql || "")}</code></details>${feedback}`;
+  }
+
+  async function loadAnalyticsHistory() {
+    if (!selectedAnalyticsClassId || !analyticsHistoryList) return;
+    const data = await api.courseAnalyticsHistory(selectedAnalyticsClassId);
+    const items = data.items || [];
+    analyticsHistoryList.innerHTML = items.length ? items.map((item) => `<button type="button" data-analytics-question="${escapeHtml(item.question)}"><span>${escapeHtml(item.question)}</span><small>${item.user_feedback === "helpful" ? "有帮助 · " : item.user_feedback === "not_helpful" ? "需改进 · " : ""}${item.status === "success" ? `${item.row_count} 行` : "未完成"} · ${escapeHtml(assignmentDate(item.created_at))}</small></button>`).join("") : "<p>暂无查询记录</p>";
+  }
+
+  async function loadCourseAnalytics(force) {
+    if (!hasFeature("course_analytics")) return;
+    try {
+      if (force || !analyticsContexts.length) {
+        const contextData = await api.courseAnalyticsContexts();
+        analyticsContexts = contextData.items || [];
+      }
+      if (!analyticsContexts.length) throw new Error("当前账号没有可分析的课程");
+      if (!selectedAnalyticsClassId || !analyticsContexts.some((item) => Number(item.id) === Number(selectedAnalyticsClassId))) selectedAnalyticsClassId = Number(analyticsContexts[0].id);
+      if (analyticsCoursePicker) {
+        analyticsCoursePicker.innerHTML = analyticsContexts.map((item) => `<option value="${item.id}">${escapeHtml(item.course_name)} · ${item.year} ${item.semester === "spring" ? "春" : "秋"}</option>`).join("");
+        analyticsCoursePicker.value = selectedAnalyticsClassId;
+      }
+      const data = await api.courseAnalyticsSummary(selectedAnalyticsClassId);
+      renderCourseAnalytics(data);
+      await loadAnalyticsHistory();
+    } catch (err) {
+      if (analyticsAnswer) analyticsAnswer.innerHTML = `<div class="analytics-error"><b>课程分析加载失败</b><p>${escapeHtml(err.message || "请稍后重试")}</p></div>`;
+    }
+  }
+
+  async function executeAnalyticsQuestion(question) {
+    if (!selectedAnalyticsClassId || !question) return;
+    if (analyticsAnswer) analyticsAnswer.innerHTML = "<p>正在按当前课程范围查询...</p>";
+    try {
+      const result = await api.askCourseAnalytics({ teaching_class_id: selectedAnalyticsClassId, question });
+      renderAnalyticsAnswer(result);
+      await loadAnalyticsHistory();
+    } catch (err) {
+      renderAnalyticsAnswer({ error: err.message || "查询失败" });
+    }
+  }
+
   function showView(id) {
     const trigger = document.querySelector(`[data-view-target="${id}"]`);
     if (trigger && trigger.classList.contains("hidden")) {
-      id = hasFeature("dashboard") ? "dashboard-view" : "assistant-view";
+      id = preferredHomeView();
     }
     workViews.forEach((view) => view.classList.toggle("active", view.id === id));
     navTargets.forEach((btn) => {
@@ -631,6 +1353,9 @@
     if (id === "debug-view") renderDebugSteps();
     if (id === "domain-settings-view") loadDomainSettings();
     if (id === "role-management-view") loadDomainSettings();
+    if (id === "assignment-workflow-view") loadAssignmentProduct();
+    if (id === "course-analytics-view") loadCourseAnalytics();
+    if (id === "support-workbench-view") loadSupportWorkbench();
     if (id === "governance-queue-view" && governanceView) governanceView.renderQueue();
     if (id === "governance-settings-view" && governanceView) governanceView.renderSettings();
   }
@@ -2533,7 +3258,7 @@
     await loadSources();
     await loadDashboard(true);
     await loadDomainSettings(true);
-    showView(hasFeature("dashboard") ? "dashboard-view" : "assistant-view");
+    showView(preferredHomeView());
   }
 
   async function loadSources() {
@@ -2945,6 +3670,105 @@
     if (e.key === "Enter") { e.preventDefault(); addGlossaryEntry(); }
   });
   if (dashboardRefreshBtn) dashboardRefreshBtn.addEventListener("click", () => loadDashboard(true));
+  if (assignmentRefreshBtn) assignmentRefreshBtn.addEventListener("click", () => loadAssignmentProduct(true));
+  if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener("click", () => loadCourseAnalytics(true));
+  if (analyticsCoursePicker) analyticsCoursePicker.addEventListener("change", () => {
+    selectedAnalyticsClassId = Number(analyticsCoursePicker.value);
+    loadCourseAnalytics();
+  });
+  [analyticsQuestionTemplates, analyticsHistoryList].forEach((container) => {
+    if (!container) return;
+    container.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-analytics-question]");
+      if (!button) return;
+      const question = button.dataset.analyticsQuestion || "";
+      if (analyticsQuestionInput) analyticsQuestionInput.value = question;
+      executeAnalyticsQuestion(question);
+    });
+  });
+  if (analyticsAskForm) analyticsAskForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    executeAnalyticsQuestion(analyticsQuestionInput?.value.trim() || "");
+  });
+  if (analyticsAnswer) analyticsAnswer.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-analytics-feedback]");
+    if (!button) return;
+    await api.feedbackCourseAnalytics(button.dataset.logId, button.dataset.analyticsFeedback);
+    button.parentElement.innerHTML = "<span>反馈已记录</span>";
+    await loadAnalyticsHistory();
+  });
+  if (assignmentCoursePicker) assignmentCoursePicker.addEventListener("change", async () => {
+    selectedTeachingClassId = Number(assignmentCoursePicker.value);
+    selectedAssignmentId = null;
+    await loadAssignmentProduct(true);
+  });
+  if (assignmentCreateToggle) assignmentCreateToggle.addEventListener("click", () => {
+    if (!assignmentCreateForm) return;
+    delete assignmentCreateForm.dataset.editingId;
+    assignmentCreateForm.reset();
+    if (assignmentCreateAllowLate) assignmentCreateAllowLate.checked = true;
+    assignmentCreateForm.classList.remove("hidden");
+  });
+  if (assignmentCreateClose) assignmentCreateClose.addEventListener("click", () => {
+    if (!assignmentCreateForm) return;
+    delete assignmentCreateForm.dataset.editingId;
+    assignmentCreateForm.classList.add("hidden");
+  });
+  if (assignmentStudentFilters) assignmentStudentFilters.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-assignment-filter]");
+    if (!button) return;
+    assignmentStudentFilter = button.dataset.assignmentFilter;
+    assignmentStudentFilters.querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
+    renderAssignmentStudentProduct(assignmentStudentItems);
+  });
+  if (assignmentCreateForm) {
+    assignmentCreateForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const title = assignmentCreateTitle ? assignmentCreateTitle.value.trim() : "";
+      const due = assignmentCreateDue ? assignmentCreateDue.value.trim() : "";
+      if (!title || !due) return;
+      const status = e.submitter?.dataset.createStatus || "draft";
+      const payload = {
+        title,
+        due_time: due,
+        max_score: assignmentCreateScore ? Number(assignmentCreateScore.value || 100) : 100,
+        instructions: assignmentCreateInstructions ? assignmentCreateInstructions.value : "",
+        allow_late: assignmentCreateAllowLate ? assignmentCreateAllowLate.checked : true,
+        status,
+      };
+      if (assignmentCreateForm.dataset.editingId) {
+        payload.status = "draft";
+        await api.updateTeachingAssignment(assignmentCreateForm.dataset.editingId, payload);
+        delete assignmentCreateForm.dataset.editingId;
+      } else {
+        await api.createTeachingAssignment(selectedTeachingClassId, payload);
+      }
+      assignmentCreateForm.reset();
+      if (assignmentCreateAllowLate) assignmentCreateAllowLate.checked = true;
+      assignmentCreateForm.classList.add("hidden");
+      await loadAssignmentProduct(true);
+    });
+  }
+  if (supportRefreshBtn) supportRefreshBtn.addEventListener("click", async () => {
+    await api.refreshSupportCases();
+    await loadSupportWorkbench(true);
+  });
+  if (supportStatusFilter) supportStatusFilter.addEventListener("change", () => {
+    selectedSupportCaseId = null;
+    loadSupportWorkbench(true);
+  });
+  if (supportRequestForm) supportRequestForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = supportRequestMessage?.value.trim() || "";
+    if (!message) return;
+    await api.createSupportRequest({
+      request_type: supportRequestType?.value || "appointment",
+      message,
+      preferred_time: supportRequestTime?.value || null,
+    });
+    supportRequestForm.reset();
+    await loadSupportWorkbench(true);
+  });
   if (domainRefreshBtn) domainRefreshBtn.addEventListener("click", () => loadDomainSettings(true));
   if (roleRefreshBtn) roleRefreshBtn.addEventListener("click", () => loadDomainSettings(true));
   if (passwordForm) {

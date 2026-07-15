@@ -6,6 +6,8 @@ import json
 import base64
 import hashlib
 import hmac
+import secrets
+import time
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -102,7 +104,13 @@ BUSINESS_DOMAINS: dict[str, dict[str, Any]] = {
         "name": "grade_quality",
         "label": "成绩质量域",
         "description": "面向成绩分布、及格率、挂科率和课程质量分析。",
-        "tables": ["college", "major", "student", "course", "teaching_class", "enrollment", "score", "assignment_submission", "attendance", "learning_activity", "academic_warning"],
+        "tables": ["college", "major", "student", "course", "teaching_class", "enrollment", "score", "assignment_submission", "attendance", "learning_activity"],
+    },
+    "student_support": {
+        "name": "student_support",
+        "label": "学习支持域",
+        "description": "面向辅导员和授权学生工作场景的学习支持待办、事实依据和跟进分析。",
+        "tables": ["college", "major", "class_group", "student", "academic_warning", "attendance", "assignment", "assignment_submission"],
     },
     "evaluation_feedback": {
         "name": "evaluation_feedback",
@@ -131,7 +139,7 @@ ROLES: dict[str, dict[str, Any]] = {
         "name": "academic_office",
         "label": "教务处老师",
         "description": "关注学籍、教学运行和成绩质量。",
-        "domains": ["student_affairs", "teaching_operation", "grade_quality"],
+        "domains": ["student_affairs", "teaching_operation", "grade_quality", "student_support"],
         "features": ["dashboard", "ask", "knowledge", "schema", "domain_settings", "role_management"],
         "denied_resources": ["evaluation_raw", "teacher_private_id"],
     },
@@ -148,15 +156,23 @@ ROLES: dict[str, dict[str, Any]] = {
         "label": "任课教师",
         "description": "关注授课班级、成绩质量和评教反馈。",
         "domains": ["teaching_operation", "grade_quality", "evaluation_feedback"],
-        "features": ["dashboard", "ask", "domain_settings", "role_management"],
+        "features": ["dashboard", "ask", "assignments", "course_analytics", "domain_settings", "role_management"],
         "denied_resources": ["schoolwide_scope", "student_identity", "evaluation_raw", "teacher_private_id"],
+    },
+    "counselor": {
+        "name": "counselor",
+        "label": "辅导员",
+        "description": "关注本人所带行政班学生的学习支持待办和跟进记录。",
+        "domains": ["student_support"],
+        "features": ["ask", "student_support", "role_management"],
+        "denied_resources": ["schoolwide_scope", "teacher_private_id", "evaluation_raw"],
     },
     "student": {
         "name": "student",
         "label": "学生",
         "description": "关注个人学习相关的课程、选课、成绩和评教。",
         "domains": ["personal_learning"],
-        "features": ["ask", "domain_settings", "role_management"],
+        "features": ["ask", "assignments", "course_analytics", "student_support", "domain_settings", "role_management"],
         "denied_resources": ["teacher_identity", "student_identity", "schoolwide_scope"],
     },
 }
@@ -168,6 +184,16 @@ DEMO_USERS: dict[str, dict[str, Any]] = {
     "college": {"username": "college", "display_name": "学院负责人", "role": "college_manager", "password": "123456", "scope": {"college_id": 1}},
     "teacher": {"username": "teacher", "display_name": "任课教师", "role": "teacher", "password": "123456", "scope": {"teacher_id": 37}},
     "student": {"username": "student", "display_name": "学生用户", "role": "student", "password": "123456", "scope": {"student_id": 1}},
+    "stu_zhang": {"username": "stu_zhang", "display_name": "张同学", "role": "student", "password": "123456", "scope": {"student_id": 900001}},
+    "stu_wang": {"username": "stu_wang", "display_name": "王同学", "role": "student", "password": "123456", "scope": {"student_id": 900002}},
+    "stu_liu": {"username": "stu_liu", "display_name": "刘同学", "role": "student", "password": "123456", "scope": {"student_id": 900003}},
+    "stu_chen": {"username": "stu_chen", "display_name": "陈同学", "role": "student", "password": "123456", "scope": {"student_id": 900004}},
+    "stu_zhao": {"username": "stu_zhao", "display_name": "赵同学", "role": "student", "password": "123456", "scope": {"student_id": 900005}},
+    "stu_sun": {"username": "stu_sun", "display_name": "孙同学", "role": "student", "password": "123456", "scope": {"student_id": 900006}},
+    "tea_li": {"username": "tea_li", "display_name": "李老师", "role": "teacher", "password": "123456", "scope": {"teacher_id": 900001}},
+    "tea_zhou": {"username": "tea_zhou", "display_name": "周老师", "role": "teacher", "password": "123456", "scope": {"teacher_id": 900002}},
+    "counselor_chen": {"username": "counselor_chen", "display_name": "陈辅导员", "role": "counselor", "password": "123456", "scope": {"counselor_id": 900001, "college_id": 1}},
+    "counselor_lin": {"username": "counselor_lin", "display_name": "林辅导员", "role": "counselor", "password": "123456", "scope": {"counselor_id": 900002, "college_id": 1}},
 }
 
 PASSWORD_FILE = ROOT_DIR / "data" / "auth_passwords.json"
@@ -250,9 +276,17 @@ def user_from_token(token: str | None) -> AuthContext:
         raise AuthenticationError("登录状态无效，请重新登录")
     try:
         padding = "=" * (-len(encoded) % 4)
-        username = base64.urlsafe_b64decode(encoded + padding).decode("utf-8")
+        decoded = base64.urlsafe_b64decode(encoded + padding).decode("utf-8")
+        try:
+            payload = json.loads(decoded)
+        except json.JSONDecodeError:
+            payload = {"sub": decoded}
+        username = str(payload.get("sub") or "")
+        exp = int(payload.get("exp") or 0)
     except Exception as exc:
         raise AuthenticationError("登录状态无效，请重新登录") from exc
+    if exp and exp < int(time.time()):
+        raise AuthenticationError("登录状态已过期，请重新登录")
     user = DEMO_USERS.get(username)
     if not user:
         raise AuthenticationError("登录状态无效，请重新登录")
@@ -262,7 +296,8 @@ def user_from_token(token: str | None) -> AuthContext:
 def token_for(username: str) -> str:
     if username not in DEMO_USERS:
         raise AuthenticationError("账号不存在")
-    encoded = base64.urlsafe_b64encode(username.encode("utf-8")).decode("ascii").rstrip("=")
+    payload = {"sub": username, "exp": int(time.time()) + 12 * 60 * 60}
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii").rstrip("=")
     signature = hmac.new(settings.auth_secret.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).hexdigest()
     return f"{encoded}.{signature}"
 
@@ -276,7 +311,7 @@ def require_admin(token: str | None) -> AuthContext:
 
 def login(username: str, password: str) -> AuthContext:
     user = DEMO_USERS.get(username)
-    if not user or _password_for(username) != password:
+    if not user or not _verify_password(password, _password_for(username)):
         raise ValueError("用户名或密码错误")
     return auth_context(user)
 
@@ -303,17 +338,37 @@ def _password_for(username: str) -> str:
     return _load_passwords().get(username, user["password"])
 
 
+def _hash_password(password: str) -> str:
+    salt = secrets.token_urlsafe(12)
+    iterations = 260000
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), iterations)
+    return f"pbkdf2_sha256${iterations}${salt}${base64.b64encode(digest).decode('ascii')}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    if not stored:
+        return False
+    if not stored.startswith("pbkdf2_sha256$"):
+        return hmac.compare_digest(stored, password)
+    try:
+        _algorithm, iterations, salt, digest = stored.split("$", 3)
+        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), int(iterations))
+        return hmac.compare_digest(base64.b64decode(digest.encode("ascii")), actual)
+    except Exception:
+        return False
+
+
 def change_password(username: str, old_password: str, new_password: str) -> AuthContext:
     user = DEMO_USERS.get(username)
     if not user:
         raise ValueError("账号不存在")
-    if _password_for(username) != old_password:
+    if not _verify_password(old_password, _password_for(username)):
         raise ValueError("原密码错误")
     clean = new_password.strip()
     if len(clean) < 6 or len(clean) > 32:
         raise ValueError("新密码长度需为 6-32 位")
     data = _load_passwords()
-    data[username] = clean
+    data[username] = _hash_password(clean)
     _save_passwords(data)
     return auth_context(user)
 

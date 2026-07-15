@@ -80,6 +80,7 @@ _ROW_SCOPE_RULES: dict[str, dict[str, object]] = {
         "tables": {
             "student", "enrollment", "score", "evaluation", "assignment_submission",
             "attendance", "learning_activity", "scholarship", "academic_warning",
+            "student_task_analytics",
         },
         "columns": {
             "student": "id",
@@ -89,12 +90,13 @@ _ROW_SCOPE_RULES: dict[str, dict[str, object]] = {
             "learning_activity": "student_id",
             "scholarship": "student_id",
             "academic_warning": "student_id",
+            "student_task_analytics": "student_id",
         },
         "label": "student_id",
     },
     "teacher_id": {
-        "tables": {"teacher", "teaching_class", "evaluation", "assignment", "attendance", "learning_activity"},
-        "columns": {"teacher": "id", "teaching_class": "teacher_id"},
+        "tables": {"teacher", "teaching_class", "evaluation", "assignment", "attendance", "learning_activity", "course_assignment_analytics", "student_task_analytics"},
+        "columns": {"teacher": "id", "teaching_class": "teacher_id", "course_assignment_analytics": "teacher_id", "student_task_analytics": "teacher_id"},
         "label": "teacher_id",
     },
     "college_id": {
@@ -108,6 +110,14 @@ _ROW_SCOPE_RULES: dict[str, dict[str, object]] = {
             "teacher": "college_id", "course": "college_id",
         },
         "label": "college_id",
+    },
+    "teaching_class_id": {
+        "tables": {"course_assignment_analytics", "student_task_analytics"},
+        "columns": {
+            "course_assignment_analytics": "teaching_class_id",
+            "student_task_analytics": "teaching_class_id",
+        },
+        "label": "teaching_class_id",
     },
 }
 

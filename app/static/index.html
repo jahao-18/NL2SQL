@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>教学数据智能问数平台</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:opsz,wght@14..32,200;14..32,300;14..32,400;14..32,500;14..32,600&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css?v=schema-workbench-1" />
+  <link rel="stylesheet" href="/style.css?v=support-workspace-1" />
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
@@ -23,10 +23,10 @@
       <div class="login-copy">
         <span>Teaching Data Intelligence</span>
         <h1>按角色进入你的教学数据工作台</h1>
-        <p>账号会自动绑定业务域、可见表和问数范围，用于演示学生、教师、学院和教务处的差异化数据权限。</p>
+        <p>账号会绑定具体学生、开课班或行政班范围，用于演示学生、任课教师、辅导员和管理岗位的差异化业务权限。</p>
       </div>
       <div class="login-metrics">
-        <div><b>5</b><span>演示身份</span></div>
+        <div><b>6</b><span>演示身份</span></div>
         <div><b>17</b><span>教学数据表</span></div>
         <div><b>RBAC</b><span>权限控制</span></div>
       </div>
@@ -51,8 +51,9 @@
         <span>管理员 admin / 123456</span>
         <span>教务处 jwc / 123456</span>
         <span>学院负责人 college / 123456</span>
-        <span>教师 teacher / 123456</span>
-        <span>学生 student / 123456</span>
+        <span>任课教师 tea_li / 123456</span>
+        <span>辅导员 counselor_chen / 123456</span>
+        <span>学生 stu_zhang / 123456</span>
       </div>
     </form>
   </div>
@@ -68,8 +69,11 @@
       </div>
     </div>
     <nav class="side-nav">
-      <div class="nav-group-label">业务工作台</div>
+      <div class="nav-group-label">教学运行</div>
       <button class="side-nav-item active" data-view-target="dashboard-view" type="button"><span>D</span>教学数据总览</button>
+      <button class="side-nav-item" data-view-target="assignment-workflow-view" type="button"><span>A</span>课程作业</button>
+      <button class="side-nav-item" data-view-target="course-analytics-view" type="button"><span>C</span>课程分析</button>
+      <button class="side-nav-item" data-view-target="support-workbench-view" type="button"><span>H</span>学习支持</button>
       <button class="side-nav-item" data-view-target="assistant-view" type="button"><span>Q</span>智能问数</button>
       <button class="side-nav-item" data-view-target="data-access-view" type="button"><span>M</span>数据维护</button>
       <div class="nav-group-label">数据与知识</div>
@@ -246,6 +250,182 @@
                 <tbody id="domain-role-body"></tbody>
               </table>
             </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="work-view" id="course-analytics-view" data-page-title="课程分析" data-breadcrumb="教学运行 / 课程分析">
+        <div class="course-analytics-shell">
+          <header class="course-analytics-header">
+            <div><div class="panel-kicker">Course Analytics</div><h2>课程学习进展</h2><p id="analytics-scope-copy">按当前身份和课程范围汇总作业进展。</p></div>
+            <div class="analytics-context-actions">
+              <label><span>当前课程</span><select id="analytics-course-picker"></select></label>
+              <button class="assignment-icon-btn" type="button" id="analytics-refresh-btn" title="刷新分析" aria-label="刷新分析">↻</button>
+            </div>
+          </header>
+          <div class="analytics-meta" id="analytics-meta"></div>
+          <section class="analytics-metrics" id="analytics-metrics"></section>
+          <div class="analytics-work-grid">
+            <section class="analytics-section">
+              <div class="analytics-section-head"><div><h3 id="analytics-detail-title">作业进展</h3><p>数据来自课程作业、选课、提交和成绩发布记录。</p></div></div>
+              <div class="analytics-table-wrap"><table><thead id="analytics-detail-head"></thead><tbody id="analytics-detail-body"></tbody></table></div>
+            </section>
+            <aside class="analytics-question-panel">
+              <div class="analytics-section-head"><div><h3>按课程问数</h3><p>系统自动带入当前课程和本人权限范围。</p></div></div>
+              <div class="analytics-question-templates" id="analytics-question-templates"></div>
+              <form id="analytics-ask-form">
+                <label for="analytics-question-input">分析问题</label>
+                <div class="analytics-ask-row"><input id="analytics-question-input" maxlength="500" placeholder="例如：哪些作业的完成率低于 80%？" /><button type="submit">查询</button></div>
+              </form>
+              <div class="analytics-answer" id="analytics-answer"><p>选择一个问题模板或输入课程分析问题。</p></div>
+              <div class="analytics-history"><h4>最近查询</h4><div id="analytics-history-list"></div></div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="work-view" id="assignment-workflow-view" data-page-title="课程作业" data-breadcrumb="教学运行 / 课程作业">
+        <div class="assignment-shell">
+          <section class="assignment-hero">
+            <div>
+              <div class="assignment-context-line"><span class="assignment-context-dot"></span><span id="assignment-role-context">教学任务中心</span></div>
+              <h2 id="assignment-page-heading">课程作业</h2>
+              <p id="assignment-page-lead">查看课程任务、提交记录与教师反馈。</p>
+            </div>
+            <div class="assignment-hero-actions">
+              <label class="assignment-course-picker" id="assignment-course-picker-wrap">
+                <span>当前课程</span>
+                <select id="assignment-course-picker"></select>
+              </label>
+              <button class="assignment-icon-btn" type="button" id="assignment-refresh-btn" title="刷新任务" aria-label="刷新任务">↻</button>
+            </div>
+          </section>
+          <section class="assignment-overview" id="assignment-overview">
+            <div class="assignment-scope-card"><span>当前范围</span><b id="assignment-scope-title">课程作业</b><small id="assignment-scope-desc">按登录身份限定数据范围</small></div>
+            <div><span id="assignment-pending-label">待处理</span><b id="assignment-metric-pending">0</b><small id="assignment-pending-desc">需要继续处理的任务</small></div>
+            <div><span id="assignment-done-label">已完成</span><b id="assignment-metric-done">0</b><small id="assignment-done-desc">本阶段已完成的任务</small></div>
+            <div><span id="assignment-total-label">任务总数</span><b id="assignment-metric-total">0</b><small id="assignment-total-desc">当前范围内全部任务</small></div>
+          </section>
+          <section class="assignment-workspace" id="assignment-student-panel">
+            <div class="assignment-toolbar">
+              <div>
+                <h3>我的任务</h3>
+                <p>仅展示本人选课范围内的作业与反馈</p>
+              </div>
+              <div class="assignment-segments" id="assignment-student-filters">
+                <button class="active" type="button" data-assignment-filter="all">全部</button>
+                <button type="button" data-assignment-filter="pending">待完成</button>
+                <button type="button" data-assignment-filter="submitted">已提交</button>
+                <button type="button" data-assignment-filter="finished">已完成</button>
+              </div>
+            </div>
+            <div class="assignment-list" id="assignment-student-list"></div>
+          </section>
+          <section class="assignment-workspace" id="assignment-teacher-panel">
+            <div class="assignment-toolbar assignment-teacher-toolbar">
+              <div>
+                <h3 id="assignment-teacher-title">课程作业</h3>
+                <p id="assignment-teacher-subtitle">选择作业后查看完整学生名单与批阅状态</p>
+              </div>
+              <button class="nav-btn" type="button" id="assignment-create-toggle">＋ 新建作业</button>
+            </div>
+            <form class="assignment-form hidden" id="assignment-create-form">
+              <div class="assignment-form-head">
+                <div>
+                  <b>新建课程作业</b>
+                  <span>先保存草稿核对内容，再向选课学生发布</span>
+                </div>
+                <button type="button" class="assignment-form-close" id="assignment-create-close" aria-label="关闭">×</button>
+              </div>
+              <div class="assignment-form-grid">
+                <label class="wide"><span>作业标题</span><input id="assignment-create-title" placeholder="例如 第 4 次作业：数据库规范化设计" /></label>
+                <label><span>截止时间</span><input id="assignment-create-due" type="datetime-local" /></label>
+                <label><span>满分</span><input id="assignment-create-score" type="number" min="1" max="1000" value="100" /></label>
+                <label class="full"><span>作业要求</span><textarea id="assignment-create-instructions" placeholder="说明提交内容、格式要求和评分重点"></textarea></label>
+              </div>
+              <div class="assignment-form-foot">
+                <label class="assignment-check"><input id="assignment-create-allow-late" type="checkbox" checked /><span>截止后允许补交，并标记为迟交</span></label>
+                <div>
+                  <button class="nav-btn secondary" type="submit" data-create-status="draft">保存草稿</button>
+                  <button class="nav-btn" type="submit" data-create-status="published">立即发布</button>
+                </div>
+              </div>
+            </form>
+            <div class="assignment-teacher-layout">
+              <aside class="assignment-master-pane">
+                <div class="assignment-pane-head"><b>作业列表</b><span id="assignment-list-count">0 项</span></div>
+                <div id="assignment-teacher-list"></div>
+              </aside>
+              <div class="assignment-detail-pane" id="assignment-detail-pane">
+                <div class="assignment-detail-empty">
+                  <b>选择一份作业开始处理</b>
+                  <span>这里会显示提交进度、未交名单、待批记录和成绩发布状态</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="work-view" id="support-workbench-view" data-page-title="学习支持" data-breadcrumb="学生工作 / 学习支持">
+        <div class="support-shell">
+          <section class="support-hero">
+            <div>
+              <div class="support-context-line"><span></span><b id="support-role-context">学习支持空间</b></div>
+              <h2 id="support-page-heading">学习支持</h2>
+              <p id="support-page-lead">基于明确事实开展联系、跟进和复查。</p>
+            </div>
+            <button class="nav-btn" type="button" id="support-refresh-btn">检查最新事项</button>
+          </section>
+          <section class="support-overview">
+            <div><span>待确认</span><b id="support-metric-open">0</b><small>规则命中，等待人工确认</small></div>
+            <div><span>跟进中</span><b id="support-metric-tracking">0</b><small>已联系或等待复查</small></div>
+            <div><span>需要复查</span><b id="support-metric-review">0</b><small>已设置后续复查时间</small></div>
+            <div><span>沟通请求</span><b id="support-metric-requests">0</b><small>学生主动发起的预约或咨询</small></div>
+          </section>
+
+          <section class="support-counselor-panel" id="support-counselor-panel">
+            <div class="support-workbench">
+              <aside class="support-case-pane">
+                <div class="support-pane-head">
+                  <div><b>待办事项</b><span id="support-case-count">0 项</span></div>
+                  <select id="support-status-filter">
+                    <option value="all">全部状态</option><option value="open">待确认</option><option value="contacted">已联系</option>
+                    <option value="tracking">跟进中</option><option value="improved">已改善</option><option value="closed">已关闭</option>
+                  </select>
+                </div>
+                <div id="support-case-list"></div>
+              </aside>
+              <div class="support-case-detail" id="support-case-detail">
+                <div class="support-empty"><b>选择一条事项开始处理</b><span>查看事实依据、联系记录和复查计划</span></div>
+              </div>
+            </div>
+            <section class="support-request-section">
+              <div class="support-section-head"><div><h3>学生沟通请求</h3><p>处理本人所带行政班学生主动提交的预约和咨询</p></div></div>
+              <div id="support-counselor-requests"></div>
+            </section>
+          </section>
+
+          <section class="support-student-panel" id="support-student-panel">
+            <div class="support-student-grid">
+              <section class="support-student-main">
+                <div class="support-section-head"><div><h3>我的支持建议</h3><p>这里只显示辅导员已与你共享的事项和建议</p></div></div>
+                <div class="support-student-cases" id="support-student-cases"></div>
+              </section>
+              <aside class="support-request-create">
+                <div class="support-section-head"><div><h3>发起沟通</h3><p>预约辅导员或咨询学习安排</p></div></div>
+                <form id="support-request-form">
+                  <label><span>沟通类型</span><select id="support-request-type"><option value="appointment">预约沟通</option><option value="consultation">问题咨询</option></select></label>
+                  <label><span>希望沟通的时间</span><input id="support-request-time" type="datetime-local" /></label>
+                  <label><span>问题说明</span><textarea id="support-request-message" placeholder="简要说明希望沟通的问题"></textarea></label>
+                  <button class="nav-btn" type="submit">提交沟通请求</button>
+                </form>
+              </aside>
+            </div>
+            <section class="support-request-section">
+              <div class="support-section-head"><div><h3>我的沟通记录</h3><p>查看预约受理状态和辅导员回复</p></div></div>
+              <div id="support-student-requests"></div>
+            </section>
           </section>
         </div>
       </section>
@@ -854,10 +1034,10 @@
   </section>
 </div>
 
-<script src="/api.js?v=p0-product-3"></script>
+<script src="/api.js?v=support-workspace-1"></script>
 <script src="/modal.js?v=p0-product-3"></script>
 <script src="/governance-view.js?v=p0-product-3"></script>
 <script src="/data-access-view.js?v=schema-workbench-1"></script>
-<script src="/app.js?v=schema-workbench-1"></script>
+<script src="/app.js?v=support-workspace-1"></script>
 </body>
 </html>

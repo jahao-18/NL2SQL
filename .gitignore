@@ -14,6 +14,9 @@ data/managed/*.db
 .vscode/
 .claude/*.local.json
 uvicorn*.log
+hs_err_pid*.log
+outputs/
+data/submissions/
 
 # BIRD benchmark: raw datasets can be several GB; generated work dirs are not tracked.
 /bird_dev/
