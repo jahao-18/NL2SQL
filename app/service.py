@@ -57,6 +57,7 @@ def ask(
     denied_columns: set[str] | frozenset[str] | None = None,
     denied_terms: list[str] | tuple[str, ...] | None = None,
     role_label: str | None = None,
+    row_scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     trimmed_history = (history or [])[-MAX_HISTORY_TURNS:]
     # 上一轮就是 clarify => 本轮是用户的回答,禁止再次 clarify(兼顾路由反问与生成澄清)
@@ -197,7 +198,12 @@ def ask(
 
         raw_sql = content
         try:
-            safe_sql, truncated = validate_and_fix(raw_sql, schema_info.tables, schema_info.blocked_columns)
+            safe_sql, truncated = validate_and_fix(
+                raw_sql,
+                schema_info.tables,
+                schema_info.blocked_columns,
+                required_scope=row_scope,
+            )
         except SQLValidationError as e:
             if str(e).startswith(("引用了未授权的表", "引用了不可用于问数的字段")):
                 return format_error(str(e), sql=raw_sql, **src_kw)
@@ -229,7 +235,17 @@ def ask(
         # 「无法回答」占位结果(单列名为 error)是模型主动声明答不了,不评分。
         is_placeholder = columns == ["error"]
         judge_id = None if is_placeholder else stash_judge(
-            question, schema_text, safe_sql, columns, rows, len(rows), ds.dialect, retrieval_used)
+            question=question,
+            schema_text=schema_text,
+            sql=safe_sql,
+            columns=columns,
+            rows=rows,
+            row_count=len(rows),
+            dialect=ds.dialect,
+            retrieval_used=retrieval_used,
+            role_label=role_label,
+            row_scope=row_scope,
+        )
         explanation = explain_query(
             question, ds.name, ds.label, safe_sql, auto_routed,
             src_kw.get("route_reason"), retrieval_trace,

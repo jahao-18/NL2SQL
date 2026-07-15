@@ -1,49 +1,106 @@
 source: teaching
 cases:
   - id: teaching_001
+    category: aggregate
     question: 各学院学生人数是多少？
-    checks:
-      - contains_sql: student
-      - contains_sql: college
-      - contains_sql: status = 'active'
+    expected_sql: |
+      SELECT c.name, COUNT(s.id) AS student_count
+      FROM college c
+      LEFT JOIN student s ON s.college_id = c.id AND s.status = 'active'
+      GROUP BY c.id, c.name
+      ORDER BY c.id
+    match: ordered
+    expected_capped: false
   - id: teaching_002
+    category: aggregate
     question: 2025 年春季学期挂科率最高的 5 门课程是什么？
-    checks:
-      - contains_sql: final_score < 60
-      - contains_sql: semester = 'spring'
-      - contains_sql: LIMIT 5
+    expected_sql: |
+      SELECT c.name,
+             AVG(CASE WHEN s.final_score < 60 THEN 1.0 ELSE 0.0 END) AS failure_rate
+      FROM course c
+      JOIN teaching_class tc ON tc.course_id = c.id
+      JOIN enrollment e ON e.teaching_class_id = tc.id
+      JOIN score s ON s.enrollment_id = e.id
+      WHERE tc.year = 2025 AND tc.semester = 'spring'
+      GROUP BY c.id, c.name
+      ORDER BY failure_rate DESC, c.id
+      LIMIT 5
+    match: ordered
+    expected_capped: false
   - id: teaching_003
+    category: enum_filter
     question: 软件工程专业各年级学生人数是多少？
-    checks:
-      - contains_sql: major
-      - contains_sql: grade_year
+    expected_sql: |
+      SELECT s.enrollment_year, COUNT(s.id) AS student_count
+      FROM student s
+      JOIN major m ON m.id = s.major_id
+      WHERE m.name = '软件工程' AND s.status = 'active'
+      GROUP BY s.enrollment_year
+      ORDER BY s.enrollment_year
+    match: ordered
+    expected_capped: false
   - id: teaching_004
+    category: aggregate_boundary
     question: 统计每位教师的授课班级数和选课学生人次。
-    checks:
-      - contains_sql: teacher
-      - contains_sql: teaching_class
-      - contains_sql: enrollment
+    expected_sql: |
+      SELECT t.id, t.name,
+             COUNT(DISTINCT tc.id) AS class_count,
+             COUNT(e.id) AS enrollment_count
+      FROM teacher t
+      LEFT JOIN teaching_class tc ON tc.teacher_id = t.id
+      LEFT JOIN enrollment e ON e.teaching_class_id = tc.id
+      GROUP BY t.id, t.name
+      ORDER BY t.id
+    match: rowset
+    expected_capped: true
   - id: teaching_005
+    category: aggregate
     question: 哪些课程的平均分低于 70？
-    checks:
-      - contains_sql: AVG
-      - contains_sql: final_score
-      - contains_sql: HAVING
+    expected_sql: |
+      SELECT c.name, AVG(s.final_score) AS average_score
+      FROM course c
+      JOIN teaching_class tc ON tc.course_id = c.id
+      JOIN enrollment e ON e.teaching_class_id = tc.id
+      JOIN score s ON s.enrollment_id = e.id
+      GROUP BY c.id, c.name
+      HAVING AVG(s.final_score) < 70
+      ORDER BY c.id
+    match: rowset
+    expected_capped: false
   - id: teaching_006
+    category: top_n
     question: 教学评价分最高的 10 位教师是谁？
-    checks:
-      - contains_sql: evaluation
-      - contains_sql: teacher
-      - contains_sql: LIMIT 10
+    expected_sql: |
+      SELECT t.name, AVG(ev.score) AS evaluation_score
+      FROM teacher t
+      JOIN teaching_class tc ON tc.teacher_id = t.id
+      JOIN evaluation ev ON ev.teaching_class_id = tc.id
+      GROUP BY t.id, t.name
+      ORDER BY evaluation_score DESC, t.id
+      LIMIT 10
+    match: ordered
+    expected_capped: false
   - id: teaching_007
+    category: scalar
     question: 本学期开设了多少门课程？
-    checks:
-      - contains_sql: teaching_class
-      - contains_sql: year = 2025
-      - contains_sql: semester = 'spring'
+    expected_sql: |
+      SELECT COUNT(DISTINCT course_id) AS course_count
+      FROM teaching_class
+      WHERE year = 2025 AND semester = 'spring'
+    match: cell
+    expected_capped: false
   - id: teaching_008
-    question: 各学院平均成绩和挂科率是多少？
-    checks:
-      - contains_sql: college
-      - contains_sql: final_score
-      - contains_sql: CASE
+    category: aggregate
+    question: 按学生所属学院统计各学院学生的平均总评成绩和挂科率。
+    expected_sql: |
+      SELECT c.name,
+             AVG(sc.final_score) AS average_score,
+             AVG(CASE WHEN sc.final_score < 60 THEN 1.0 ELSE 0.0 END) AS failure_rate
+      FROM college c
+      JOIN student st ON st.college_id = c.id
+      JOIN enrollment e ON e.student_id = st.id
+      JOIN score sc ON sc.enrollment_id = e.id
+      GROUP BY c.id, c.name
+      ORDER BY c.id
+    match: rowset
+    expected_capped: false

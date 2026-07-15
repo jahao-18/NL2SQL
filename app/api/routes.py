@@ -9,6 +9,7 @@ from app.core.business_domains import (
     filter_schema_info,
     login,
     public_role_options,
+    require_feature,
     role_settings,
     row_scope_context,
     user_from_token,
@@ -64,8 +65,8 @@ from app.service import ask as ask_service
 router = APIRouter(prefix="/api")
 
 
-def _auth(x_demo_token: str | None = Header(None)):
-    return user_from_token(x_demo_token)
+def _require_feature(token: str | None, feature: str):
+    return require_feature(user_from_token(token), feature)
 
 
 @router.get("/health")
@@ -166,7 +167,8 @@ def get_schema(source: str | None = Query(None), ctx=Header(None, alias="X-Demo-
 
 
 @router.get("/profile", response_model=ProfileResponse)
-def get_profile(source: str = Query(...)) -> ProfileResponse:
+def get_profile(source: str = Query(...), ctx=Header(None, alias="X-Demo-Token")) -> ProfileResponse:
+    _require_feature(ctx, "knowledge")
     try:
         get_source(source)
     except KeyError as e:
@@ -175,7 +177,12 @@ def get_profile(source: str = Query(...)) -> ProfileResponse:
 
 
 @router.put("/profile", response_model=ProfileResponse)
-def update_profile(req: ProfileUpdateRequest, source: str = Query(...)) -> ProfileResponse:
+def update_profile(
+    req: ProfileUpdateRequest,
+    source: str = Query(...),
+    ctx=Header(None, alias="X-Demo-Token"),
+) -> ProfileResponse:
+    _require_feature(ctx, "knowledge")
     try:
         get_source(source)
     except KeyError as e:
@@ -185,7 +192,11 @@ def update_profile(req: ProfileUpdateRequest, source: str = Query(...)) -> Profi
 
 
 @router.get("/profile/versions", response_model=ProfileVersionsResponse)
-def get_profile_versions(source: str = Query(...)) -> ProfileVersionsResponse:
+def get_profile_versions(
+    source: str = Query(...),
+    ctx=Header(None, alias="X-Demo-Token"),
+) -> ProfileVersionsResponse:
+    _require_feature(ctx, "knowledge")
     try:
         get_source(source)
     except KeyError as e:
@@ -194,7 +205,12 @@ def get_profile_versions(source: str = Query(...)) -> ProfileVersionsResponse:
 
 
 @router.post("/profile/publish")
-def publish_profile_endpoint(req: ProfilePublishRequest | None = None, source: str = Query(...)) -> dict:
+def publish_profile_endpoint(
+    req: ProfilePublishRequest | None = None,
+    source: str = Query(...),
+    ctx=Header(None, alias="X-Demo-Token"),
+) -> dict:
+    _require_feature(ctx, "knowledge")
     try:
         get_source(source)
     except KeyError as e:
@@ -210,7 +226,12 @@ def publish_profile_endpoint(req: ProfilePublishRequest | None = None, source: s
 
 
 @router.post("/profile/rollback", response_model=ProfileResponse)
-def rollback_profile_endpoint(req: ProfileRollbackRequest, source: str = Query(...)) -> ProfileResponse:
+def rollback_profile_endpoint(
+    req: ProfileRollbackRequest,
+    source: str = Query(...),
+    ctx=Header(None, alias="X-Demo-Token"),
+) -> ProfileResponse:
+    _require_feature(ctx, "knowledge")
     try:
         get_source(source)
         profile = rollback_profile(source, req.version_id)
@@ -226,7 +247,9 @@ def update_profile_version_endpoint(
     version_id: str,
     req: ProfileVersionUpdateRequest,
     source: str = Query(...),
+    ctx=Header(None, alias="X-Demo-Token"),
 ) -> dict:
+    _require_feature(ctx, "knowledge")
     try:
         get_source(source)
         item = update_profile_version(source, version_id, label=req.label, description=req.description)
@@ -238,7 +261,12 @@ def update_profile_version_endpoint(
 
 
 @router.delete("/profile/versions/{version_id}")
-def delete_profile_version_endpoint(version_id: str, source: str = Query(...)) -> dict:
+def delete_profile_version_endpoint(
+    version_id: str,
+    source: str = Query(...),
+    ctx=Header(None, alias="X-Demo-Token"),
+) -> dict:
+    _require_feature(ctx, "knowledge")
     try:
         get_source(source)
         delete_profile_version(source, version_id)
@@ -250,7 +278,8 @@ def delete_profile_version_endpoint(version_id: str, source: str = Query(...)) -
 
 
 @router.get("/quality", response_model=QualityResponse)
-def get_quality(source: str = Query(...)) -> QualityResponse:
+def get_quality(source: str = Query(...), ctx=Header(None, alias="X-Demo-Token")) -> QualityResponse:
+    _require_feature(ctx, "knowledge")
     try:
         info = load_schema(source)
     except KeyError as e:
@@ -277,7 +306,8 @@ def ask(req: AskRequest, ctx=Header(None, alias="X-Demo-Token")) -> AskResponse:
                          few_shots=req.few_shots, allowed_tables=auth.allowed_tables,
                          denied_columns=auth.denied_columns,
                          denied_terms=auth.denied_terms,
-                         role_label=auth.role_label)
+                         role_label=auth.role_label,
+                         row_scope=auth.row_scope)
     return AskResponse(**result)
 
 
@@ -297,19 +327,26 @@ def judge(req: JudgeRequest) -> JudgeResponse:
 
 
 @router.post("/feedback", response_model=FeedbackResponse)
-def create_feedback(req: FeedbackRequest) -> FeedbackResponse:
+def create_feedback(req: FeedbackRequest, token=Header(None, alias="X-Demo-Token")) -> FeedbackResponse:
+    _require_feature(token, "ask")
     item = add_feedback(req.model_dump())
     create_feedback_review(item)
     return FeedbackResponse(item=item)
 
 
 @router.get("/feedback", response_model=FeedbackListResponse)
-def get_feedback(source: str | None = Query(None), limit: int = Query(100, ge=1, le=500)) -> FeedbackListResponse:
+def get_feedback(
+    source: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    token=Header(None, alias="X-Demo-Token"),
+) -> FeedbackListResponse:
+    _require_feature(token, "knowledge")
     return FeedbackListResponse(items=list_feedback(source, limit))
 
 
 @router.delete("/feedback/{item_id}")
-def remove_feedback(item_id: str) -> dict:
+def remove_feedback(item_id: str, token=Header(None, alias="X-Demo-Token")) -> dict:
+    _require_feature(token, "ask")
     try:
         item = delete_feedback(item_id)
     except FileNotFoundError:
@@ -319,7 +356,12 @@ def remove_feedback(item_id: str) -> dict:
 
 
 @router.get("/examples", response_model=ExampleListResponse)
-def get_examples(source: str = Query(...), limit: int = Query(200, ge=1, le=500)) -> ExampleListResponse:
+def get_examples(
+    source: str = Query(...),
+    limit: int = Query(200, ge=1, le=500),
+    token=Header(None, alias="X-Demo-Token"),
+) -> ExampleListResponse:
+    _require_feature(token, "ask")
     try:
         get_source(source)
     except KeyError as e:
@@ -328,7 +370,12 @@ def get_examples(source: str = Query(...), limit: int = Query(200, ge=1, le=500)
 
 
 @router.post("/examples", response_model=ExampleResponse)
-def save_example(req: ExampleRequest, source: str = Query(...)) -> ExampleResponse:
+def save_example(
+    req: ExampleRequest,
+    source: str = Query(...),
+    token=Header(None, alias="X-Demo-Token"),
+) -> ExampleResponse:
+    _require_feature(token, "knowledge")
     try:
         get_source(source)
     except KeyError as e:
@@ -337,7 +384,12 @@ def save_example(req: ExampleRequest, source: str = Query(...)) -> ExampleRespon
 
 
 @router.delete("/examples/{item_id}")
-def remove_example(item_id: str, source: str = Query(...)) -> dict:
+def remove_example(
+    item_id: str,
+    source: str = Query(...),
+    token=Header(None, alias="X-Demo-Token"),
+) -> dict:
+    _require_feature(token, "knowledge")
     try:
         get_source(source)
     except KeyError as e:

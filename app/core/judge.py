@@ -13,6 +13,7 @@ import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
+from typing import Any
 
 from app.core.chain import make_llm
 from app.core.config import PROMPTS_DIR, settings
@@ -45,6 +46,24 @@ def _result_preview(columns: list[str], rows: list[list], row_count: int) -> str
     return "\n".join(lines)
 
 
+def _scope_context(role_label: str | None, row_scope: dict[str, Any] | None) -> str:
+    """Render trusted authorization context separately from the user's question."""
+    if not row_scope:
+        return (
+            "[Mandatory access scope]\n"
+            f"Role: {role_label or 'unscoped/admin'}\n"
+            "No mandatory account-level row filter applies to this query."
+        )
+    scope_json = json.dumps(row_scope, ensure_ascii=False, sort_keys=True)
+    return (
+        "[Mandatory access scope]\n"
+        f"Role: {role_label or 'scoped user'}\n"
+        f"Required row filters: {scope_json}\n"
+        "These filters are trusted authorization constraints imposed by the system. "
+        "Evaluate the question within this authorized data scope and do not treat only these filters as unnecessary."
+    )
+
+
 def _parse(text: str) -> tuple[int, int, str] | None:
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
@@ -68,6 +87,8 @@ def judge(
     row_count: int,
     dialect: str,
     retrieval_used: bool,
+    role_label: str | None = None,
+    row_scope: dict[str, Any] | None = None,
 ) -> JudgeResult | None:
     if not settings.judge_enabled:
         return None
@@ -83,6 +104,7 @@ def judge(
             f"[User question]\n{question}\n\n"
             f"[Schema context: {ctx_note}]\n{schema_snippet}\n\n"
             f"[Dialect]\n{dialect}\n\n"
+            f"{_scope_context(role_label, row_scope)}\n\n"
             f"[Generated SQL]\n{sql}\n\n"
             f"[Result preview]\n{_result_preview(columns, rows, row_count)}\n\n"
             "Return exactly one JSON object as instructed."
@@ -158,6 +180,8 @@ def stash(
     row_count: int,
     dialect: str,
     retrieval_used: bool,
+    role_label: str | None = None,
+    row_scope: dict[str, Any] | None = None,
 ) -> str | None:
     if not settings.judge_enabled:
         return None
@@ -171,6 +195,8 @@ def stash(
         row_count=row_count,
         dialect=dialect,
         retrieval_used=retrieval_used,
+        role_label=role_label,
+        row_scope=row_scope,
     )
     with _pending_lock:
         _pending[jid] = {"done": False, "result": None, "created_at": time.monotonic(), "args": args}

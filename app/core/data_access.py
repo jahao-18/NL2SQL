@@ -221,19 +221,91 @@ def import_csv_as_source(name: str, label: str, table_name: str, csv_path: Path,
     return register_sqlite_source(name, label, _relative(db_path), writable=writable)
 
 
-def table_rows(source_name: str, table: str, limit: int = 50, offset: int = 0) -> dict[str, Any]:
+def _resolved_scope_columns(
+    table: str,
+    columns: list[str],
+    required_scope: dict[str, Any] | None,
+) -> dict[str, Any]:
+    resolved: dict[str, Any] = {}
+    for key, value in (required_scope or {}).items():
+        if key in columns:
+            resolved[key] = value
+            continue
+        entity = key[:-3] if key.endswith("_id") else ""
+        if entity == table and "id" in columns:
+            resolved["id"] = value
+            continue
+        raise PermissionError("当前账号范围无法安全应用到该表")
+    return resolved
+
+
+def _visible_columns(
+    columns: list[str],
+    allowed_columns: set[str] | frozenset[str] | None,
+) -> list[str]:
+    if allowed_columns is None:
+        return columns
+    visible = [column for column in columns if column in allowed_columns]
+    if not visible:
+        raise PermissionError("当前角色没有可访问字段")
+    return visible
+
+
+def _scope_sql(scope: dict[str, Any]) -> tuple[str, list[Any]]:
+    if not scope:
+        return "", []
+    clause = " AND ".join(f"{_quote_ident(column)} = ?" for column in scope)
+    return f" WHERE {clause}", list(scope.values())
+
+
+def _row_matches_scope(row: sqlite3.Row | dict[str, Any], scope: dict[str, Any]) -> bool:
+    return all(row[column] == value for column, value in scope.items())
+
+
+def _filtered_row(
+    row: sqlite3.Row | dict[str, Any],
+    visible_columns: list[str],
+) -> dict[str, Any]:
+    return {column: row[column] for column in visible_columns}
+
+
+def table_rows(
+    source_name: str,
+    table: str,
+    limit: int = 50,
+    offset: int = 0,
+    allowed_columns: set[str] | frozenset[str] | None = None,
+    required_scope: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     source = ds_cache.get_source(source_name)
     path = _sqlite_path_from_url(source.url)
-    table = _quote_ident(table)
+    table_name = table
+    quoted_table = _quote_ident(table_name)
     limit = max(1, min(int(limit), 200))
     offset = max(0, int(offset))
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     try:
-        total = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-        rows = conn.execute(f"SELECT * FROM {table} LIMIT ? OFFSET ?", (limit, offset)).fetchall()
-        columns = [d[1] for d in conn.execute(f"PRAGMA table_info({table})").fetchall()]
-        return {"columns": columns, "rows": [dict(r) for r in rows], "total": total, "limit": limit, "offset": offset}
+        columns, _ = _table_columns(conn, table_name)
+        visible = _visible_columns(columns, allowed_columns)
+        scope = _resolved_scope_columns(table_name, columns, required_scope)
+        where_sql, scope_values = _scope_sql(scope)
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM {quoted_table}{where_sql}",
+            scope_values,
+        ).fetchone()[0]
+        select_columns = ", ".join(_quote_ident(column) for column in visible)
+        rows = conn.execute(
+            f"SELECT {select_columns} FROM {quoted_table}{where_sql} LIMIT ? OFFSET ?",
+            [*scope_values, limit, offset],
+        ).fetchall()
+        return {
+            "columns": visible,
+            "rows": [dict(row) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
     finally:
         conn.close()
 
@@ -273,14 +345,32 @@ def _audit(actor: str, source: str, table: str, action: str, pk: Any, before: An
         f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
 
-def insert_row(source_name: str, table: str, values: dict[str, Any], actor: str) -> dict[str, Any]:
+def insert_row(
+    source_name: str,
+    table: str,
+    values: dict[str, Any],
+    actor: str,
+    allowed_columns: set[str] | frozenset[str] | None = None,
+    required_scope: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     entry = _ensure_writable(source_name)
     path = _sqlite_path_from_url(entry["url"])
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     try:
         columns, pk = _table_columns(conn, table)
+        visible = _visible_columns(columns, allowed_columns)
+        scope = _resolved_scope_columns(table, columns, required_scope)
+        forbidden = set(values) - set(visible)
+        if forbidden:
+            raise PermissionError(f"当前角色不能写入字段: {', '.join(sorted(forbidden))}")
+        if pk in scope:
+            raise PermissionError("当前账号不能在本人实体表新增记录")
+        for column, expected in scope.items():
+            if column in values and values[column] != expected:
+                raise PermissionError("不能写入账号范围之外的数据")
         data = {k: v for k, v in values.items() if k in columns and k != pk}
+        data.update(scope)
         if not data:
             raise ValueError("没有可写入字段")
         col_sql = ", ".join(_quote_ident(k) for k in data)
@@ -290,21 +380,39 @@ def insert_row(source_name: str, table: str, values: dict[str, Any], actor: str)
         new_pk = cur.lastrowid
         row = dict(conn.execute(f"SELECT * FROM {_quote_ident(table)} WHERE {_quote_ident(pk)} = ?", (new_pk,)).fetchone())
         _audit(actor, source_name, table, "insert", new_pk, None, row)
-        return {"row": row}
+        return {"row": _filtered_row(row, visible)}
     finally:
         conn.close()
 
 
-def update_row(source_name: str, table: str, pk_value: Any, values: dict[str, Any], actor: str) -> dict[str, Any]:
+def update_row(
+    source_name: str,
+    table: str,
+    pk_value: Any,
+    values: dict[str, Any],
+    actor: str,
+    allowed_columns: set[str] | frozenset[str] | None = None,
+    required_scope: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     entry = _ensure_writable(source_name)
     path = _sqlite_path_from_url(entry["url"])
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     try:
         columns, pk = _table_columns(conn, table)
+        visible = _visible_columns(columns, allowed_columns)
+        scope = _resolved_scope_columns(table, columns, required_scope)
         before_row = conn.execute(f"SELECT * FROM {_quote_ident(table)} WHERE {_quote_ident(pk)} = ?", (pk_value,)).fetchone()
         if not before_row:
             raise KeyError(pk_value)
+        if not _row_matches_scope(before_row, scope):
+            raise PermissionError("不能修改账号范围之外的数据")
+        forbidden = set(values) - set(visible)
+        if forbidden:
+            raise PermissionError(f"当前角色不能写入字段: {', '.join(sorted(forbidden))}")
+        for column, expected in scope.items():
+            if column in values and values[column] != expected:
+                raise PermissionError("不能修改数据的账号范围")
         data = {k: v for k, v in values.items() if k in columns and k != pk}
         if not data:
             raise ValueError("没有可更新字段")
@@ -313,26 +421,37 @@ def update_row(source_name: str, table: str, pk_value: Any, values: dict[str, An
         conn.commit()
         after = dict(conn.execute(f"SELECT * FROM {_quote_ident(table)} WHERE {_quote_ident(pk)} = ?", (pk_value,)).fetchone())
         _audit(actor, source_name, table, "update", pk_value, dict(before_row), after)
-        return {"row": after}
+        return {"row": _filtered_row(after, visible)}
     finally:
         conn.close()
 
 
-def delete_row(source_name: str, table: str, pk_value: Any, actor: str) -> dict[str, Any]:
+def delete_row(
+    source_name: str,
+    table: str,
+    pk_value: Any,
+    actor: str,
+    allowed_columns: set[str] | frozenset[str] | None = None,
+    required_scope: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     entry = _ensure_writable(source_name)
     path = _sqlite_path_from_url(entry["url"])
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     try:
         columns, pk = _table_columns(conn, table)
+        visible = _visible_columns(columns, allowed_columns)
+        scope = _resolved_scope_columns(table, columns, required_scope)
         before_row = conn.execute(f"SELECT * FROM {_quote_ident(table)} WHERE {_quote_ident(pk)} = ?", (pk_value,)).fetchone()
         if not before_row:
             raise KeyError(pk_value)
+        if not _row_matches_scope(before_row, scope):
+            raise PermissionError("不能删除账号范围之外的数据")
         before = dict(before_row)
         conn.execute(f"DELETE FROM {_quote_ident(table)} WHERE {_quote_ident(pk)} = ?", (pk_value,))
         conn.commit()
         _audit(actor, source_name, table, "delete", pk_value, before, None)
-        return {"deleted": True, "row": before}
+        return {"deleted": True, "row": _filtered_row(before, visible)}
     finally:
         conn.close()
 

@@ -272,6 +272,30 @@
     resultWrap.classList.remove("visible");
   }
 
+  function resetAssistantSession(clearQueryLog) {
+    clearHistory();
+    clearProgressTimers();
+    conversationSource = null;
+    currentResult = null;
+    lastTrace = null;
+    if (clearQueryLog) localStorage.removeItem(QUERY_LOG_KEY);
+    if (input) input.value = "";
+    if (processLog) processLog.innerHTML = "";
+    if (sqlCode) sqlCode.textContent = "";
+    if (sqlMeta) sqlMeta.innerHTML = "";
+    if (thead) thead.innerHTML = "";
+    if (tbody) tbody.innerHTML = "";
+    if (resultSummary) resultSummary.innerHTML = "";
+    if (resultTitle) resultTitle.textContent = "查询结果";
+    if (chartPanel) chartPanel.hidden = true;
+    if (chartToggleBtn) chartToggleBtn.textContent = "图表视图";
+    hide(routedSource);
+    hide(progressBox);
+    hideAllStateCards();
+    updateFeedbackButtons();
+    if (clearQueryLog) renderQueryLog();
+  }
+
   function manualSource() { return selectedSource || null; }
 
   function escapeHtml(value) {
@@ -394,10 +418,13 @@
   }
 
   function dashboardFilters() {
+    const role = currentUser && currentUser.role ? currentUser.role : "";
+    const fixedCollege = role === "college_manager" || role === "teacher" || role === "student";
+    const fixedMajor = role === "teacher" || role === "student";
     return {
       term: dashboardTermFilter ? dashboardTermFilter.value : "",
-      college: dashboardCollegeFilter ? dashboardCollegeFilter.value : "",
-      major: dashboardMajorFilter ? dashboardMajorFilter.value : "",
+      college: !fixedCollege && dashboardCollegeFilter ? dashboardCollegeFilter.value : "",
+      major: !fixedMajor && dashboardMajorFilter ? dashboardMajorFilter.value : "",
       course_type: dashboardCourseTypeFilter ? dashboardCourseTypeFilter.value : "",
     };
   }
@@ -439,17 +466,43 @@
       { value: "elective", label: "选修" },
       { value: "general", label: "通识/实践" },
     ], "全部课程类型");
+
+    const role = data.permission && data.permission.role ? data.permission.role : "";
+    const fixedCollege = role === "college_manager" || role === "teacher" || role === "student";
+    const fixedMajor = role === "teacher" || role === "student";
+    if (dashboardCollegeFilter && dashboardCollegeFilter.closest("label")) {
+      dashboardCollegeFilter.closest("label").hidden = fixedCollege;
+      if (fixedCollege) dashboardCollegeFilter.value = "";
+    }
+    if (dashboardMajorFilter && dashboardMajorFilter.closest("label")) {
+      dashboardMajorFilter.closest("label").hidden = fixedMajor;
+      if (fixedMajor) dashboardMajorFilter.value = "";
+    }
   }
 
   function renderDashboard(data) {
     if (!dashboardCardGrid || !data) return;
     populateDashboardFilters(data);
     const c = data.cards || {};
+    const appliedTerm = data.filters && data.filters.term ? data.filters.term : "";
+    const appliedCollege = data.filters && data.filters.college ? data.filters.college : "";
+    const appliedMajor = data.filters && data.filters.major ? data.filters.major : "";
+    const selectedTerm = dashboardTermFilter && dashboardTermFilter.selectedOptions[0]
+      ? dashboardTermFilter.selectedOptions[0].textContent
+      : appliedTerm;
+    const classLabel = appliedMajor
+      ? (appliedCollege ? "学院开课" : "专业参与开课")
+      : (appliedTerm ? "学期开课" : "开课班级");
+    const enrollmentLabel = appliedTerm ? "学期选课" : "选课记录";
+    const termSub = appliedTerm ? selectedTerm : "全部学期";
+    const classSub = appliedMajor
+      ? `${termSub} · 当前库无专业—课程归属，按该专业学生选课覆盖统计`
+      : termSub;
     dashboardCardGrid.innerHTML = "";
     [
       ["在读学生", "active_students", formatNumber(c.active_students), "默认 active 学籍"],
-      ["本学期开课", "current_classes", formatNumber(c.current_classes), "2025 春季学期"],
-      ["本学期选课", "current_enrollments", formatNumber(c.current_enrollments), "选课记录数"],
+      [classLabel, "current_classes", formatNumber(c.current_classes), classSub],
+      [enrollmentLabel, "current_enrollments", formatNumber(c.current_enrollments), termSub],
       ["平均成绩", "avg_score", formatNumber(c.avg_score, 2), "总评成绩"],
       ["及格率", "pass_rate", pctText(c.pass_rate), "final_score >= 60"],
       ["挂科率", "fail_rate", pctText(c.fail_rate), "final_score < 60"],
@@ -2328,8 +2381,11 @@
       const shouldUpdateSchemaText = schemaKey(activeSourceName()) === key || (!activeSourceName() && key === "__auto__");
       schemaCache[key] = data;
       if (src) {
-        await loadProfile(src);
-        await Promise.allSettled([loadQuality(src), loadStandardExamples(src), loadProfileVersions(src)]);
+        await loadStandardExamples(src);
+        if (hasFeature("knowledge")) {
+          await loadProfile(src);
+          await Promise.allSettled([loadQuality(src), loadProfileVersions(src)]);
+        }
       }
       if (shouldUpdateSchemaText) {
         schemaText.textContent = data.ddl;
@@ -2871,9 +2927,8 @@
     logoutBtn.addEventListener("click", () => {
       localStorage.removeItem(AUTH_TOKEN_KEY);
       localStorage.removeItem(AUTH_USER_KEY);
-      clearHistory();
+      resetAssistantSession(true);
       currentUser = null;
-      conversationSource = null;
       dashboardCache = null;
       domainSettingsCache = null;
       showLogin();

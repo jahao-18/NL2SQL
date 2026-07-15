@@ -94,7 +94,7 @@ SQL:SELECT u.name AS user_name, SUM(o.amount) AS total_spent FROM users u JOIN o
 3. “挂科 / 不及格 / 未通过”使用 score.final_score < 60 或 score.passed = 0；“及格 / 通过”使用 score.final_score >= 60 或 score.passed = 1；“优秀”使用 score.final_score >= 90。
 4. “挂科率”使用 AVG(CASE WHEN score.final_score < 60 THEN 1.0 ELSE 0.0 END)；“及格率”使用 AVG(CASE WHEN score.final_score >= 60 THEN 1.0 ELSE 0.0 END)；“优秀率”使用 AVG(CASE WHEN score.final_score >= 90 THEN 1.0 ELSE 0.0 END)。
 5. “选课人数”默认 COUNT(enrollment.id)；如果问题问“选课学生数 / 学生人数”，使用 COUNT(DISTINCT enrollment.student_id)。
-6. “教师工作量 / 授课工作量”默认包含教师承担的开课班数量 COUNT(DISTINCT teaching_class.id) 和选课学生人次 COUNT(enrollment.id)。
+6. “教师工作量 / 授课工作量”默认包含教师承担的开课班数量 COUNT(DISTINCT teaching_class.id) 和选课学生人次 COUNT(enrollment.id)。当问题明确要求“每位教师 / 所有教师”时，必须以 teacher 为主表，依次 LEFT JOIN teaching_class 和 enrollment，使没有授课班的教师也返回 0；这类计数必须使用明细主键，不能使用 COUNT(*)。只有用户明确限定“有授课的教师”时才可使用内连接排除零记录教师。
 7. “本学期”默认解释为 teaching_class.year = 2025 AND teaching_class.semester = 'spring'。
 8. “春季学期”对应 semester = 'spring'；“秋季学期”对应 semester = 'autumn'。
 9. “必修课 / 选修课 / 通识课”分别对应 course.course_type = 'required' / 'elective' / 'general'。

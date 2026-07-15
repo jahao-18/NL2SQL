@@ -36,21 +36,36 @@ def test_error_feedback_respects_auto_queue_setting(isolated_governance):
 
 def test_publish_review_is_approved_before_publish(isolated_governance, monkeypatch):
     monkeypatch.setattr(governance, "load_profile_dict", lambda source: {"tables": {"orders": {}}, "relations": [], "metrics": {}})
+    saved = {}
     published = {}
+    events = []
+
+    def fake_save(source, profile):
+        saved.update({"source": source, "profile": profile})
+        events.append("save")
+        return profile
 
     def fake_publish(source, label="", description=""):
         published.update({"source": source, "label": label, "description": description})
+        events.append("publish")
         return {"published": True, **published}
 
+    monkeypatch.setattr(governance, "save_profile_dict", fake_save)
     monkeypatch.setattr(governance, "publish_profile", fake_publish)
 
     item = governance.create_publish_review("demo", label="v1", description="release note")
     assert item["type"] == "profile_publish"
+    assert saved == {}
     assert published == {}
 
     result = governance.accept_review_item(item["id"], "publish_profile", {"source": "demo"})
     assert result["item"]["status"] == "accepted"
+    assert saved == {
+        "source": "demo",
+        "profile": {"tables": {"orders": {}}, "relations": [], "metrics": {}},
+    }
     assert published == {"source": "demo", "label": "v1", "description": "release note"}
+    assert events == ["save", "publish"]
 
 
 def test_low_confidence_review_uses_threshold(isolated_governance):

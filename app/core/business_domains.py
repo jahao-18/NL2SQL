@@ -189,6 +189,20 @@ class AuthContext:
         return self.role == "admin"
 
 
+class AuthenticationError(ValueError):
+    """请求未携带有效的演示认证令牌。"""
+
+
+class AuthorizationError(PermissionError):
+    """当前演示角色不具备请求所需的功能权限。"""
+
+
+def require_feature(ctx: AuthContext, feature: str) -> AuthContext:
+    if feature not in ctx.features:
+        raise AuthorizationError(f"当前身份“{ctx.role_label}”无权使用该功能")
+    return ctx
+
+
 def public_role_options() -> list[dict[str, Any]]:
     return [
         {
@@ -230,10 +244,12 @@ def tables_for_domains(domains: list[str] | tuple[str, ...]) -> set[str]:
 
 
 def user_from_token(token: str | None) -> AuthContext:
-    username = (token or "admin").strip() or "admin"
+    username = (token or "").strip()
+    if not username:
+        raise AuthenticationError("未登录或令牌无效")
     user = DEMO_USERS.get(username)
     if not user:
-        user = DEMO_USERS["admin"]
+        raise AuthenticationError("未登录或令牌无效")
     return auth_context(user)
 
 
@@ -332,20 +348,23 @@ def row_scope_context(ctx: AuthContext) -> str:
     if ctx.role == "student" and ctx.row_scope.get("student_id"):
         return (
             f"当前登录账号绑定 student_id = {ctx.row_scope['student_id']}。"
-            "用户说“我/我的/本人/my”时，必须限定 enrollment.student_id 为该值；"
+            "该身份的所有查询都只能使用该学生本人的数据，不以问题是否出现“我/我的/本人/my”为条件；"
+            "查询选课、成绩或课程时必须通过 enrollment.student_id 限定该值，其他个人学习记录必须按对应 student_id 限定；"
             "询问“选了哪些课程/我的课程”时优先 SELECT DISTINCT course.name 去重。"
         )
     if ctx.role == "teacher" and ctx.row_scope.get("teacher_id"):
         return (
             f"当前登录账号绑定 teacher_id = {ctx.row_scope['teacher_id']}。"
-            "用户说“我负责/我的课程/本人授课/my classes”时，必须限定 teaching_class.teacher_id 为该值；"
+            "该身份的所有查询都只能统计本人授课范围，不以问题是否出现“我负责/我的课程/本人授课/my classes”为条件；"
+            "必须限定 teaching_class.teacher_id 为该值；"
             "只做统计或课程层面分析，不展示学生身份字段。"
         )
     if ctx.role == "college_manager" and ctx.row_scope.get("college_id"):
         cid = ctx.row_scope["college_id"]
         return (
             f"当前登录账号绑定 college_id = {cid}。"
-            "用户说“本学院/我院/our college”时，课程按 course.college_id 限定，"
+            "该身份的所有查询都只能统计本学院范围，不以问题是否出现“本学院/我院/our college”为条件；"
+            "课程按 course.college_id 限定，"
             "学生按 student.college_id 限定，教师按 teacher.college_id 限定。"
         )
     return ""

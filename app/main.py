@@ -8,12 +8,14 @@ import logging
 
 import threading
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.data_access import router as data_access_router
 from app.api.governance import router as governance_router
 from app.api.routes import router
+from app.core.business_domains import AuthenticationError, AuthorizationError
 from app.core.config import STATIC_DIR, settings
 
 logging.basicConfig(
@@ -24,6 +26,16 @@ logging.basicConfig(
 logger = logging.getLogger("nl2sql")
 
 app = FastAPI(title="NL2SQL", version="0.1.0")
+
+
+@app.exception_handler(AuthenticationError)
+async def _authentication_error_handler(_request: Request, exc: AuthenticationError) -> JSONResponse:
+    return JSONResponse(status_code=401, content={"detail": str(exc)})
+
+
+@app.exception_handler(AuthorizationError)
+async def _authorization_error_handler(_request: Request, exc: AuthorizationError) -> JSONResponse:
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
 
 app.include_router(router)
 app.include_router(governance_router)

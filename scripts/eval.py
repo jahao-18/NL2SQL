@@ -23,6 +23,7 @@ import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -54,9 +55,26 @@ class CaseResult:
     expected_kind: str = "sql"
 
 
+def _normalize_cell(value: Any) -> str:
+    """把单元格规整为稳定文本；保持原字符串行为，并让 1 与 1.0 等价。"""
+    if value is None:
+        return "∅"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float, Decimal)):
+        try:
+            number = Decimal(str(value))
+            if number == 0:
+                number = Decimal(0)
+            return format(number.normalize(), "f")
+        except (InvalidOperation, ValueError):
+            pass
+    return str(value)
+
+
 def _normalize_rows(rows: list[list[Any]]) -> list[tuple]:
-    """把结果行规整为可比较的元组列表。None 保留;数字统一字符串化避免 1 vs 1.0。"""
-    return [tuple("∅" if c is None else str(c) for c in r) for r in rows]
+    """把结果行规整为可比较的元组列表。"""
+    return [tuple(_normalize_cell(c) for c in r) for r in rows]
 
 
 def _cmp_rowset(actual: list[list], expected: list[list]) -> bool:
@@ -70,7 +88,7 @@ def _cmp_ordered(actual: list[list], expected: list[list]) -> bool:
 def _cmp_cell(actual: list[list], expected: list[list]) -> bool:
     if not actual or not expected or not actual[0] or not expected[0]:
         return False
-    return str(actual[0][0]) == str(expected[0][0])
+    return _normalize_cell(actual[0][0]) == _normalize_cell(expected[0][0])
 
 
 COMPARATORS = {
@@ -78,6 +96,21 @@ COMPARATORS = {
     "ordered": _cmp_ordered,
     "cell": _cmp_cell,
 }
+
+
+def load_cases(cases_path: Path) -> list[dict]:
+    """读取评测集，并让顶层 source 成为各 case 的默认数据源。"""
+    with cases_path.open(encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+
+    default_source = data.get("source")
+    cases: list[dict] = []
+    for raw_case in data.get("cases") or []:
+        case = dict(raw_case)
+        if default_source and not case.get("source"):
+            case["source"] = default_source
+        cases.append(case)
+    return cases
 
 
 def run_case(case: dict) -> CaseResult:
@@ -143,7 +176,7 @@ def run_case(case: dict) -> CaseResult:
                           elapsed, predicted_sql=content)
 
     try:
-        cols_pred, rows_pred, _, _ = execute(safe_pred, source_name=ds.name)
+        cols_pred, rows_pred, _, capped_pred = execute(safe_pred, source_name=ds.name)
     except SQLExecutionError as e:
         return CaseResult(case_id, category, False, f"预测 SQL 执行失败: {e}",
                           elapsed, predicted_sql=content)
@@ -151,7 +184,7 @@ def run_case(case: dict) -> CaseResult:
     try:
         gold_sql = case["expected_sql"].strip()
         safe_gold, _ = validate_and_fix(gold_sql, schema_info.tables)
-        cols_gold, rows_gold, _, _ = execute(safe_gold, source_name=ds.name)
+        cols_gold, rows_gold, _, capped_gold = execute(safe_gold, source_name=ds.name)
     except (SQLValidationError, SQLExecutionError, KeyError) as e:
         return CaseResult(case_id, category, False, f"标准 SQL 无法执行: {e}",
                           elapsed, predicted_sql=content)
@@ -163,6 +196,28 @@ def run_case(case: dict) -> CaseResult:
             elapsed, predicted_sql=content,
         )
 
+    expected_capped = case.get("expected_capped")
+    if expected_capped is not None:
+        expected_capped = bool(expected_capped)
+        if capped_gold != expected_capped:
+            return CaseResult(
+                case_id, category, False,
+                f"标准 SQL 截断状态错误: actual={capped_gold}, expected={expected_capped}",
+                elapsed, predicted_sql=content,
+            )
+        if capped_pred != expected_capped:
+            return CaseResult(
+                case_id, category, False,
+                f"预测 SQL 截断状态不匹配: actual={capped_pred}, expected={expected_capped}",
+                elapsed, predicted_sql=content,
+            )
+    elif capped_pred != capped_gold:
+        return CaseResult(
+            case_id, category, False,
+            f"截断状态不匹配: predicted={capped_pred}, expected={capped_gold}",
+            elapsed, predicted_sql=content,
+        )
+
     match_type = case.get("match", "rowset")
     cmp = COMPARATORS.get(match_type)
     if cmp is None:
@@ -170,8 +225,9 @@ def run_case(case: dict) -> CaseResult:
                           elapsed, predicted_sql=content)
 
     if cmp(rows_pred, rows_gold):
+        cap_note = ", capped" if capped_pred else ""
         return CaseResult(case_id, category, True,
-                          f"{match_type} 通过 ({len(rows_pred)} 行)",
+                          f"{match_type} 通过 ({len(rows_pred)} 行{cap_note})",
                           elapsed, predicted_sql=content)
 
     head_pred = rows_pred[:2]
@@ -198,10 +254,7 @@ def main() -> int:
         print(f"评估集不存在: {cases_path}", file=sys.stderr)
         return 1
 
-    with cases_path.open(encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-
-    cases = data.get("cases") or []
+    cases = load_cases(cases_path)
     if args.filter:
         cases = [c for c in cases if str(c.get("id", "")).startswith(args.filter)]
     if args.source:

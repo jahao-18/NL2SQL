@@ -20,7 +20,9 @@ from app.core.schema_profile import load_profile
 
 logger = logging.getLogger("nl2sql.retrieval.atoms")
 
-_ENUM_MAX = 12
+# 与 app.core.schema 的完整 Schema 枚举发现上限保持一致。若这里更小，
+# 检索模式可能丢掉完整 Schema 已发现的合法枚举值，导致模型重新猜值。
+_ENUM_MAX = 20
 _ENUM_TEXT_LEN_LIMIT = 32
 
 
