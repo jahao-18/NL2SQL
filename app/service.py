@@ -107,14 +107,15 @@ def ask(
         "auto_routed": auto_routed,
         "route_reason": _route_reason(question, ds.name, auto_routed, current_source),
     }
+    enforce_teaching_policy = ds.name == "teaching"
 
-    denied_hit = denied_question_hit(question, denied_terms or [])
+    denied_hit = denied_question_hit(question, denied_terms or []) if enforce_teaching_policy else None
     if denied_hit:
         return format_error(f"当前身份「{role_label or '未登录'}」无权查询“{denied_hit}”相关数据。", **src_kw)
 
     try:
         schema_info = load_schema(ds.name)
-        if allowed_tables is not None:
+        if enforce_teaching_policy and allowed_tables is not None:
             schema_info = filter_schema_info(schema_info, set(allowed_tables), set(denied_columns or []))
     except (FileNotFoundError, RuntimeError) as e:
         return format_error(str(e), **src_kw)
@@ -199,7 +200,8 @@ def ask(
         raw_sql = content
         try:
             safe_sql, truncated = validate_and_fix(
-                raw_sql, schema_info.tables, schema_info.blocked_columns, row_scope=row_scope
+                raw_sql, schema_info.tables, schema_info.blocked_columns,
+                row_scope=row_scope if enforce_teaching_policy else None,
             )
         except SQLValidationError as e:
             if str(e).startswith(("引用了未授权的表", "引用了不可用于问数的字段")):

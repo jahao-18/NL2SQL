@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .pytest-tmp/
+.pytest-runtime/
 .env
 data/*.db
 !data/teaching.db
@@ -17,6 +18,8 @@ uvicorn*.log
 hs_err_pid*.log
 outputs/
 data/submissions/
+data/course_resources/
+docs/demo_accounts_private.md
 
 # BIRD benchmark: raw datasets can be several GB; generated work dirs are not tracked.
 /bird_dev/

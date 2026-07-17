@@ -28,6 +28,7 @@ def test_expiring_signed_token_still_authenticates_current_demo_user():
 def test_teacher_analysis_scope_no_longer_includes_academic_warning():
     ctx = user_from_token(token_for("tea_li"))
     assert "academic_warning" not in ctx.allowed_tables
+    assert "evaluation.student_id" in ctx.denied_columns
 
 
 def test_student_can_read_own_class_but_not_other_student_submission():

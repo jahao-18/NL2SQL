@@ -1,5 +1,7 @@
 # NL2SQL 教学数据智能问数平台
 
+> 当前已实现功能、角色权限、完整页面/API 清单及明确边界，请参阅 [项目功能总览与维护基线](docs/project_feature_catalog.md)。后续功能变更须同步维护该文档。
+
 这是一个基于 **FastAPI + LangChain + 通义千问 Qwen + SQLite/PostgreSQL** 的自然语言问数系统。用户用中文提问，系统自动选择数据源、检索相关 Schema、生成只读 SQL、执行查询，并把结果、SQL、可信度评估和治理建议展示在前端工作台。
 
 当前仓库默认包含一套模拟教学数据 `data/teaching.db`，clone 后安装依赖、配置 DashScope API Key 即可启动默认演示。

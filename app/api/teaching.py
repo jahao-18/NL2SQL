@@ -1,7 +1,7 @@
 """Teaching workflow APIs with service-layer authorization."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -46,6 +46,19 @@ from app.core.support_workflow import (
     transition_support_case,
     update_support_request,
 )
+from app.core.stage_d import (
+    create_course_session,
+    create_question,
+    list_course_sessions,
+    list_questions,
+    moderate_question,
+    question_detail,
+    reply_question,
+    save_session_attendance,
+    session_attendance,
+    student_attendance_facts,
+)
+from app.core.stage_e import list_grade_submissions, list_issues, operation_filter_options, operations_summary, refresh_issues, review_grades, submit_grades, task_ledger, update_issue
 
 
 router = APIRouter(prefix="/api/teaching", tags=["teaching"])
@@ -107,6 +120,51 @@ class AnalyticsFeedbackRequest(BaseModel):
     feedback: str = Field(..., pattern="^(helpful|not_helpful)$")
 
 
+class CourseSessionCreateRequest(BaseModel):
+    session_no: int | None = Field(None, gt=0)
+    session_date: str = Field(..., min_length=10, max_length=10)
+    start_time: str | None = Field(None, max_length=20)
+    end_time: str | None = Field(None, max_length=20)
+    classroom: str = Field("", max_length=120)
+    topic: str = Field("", max_length=300)
+    status: str = Field("scheduled", pattern="^(scheduled|completed|cancelled)$")
+
+
+class AttendanceEntryRequest(BaseModel):
+    student_id: int = Field(..., gt=0)
+    status: str = Field(..., pattern="^(present|late|leave|absent)$")
+    note: str = Field("", max_length=500)
+
+
+class AttendanceBatchRequest(BaseModel):
+    entries: list[AttendanceEntryRequest] = Field(..., min_length=1, max_length=500)
+
+
+class CourseQuestionCreateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=160)
+    body: str = Field(..., min_length=1, max_length=4000)
+    visibility: str = Field("public", pattern="^(public|private)$")
+
+
+class CourseQuestionReplyRequest(BaseModel):
+    body: str = Field(..., min_length=1, max_length=4000)
+
+
+class CourseQuestionModerateRequest(BaseModel):
+    status: str | None = Field(None, pattern="^(open|answered|closed)$")
+    pinned: bool | None = None
+
+
+class TeachingIssueUpdateRequest(BaseModel):
+    status: str = Field(..., pattern="^(open|processing|resolved)$")
+    resolution: str = Field("", max_length=2000)
+
+
+class GradeReviewRequest(BaseModel):
+    action: str = Field(..., pattern="^(approve|return|publish)$")
+    reason: str = Field("", max_length=2000)
+
+
 def _auth(token: str | None):
     return user_from_token(token)
 
@@ -160,6 +218,101 @@ def class_detail(teaching_class_id: int, ctx=Header(None, alias="X-Demo-Token"))
             (teaching_class_id,),
         ).fetchone()
     return {"item": dict(row), "scope": scope.data}
+
+
+@router.get("/classes/{teaching_class_id}/sessions")
+def course_sessions(teaching_class_id: int, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"items": _handle(lambda: list_course_sessions(_auth(ctx), teaching_class_id))}
+
+
+@router.post("/classes/{teaching_class_id}/sessions")
+def create_session(teaching_class_id: int, req: CourseSessionCreateRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: create_course_session(_auth(ctx), teaching_class_id, req.model_dump()))}
+
+
+@router.get("/sessions/{session_id}/attendance")
+def get_session_attendance(session_id: int, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: session_attendance(_auth(ctx), session_id))}
+
+
+@router.put("/sessions/{session_id}/attendance")
+def put_session_attendance(session_id: int, req: AttendanceBatchRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: save_session_attendance(_auth(ctx), session_id, [entry.model_dump() for entry in req.entries]))}
+
+
+@router.get("/attendance/students/{student_id}")
+def student_attendance(student_id: int, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"items": _handle(lambda: student_attendance_facts(_auth(ctx), student_id))}
+
+
+@router.get("/classes/{teaching_class_id}/questions")
+def course_questions(teaching_class_id: int, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"items": _handle(lambda: list_questions(_auth(ctx), teaching_class_id))}
+
+
+@router.post("/classes/{teaching_class_id}/questions")
+def ask_course_question(teaching_class_id: int, req: CourseQuestionCreateRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: create_question(_auth(ctx), teaching_class_id, req.title, req.body, req.visibility))}
+
+
+@router.get("/questions/{question_id}")
+def get_course_question(question_id: int, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: question_detail(_auth(ctx), question_id))}
+
+
+@router.post("/questions/{question_id}/replies")
+def reply_course_question(question_id: int, req: CourseQuestionReplyRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: reply_question(_auth(ctx), question_id, req.body))}
+
+
+@router.patch("/questions/{question_id}")
+def moderate_course_question(question_id: int, req: CourseQuestionModerateRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: moderate_question(_auth(ctx), question_id, req.status, req.pinned))}
+
+
+@router.get("/operations/tasks")
+def teaching_tasks(keyword: str = Query("", max_length=100), year: int | None = None, semester: str = "", grade_status: str = "", college_id: int | None = None, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"items": _handle(lambda: task_ledger(_auth(ctx), keyword, year, semester, grade_status, college_id))}
+
+
+@router.get("/operations/filter-options")
+def teaching_operation_filter_options(ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": operation_filter_options(_auth(ctx))}
+
+
+@router.post("/operations/issues/refresh")
+def teaching_issues_refresh(ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": refresh_issues(_auth(ctx))}
+
+
+@router.get("/operations/issues")
+def teaching_issues(ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"items": list_issues(_auth(ctx))}
+
+
+@router.patch("/operations/issues/{issue_id}")
+def teaching_issue_update(issue_id: int, req: TeachingIssueUpdateRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: update_issue(_auth(ctx), issue_id, req.status, req.resolution))}
+
+
+@router.get("/grade-submissions")
+def grade_submissions(keyword: str = Query("", max_length=100), year: int | None = None, semester: str = "", grade_status: str = "", college_id: int | None = None, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"items": _handle(lambda: list_grade_submissions(_auth(ctx), keyword, year, semester, grade_status, college_id))}
+
+
+@router.post("/classes/{teaching_class_id}/grade-submissions")
+def grade_submission_create(teaching_class_id: int, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: submit_grades(_auth(ctx), teaching_class_id))}
+
+
+@router.post("/grade-submissions/{submission_id}/review")
+def grade_submission_review(submission_id: int, req: GradeReviewRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: review_grades(_auth(ctx), submission_id, req.action, req.reason))}
+
+
+@router.get("/operations/summary")
+def teaching_operations_summary(ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": operations_summary(_auth(ctx))}
 
 
 @router.get("/classes")

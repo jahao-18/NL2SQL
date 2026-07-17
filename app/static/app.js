@@ -98,7 +98,26 @@
   const loginUsername = $("login-username");
   const loginPassword = $("login-password");
   const loginError = $("login-error");
-  const loginDomainList = $("login-domain-list");
+  const loginDemoAccounts = $("login-demo-accounts");
+  const registerForm = $("register-form");
+  const registerPassword = $("register-password");
+  const registerName = $("register-name");
+  const registerIdentityType = $("register-identity-type");
+  const registerIdentifier = $("register-identifier");
+  const registerIdentifierLabel = $("register-identifier-label");
+  const registerError = $("register-error");
+  const showRegisterBtn = $("show-register-btn");
+  const showLoginBtn = $("show-login-btn");
+  const registrationStatusPanel = $("registration-status-panel");
+  const registrationStatusAccount = $("registration-status-account");
+  const registrationStatusCard = $("registration-status-card");
+  const registrationRefreshBtn = $("registration-refresh-btn");
+  const registrationLogoutBtn = $("registration-logout-btn");
+  const roleSelectionPanel = $("role-selection-panel");
+  const roleSelectionAccount = $("role-selection-account");
+  const roleSelectionList = $("role-selection-list");
+  const roleSelectionError = $("role-selection-error");
+  const roleSelectionLogoutBtn = $("role-selection-logout-btn");
   const logoutBtn = $("logout-btn");
   const currentUserName = $("current-user-name");
   const currentUserRole = $("current-user-role");
@@ -164,6 +183,7 @@
   const pageTitle = $("page-title");
   const breadcrumb = $("breadcrumb");
   const navTargets = Array.from(document.querySelectorAll("[data-view-target]"));
+  const sideNav = $("side-nav");
   const workViews = Array.from(document.querySelectorAll(".work-view"));
   const kbTableBody = $("kb-table-body");
   const kbSearch = $("kb-search");
@@ -195,11 +215,13 @@
   const relationInput = $("relation-input");
   const relationAddBtn = $("relation-add-btn");
   const relationList = $("relation-list");
-  const debugQuestion = $("debug-question");
-  const debugRunBtn = $("debug-run-btn");
-  const debugSteps = $("debug-steps");
   const dashboardRefreshBtn = $("dashboard-refresh-btn");
   const dashboardCardGrid = $("dashboard-card-grid");
+  const workbenchRoleLabel = $("workbench-role-label");
+  const workbenchTitle = $("workbench-title");
+  const workbenchDescription = $("workbench-description");
+  const workbenchSections = $("workbench-sections");
+  const workbenchActions = $("workbench-actions");
   const dashboardStudentsBars = $("dashboard-students-bars");
   const dashboardScoreBars = $("dashboard-score-bars");
   const dashboardQualityBody = $("dashboard-quality-body");
@@ -275,19 +297,65 @@
   const supportRequestType = $("support-request-type");
   const supportRequestTime = $("support-request-time");
   const supportRequestMessage = $("support-request-message");
-  const domainRefreshBtn = $("domain-refresh-btn");
-  const domainCurrent = $("domain-current");
-  const domainGrid = $("domain-grid");
-  const domainRoleBody = $("domain-role-body");
-  const roleRefreshBtn = $("role-refresh-btn");
-  const roleCardGrid = $("role-card-grid");
-  const roleUserBody = $("role-user-body");
   const passwordForm = $("password-form");
   const passwordAccount = $("password-account");
   const oldPassword = $("old-password");
   const newPassword = $("new-password");
   const confirmPassword = $("confirm-password");
   const passwordMessage = $("password-message");
+  const profileAvatar = $("profile-avatar");
+  const profileDisplayName = $("profile-display-name");
+  const profileRoleSummary = $("profile-role-summary");
+  const profileUsername = $("profile-username");
+  const profileName = $("profile-name");
+  const profileRole = $("profile-role");
+  const profileScope = $("profile-scope");
+  const approvalStatusFilter = $("approval-status-filter");
+  const approvalRefreshBtn = $("approval-refresh-btn");
+  const approvalSummary = $("approval-summary");
+  const approvalList = $("approval-list");
+  const approvalBatchBar = $("approval-batch-bar");
+  const approvalSelectAll = $("approval-select-all");
+  const approvalSelectedCount = $("approval-selected-count");
+  const approvalBatchApprove = $("approval-batch-approve");
+  const approvalBatchReject = $("approval-batch-reject");
+  const organizationRefreshBtn = $("organization-refresh-btn");
+  const organizationUnitGrid = $("organization-unit-grid");
+  const organizationUnitFilter = $("organization-unit-filter");
+  const organizationPositionList = $("organization-position-list");
+  const organizationPositionSelect = $("organization-position-select");
+  const organizationStaffSelect = $("organization-staff-select");
+  const organizationAssignmentForm = $("organization-assignment-form");
+  const organizationAssignmentType = $("organization-assignment-type");
+  const organizationValidFrom = $("organization-valid-from");
+  const organizationValidUntil = $("organization-valid-until");
+  const organizationScopeIds = $("organization-scope-ids");
+  const organizationScopeField = $("organization-scope-field");
+  const organizationReauthField = $("organization-reauth-field");
+  const organizationReauthPassword = $("organization-reauth-password");
+  const organizationAssignmentReason = $("organization-assignment-reason");
+  const organizationAssignmentMessage = $("organization-assignment-message");
+  const organizationStaffSearch = $("organization-staff-search");
+  const organizationStaffList = $("organization-staff-list");
+  const organizationQueueList = $("organization-queue-list");
+  const organizationTransferModal = $("organization-transfer-modal");
+  const organizationTransferForm = $("organization-transfer-form");
+  const organizationTransferClose = $("organization-transfer-close");
+  const organizationTransferCancel = $("organization-transfer-cancel");
+  const organizationTransferTitle = $("organization-transfer-title");
+  const organizationTransferImpact = $("organization-transfer-impact");
+  const organizationTransferAssignmentId = $("organization-transfer-assignment-id");
+  const organizationTransferPositionCode = $("organization-transfer-position-code");
+  const organizationTransferSuccessor = $("organization-transfer-successor");
+  const organizationTransferType = $("organization-transfer-type");
+  const organizationTransferValidFrom = $("organization-transfer-valid-from");
+  const organizationTransferValidUntil = $("organization-transfer-valid-until");
+  const organizationTransferScopeField = $("organization-transfer-scope-field");
+  const organizationTransferScopes = $("organization-transfer-scopes");
+  const organizationTransferReason = $("organization-transfer-reason");
+  const organizationTransferReauthField = $("organization-transfer-reauth-field");
+  const organizationTransferReauthPassword = $("organization-transfer-reauth-password");
+  const organizationTransferMessage = $("organization-transfer-message");
   const feedbackModal = $("feedback-modal");
   const feedbackCategory = $("feedback-category");
   const feedbackReason = $("feedback-reason");
@@ -332,7 +400,6 @@
   let dashboardCache = null;
   let dashboardCacheKey = "";
   let currentUser = null;
-  let domainSettingsCache = null;
   let assignmentClasses = [];
   let assignmentStudentItems = [];
   let assignmentStudentFilter = "all";
@@ -341,6 +408,9 @@
   let analyticsContexts = [];
   let selectedAnalyticsClassId = null;
   let supportCaseItems = [];
+  let organizationUnitsCache = [];
+  let organizationSlotsCache = [];
+  let organizationStaffCache = [];
   let selectedSupportCaseId = null;
 
   /* ---------------- helpers ---------------- */
@@ -375,38 +445,80 @@
     if (hasFeature("student_support") && currentUser?.role === "counselor") return "support-workbench-view";
     if (hasFeature("assignments") && ["teacher", "student"].includes(currentUser?.role)) return "assignment-workflow-view";
     if (hasFeature("dashboard")) return "dashboard-view";
-    return "assistant-view";
+    if (hasFeature("ask")) return "assistant-view";
+    return "profile-view";
   }
 
   function applyUserUi() {
     if (!currentUser) return;
     if (currentUserName) currentUserName.textContent = currentUser.display_name || currentUser.username || "演示用户";
-    if (currentUserRole) currentUserRole.textContent = `${currentUser.role_label || "角色"} · ${currentUser.domain_items?.length || 0} 个业务域`;
+    if (currentUserRole) currentUserRole.textContent = `${currentUser.role_label || "角色"} · ${currentUser.scope_label || "当前岗位授权范围"}`;
+    if (logoutBtn) logoutBtn.textContent = (currentUser.available_roles || []).length > 1 ? "切换工作身份" : "退出登录";
     const featureMap = {
       "dashboard-view": "dashboard",
       "assignment-workflow-view": "assignments",
       "course-analytics-view": "course_analytics",
+      "course-space-view": "course_space",
+      "attendance-view": "attendance",
+      "course-questions-view": "course_questions",
+      "teaching-operations-view": "teaching_operations",
+      "notifications-view": "notifications",
       "support-workbench-view": "student_support",
+      "identity-approval-view": "approval_center",
+      "organization-view": "organization_management",
       "assistant-view": "ask",
       "kb-list-view": "knowledge",
       "kb-overview-view": "knowledge",
       "schema-console-view": "schema",
       "data-access-view": "data_access",
-      "debug-view": "schema",
       "governance-queue-view": "governance",
       "governance-settings-view": "governance",
-      "domain-settings-view": "domain_settings",
-      "role-management-view": "role_management",
+      "profile-view": "personal_center",
     };
+    const serverViews = new Set((currentUser.navigation || []).map((item) => item.view));
+    const serverNavigation = new Map((currentUser.navigation || []).map((item) => [item.view, item]));
     document.querySelectorAll("[data-view-target]").forEach((btn) => {
-      const feature = featureMap[btn.dataset.viewTarget];
-      if (feature) btn.classList.toggle("hidden", !hasFeature(feature));
+      const target = btn.dataset.viewTarget;
+      const canonical = target === "kb-overview-view" ? "kb-list-view" : target;
+      const feature = featureMap[target];
+      const allowed = serverViews.size ? serverViews.has(canonical) : (!feature || hasFeature(feature));
+      if (feature || serverViews.size) btn.classList.toggle("hidden", !allowed);
+      if (btn.classList.contains("side-nav-item") && serverNavigation.has(canonical)) {
+        const label = btn.querySelector(".nav-item-label");
+        if (label) label.textContent = serverNavigation.get(canonical).label || "首页";
+      }
     });
+    if (sideNav) {
+      sideNav.querySelectorAll(".nav-group-label").forEach((label) => {
+        let cursor = label.nextElementSibling;
+        let hasVisibleItem = false;
+        while (cursor && !cursor.classList.contains("nav-group-label")) {
+          if (cursor.classList.contains("side-nav-item") && !cursor.classList.contains("hidden")) hasVisibleItem = true;
+          cursor = cursor.nextElementSibling;
+        }
+        label.classList.toggle("hidden", !hasVisibleItem);
+      });
+    }
+    renderPersonalCenter();
+  }
+
+  function renderPersonalCenter() {
+    if (!currentUser) return;
+    const name = currentUser.display_name || currentUser.username || "当前用户";
+    if (profileAvatar) profileAvatar.textContent = name.slice(0, 1).toUpperCase();
+    if (profileDisplayName) profileDisplayName.textContent = name;
+    if (profileRoleSummary) profileRoleSummary.textContent = `${currentUser.role_label || "当前岗位"} · ${currentUser.scope_label || "当前岗位授权范围"}`;
+    if (profileUsername) profileUsername.textContent = currentUser.username || "-";
+    if (profileName) profileName.textContent = name;
+    if (profileRole) profileRole.textContent = currentUser.role_label || "-";
+    if (profileScope) profileScope.textContent = currentUser.scope_label || "当前岗位授权范围";
+    if (passwordAccount) passwordAccount.value = `${currentUser.username || ""} · ${name}`;
   }
 
   function showLogin() {
     if (loginScreen) loginScreen.classList.remove("hidden");
     if (workspaceShell) workspaceShell.classList.add("app-locked");
+    showAuthMode("login");
   }
 
   function showWorkspace() {
@@ -620,6 +732,108 @@
     loadDashboard(true);
   }
 
+  const workbenchPresentations = {
+    pending_assignments: "task",
+    published_grades: "task",
+    learning_support: "task",
+    my_courses: "task",
+    pending_grading: "metric",
+    teaching_classes: "metric",
+    support_followups: "task",
+    student_appointments: "task",
+    managed_classes: "metric",
+    teaching_issues: "task",
+    course_operations: "metric",
+    college_teaching_issues: "task",
+    college_course_operations: "metric",
+    source_health: "task",
+    audit_activity: "task",
+  };
+
+  function renderWorkbenchItem(item, presentation) {
+    const row = document.createElement(item.target ? "button" : "div");
+    row.className = `workbench-item workbench-item-${presentation}`;
+    if (item.target) {
+      row.type = "button";
+      row.dataset.workbenchTarget = item.target;
+    }
+    const metric = Object.prototype.hasOwnProperty.call(item, "value")
+      ? `<strong>${escapeHtml(formatNumber(item.value))}<small>${escapeHtml(item.unit || "")}</small></strong>`
+      : "";
+    row.innerHTML = `
+      <span class="workbench-item-main"><b>${escapeHtml(item.title || "待办")}</b><small>${escapeHtml(item.subtitle || "")}</small></span>
+      ${metric}
+      <span class="workbench-item-side">${item.badge ? `<em>${escapeHtml(item.badge)}</em>` : ""}<small>${escapeHtml(item.meta || "")}</small></span>
+    `;
+    return row;
+  }
+
+  function renderWorkbench(data) {
+    if (!data || !dashboardCardGrid || !workbenchSections || !workbenchActions) return;
+    if (workbenchRoleLabel) workbenchRoleLabel.textContent = `${currentUser?.role_label || "当前岗位"} · ${data.scope_label || "授权范围"}`;
+    if (workbenchTitle) workbenchTitle.textContent = data.title || "角色首页";
+    if (workbenchDescription) workbenchDescription.textContent = data.description || "";
+    const dashboardView = $("dashboard-view");
+    if (dashboardView) {
+      dashboardView.dataset.pageTitle = data.title || "角色首页";
+      dashboardView.dataset.breadcrumb = `工作台 / ${data.title || "首页"}`;
+      if (dashboardView.classList.contains("active")) {
+        pageTitle.textContent = dashboardView.dataset.pageTitle;
+        breadcrumb.textContent = dashboardView.dataset.breadcrumb;
+      }
+    }
+
+    dashboardCardGrid.innerHTML = "";
+    (data.summary || []).forEach((item) => {
+      const card = renderDashboardCard(item.label, item.value, "");
+      card.dataset.tone = item.tone || "neutral";
+      dashboardCardGrid.appendChild(card);
+    });
+
+    workbenchSections.innerHTML = "";
+    (data.sections || []).forEach((section) => {
+      const items = Array.isArray(section.items) ? section.items : [];
+      if (!items.length) return;
+      const presentation = workbenchPresentations[section.type] || "task";
+      const panel = document.createElement("section");
+      panel.className = "panel-card workbench-section";
+      panel.dataset.sectionType = section.type;
+      panel.innerHTML = `<header><div><h3>${escapeHtml(section.title || "待办")}</h3><p>${escapeHtml(section.description || "")}</p></div><span>${formatNumber(items.length)} 项</span></header>`;
+      const list = document.createElement("div");
+      list.className = "workbench-item-list";
+      items.forEach((item) => list.appendChild(renderWorkbenchItem(item, presentation)));
+      panel.appendChild(list);
+      workbenchSections.appendChild(panel);
+    });
+
+    workbenchActions.innerHTML = "";
+    (data.quick_actions || []).forEach((action) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "nav-btn secondary";
+      button.dataset.workbenchTarget = action.target || "";
+      button.textContent = action.label || "打开";
+      workbenchActions.appendChild(button);
+    });
+  }
+
+  async function loadDashboard(force) {
+    if (!force && dashboardCache) {
+      renderWorkbench(dashboardCache);
+      return dashboardCache;
+    }
+    if (dashboardCardGrid) dashboardCardGrid.innerHTML = '<div class="dashboard-loading">正在加载岗位工作台...</div>';
+    if (workbenchSections) workbenchSections.innerHTML = "";
+    try {
+      dashboardCache = await api.workbench();
+      dashboardCacheKey = currentUser?.username || "";
+      renderWorkbench(dashboardCache);
+    } catch (err) {
+      if (dashboardCardGrid) dashboardCardGrid.innerHTML = `<div class="dashboard-loading is-error">岗位工作台加载失败：${escapeHtml(err.message || err)}</div>`;
+    }
+    return dashboardCache;
+  }
+
   function assignmentStatusLabel(status) {
     const map = {
       draft: "草稿",
@@ -795,9 +1009,9 @@
     return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
   }
 
-  function assignmentFileBase64(file) {
+  function assignmentFileBase64(file, maxBytes = 5 * 1024 * 1024, tooLargeMessage = "附件不能超过 5MB") {
     if (!file) return Promise.resolve(null);
-    if (file.size > 5 * 1024 * 1024) return Promise.reject(new Error("附件不能超过 5MB"));
+    if (file.size > maxBytes) return Promise.reject(new Error(tooLargeMessage));
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(",", 2)[1] || "");
@@ -1173,72 +1387,6 @@
     }
   }
 
-  function renderDomainSettings(data) {
-    if (!domainCurrent || !domainGrid || !domainRoleBody || !data) return;
-    const user = data.current_user || currentUser || {};
-    const userDomains = user.domain_items || [];
-    domainCurrent.innerHTML = `
-      <b>${escapeHtml(user.display_name || "当前用户")} · ${escapeHtml(user.role_label || "")}</b>
-      <span>当前可访问业务域：${escapeHtml(userDomains.map((d) => d.label).join("、") || "无")}；可访问表：${escapeHtml((user.allowed_tables || []).join(", ") || "无")}</span>
-    `;
-    domainGrid.innerHTML = "";
-    (data.domains || []).forEach((domain) => {
-      const active = (user.domains || []).includes(domain.name);
-      const card = document.createElement("div");
-      card.className = "domain-card";
-      card.innerHTML = `
-        <b>${active ? "已授权 · " : ""}${escapeHtml(domain.label)}</b>
-        <span>${escapeHtml(domain.description || "")}</span>
-        <span>表：${escapeHtml((domain.tables || []).join(", "))}</span>
-      `;
-      domainGrid.appendChild(card);
-    });
-    domainRoleBody.innerHTML = "";
-    (data.roles || []).forEach((role) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(role.label)}</td>
-        <td>${escapeHtml((role.domain_items || []).map((d) => d.label).join("、"))}</td>
-        <td>${escapeHtml((role.tables || []).join(", "))}</td>
-      `;
-      domainRoleBody.appendChild(tr);
-    });
-  }
-
-  function renderRoleManagement(data) {
-    if (!roleUserBody || !data) return;
-    if (roleCardGrid) roleCardGrid.innerHTML = "";
-    if (passwordAccount && currentUser) {
-      passwordAccount.value = `${currentUser.username} · ${currentUser.display_name || ""} · ${currentUser.role_label || ""}`;
-    }
-    roleUserBody.innerHTML = "";
-    (data.users || []).forEach((user) => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(user.username)}</td>
-        <td>${escapeHtml(user.display_name)}</td>
-        <td>${escapeHtml(user.role_label)}</td>
-        <td>${escapeHtml(user.description || "")}</td>
-      `;
-      roleUserBody.appendChild(tr);
-    });
-  }
-
-  async function loadDomainSettings(force) {
-    if (!force && domainSettingsCache) {
-      renderDomainSettings(domainSettingsCache);
-      return domainSettingsCache;
-    }
-    try {
-      domainSettingsCache = await api.businessDomains();
-      renderDomainSettings(domainSettingsCache);
-      renderRoleManagement(domainSettingsCache);
-    } catch {
-      if (domainCurrent) domainCurrent.innerHTML = "<b>权限加载失败</b><span>请重新登录后再试。</span>";
-    }
-    return domainSettingsCache;
-  }
-
   function analyticsStatusLabel(status) {
     return ({ missing: "未提交", returned: "需修改", submitted: "已提交", late_submitted: "迟交", graded: "成绩已发布", graded_unpublished: "已批阅待发布" })[status] || status || "-";
   }
@@ -1350,12 +1498,17 @@
     }
     if (id === "schema-console-view") renderSchemaConsole();
     if (id === "data-access-view") window.dispatchEvent(new CustomEvent("nl2sql:data-access:show"));
-    if (id === "debug-view") renderDebugSteps();
-    if (id === "domain-settings-view") loadDomainSettings();
-    if (id === "role-management-view") loadDomainSettings();
+    if (id === "profile-view") renderPersonalCenter();
     if (id === "assignment-workflow-view") loadAssignmentProduct();
     if (id === "course-analytics-view") loadCourseAnalytics();
     if (id === "support-workbench-view") loadSupportWorkbench();
+    if (id === "identity-approval-view") loadIdentityApplications();
+    if (id === "organization-view") loadOrganizationManagement();
+    if (id === "course-space-view") loadCourseSpace();
+    if (id === "attendance-view") loadAttendanceWorkspace();
+    if (id === "course-questions-view") loadCourseQuestions();
+    if (id === "teaching-operations-view") loadTeachingOperations();
+    if (id === "notifications-view") loadNotifications();
     if (id === "governance-queue-view" && governanceView) governanceView.renderQueue();
     if (id === "governance-settings-view" && governanceView) governanceView.renderSettings();
   }
@@ -1384,7 +1537,7 @@
     if (loadHistory().length > 0) clearHistory();
     hide(routedSource);
     hideAllStateCards();
-    loadSchema(selectedSource || undefined);
+    if (hasFeature("schema")) loadSchema(selectedSource || undefined);
     renderSuggestions();
     renderGlossary();
     renderKbOverview();
@@ -2171,74 +2324,6 @@
     if (!exists) next.relations.unshift({ left: m[1], right: m[2], type: "manual", description: m[3] || "" });
     relationInput.value = "";
     saveProfile(src, next).then(() => renderRelations(src));
-  }
-
-  function renderDebugSteps() {
-    if (!debugSteps) return;
-    debugSteps.innerHTML = "";
-    if (!lastTrace) {
-      debugSteps.innerHTML = '<div class="empty-note">执行一次问数后，这里会展示路由、召回、SQL、安全校验和可信度评估链路。</div>';
-      return;
-    }
-    const steps = [
-      ["数据源路由", lastTrace.source_label || lastTrace.source || "自动识别", lastTrace.route_reason || (lastTrace.auto_routed ? "系统自动选择最相关的数据源。" : "使用当前锁定的数据源。")],
-      ["Schema 召回", (lastTrace.trace && lastTrace.trace.retrieval_used) ? `命中表: ${(lastTrace.trace.tables || []).join(", ")}` : `${lastTrace.columns || 0} 个结果字段`, (lastTrace.trace && lastTrace.trace.retrievers_used || []).join(" / ") || "结合问题、术语表和表结构选择候选字段。"],
-      ["SQL 生成", lastTrace.sql ? lastTrace.sql.slice(0, 160) : "无 SQL", "生成只读查询并保留可复制 SQL。"],
-      ["执行结果", `${lastTrace.row_count || 0} 行 · ${lastTrace.elapsed_ms || 0} ms`, "结果表、CSV 下载和图表预览共用同一份返回数据。"],
-      ["可信度评估", lastTrace.judge_id ? "后台异步评估" : "未触发", "评估结果会补充到 SQL 元信息区域。"],
-    ];
-    steps.forEach(([title, value, desc], i) => {
-      const div = document.createElement("div");
-      div.className = "debug-step";
-      div.innerHTML = `<span class="debug-step-no">${i + 1}</span><div><b>${escapeHtml(title)}</b><strong>${escapeHtml(value)}</strong><p>${escapeHtml(desc)}</p></div>`;
-      debugSteps.appendChild(div);
-    });
-  }
-
-  function renderDebugPayload(data, question) {
-    lastTrace = {
-      question,
-      source: data.source,
-      source_label: data.source_label,
-      auto_routed: data.auto_routed,
-      route_reason: data.route_reason,
-      sql: "",
-      columns: data.column_count,
-      row_count: 0,
-      elapsed_ms: 0,
-      judge_id: null,
-      trace: {
-        retrieval_used: data.retrieval_used,
-        tables: data.retrieval_tables || [],
-        retrievers_used: data.retrievers_used || [],
-        context_preview: data.context_preview || "",
-      },
-    };
-    debugSteps.innerHTML = "";
-    const rows = [
-      ["路由结果", `${data.source_label || data.source || "-"} · ${data.auto_routed ? "自动" : "手动"}`, data.route_reason || ""],
-      ["Schema 规模", `${data.table_count || 0} 张表 / ${data.column_count || 0} 个字段`, data.retrieval_used ? "已触发 schema linking" : "未触发检索,使用整库 DDL"],
-      ["召回表", (data.retrieval_tables || []).join(", ") || "-", (data.retrievers_used || []).join(" / ") || "-"],
-      ["上下文预览", (data.context_preview || "").slice(0, 500), "这是将喂给生成器的 schema 证据预览。"],
-    ];
-    rows.forEach(([title, value, desc], i) => {
-      const div = document.createElement("div");
-      div.className = "debug-step";
-      div.innerHTML = `<span class="debug-step-no">${i + 1}</span><div><b>${escapeHtml(title)}</b><strong>${escapeHtml(value)}</strong><p>${escapeHtml(desc)}</p></div>`;
-      debugSteps.appendChild(div);
-    });
-  }
-
-  async function runRetrievalDebug() {
-    const question = (debugQuestion && debugQuestion.value || input.value || "").trim();
-    if (!question) return;
-    debugSteps.innerHTML = '<div class="empty-note">正在分析路由和召回...</div>';
-    try {
-      const data = await api.debugRetrieval({ question, source: manualSource(), current_source: conversationSource, history: loadHistory().slice(-MAX_HISTORY_TURNS) });
-      renderDebugPayload(data, question);
-    } catch (e) {
-      debugSteps.innerHTML = `<div class="empty-note">调试失败: ${escapeHtml(e.message)}</div>`;
-    }
   }
 
   /* ---------------- 我的术语表(按库存 localStorage) ---------------- */
@@ -3203,30 +3288,658 @@
   async function loadAuthOptions() {
     try {
       const data = await api.authOptions();
-      if (loginDomainList) {
-        loginDomainList.innerHTML = "";
-        (data.users || []).forEach((user) => {
-          const card = document.createElement("div");
-          card.className = "login-domain-card";
-          card.innerHTML = `
-            <b>${escapeHtml(user.display_name)} · ${escapeHtml(user.role_label)}</b>
-            <span>${escapeHtml(user.description || "")}</span>
-            <code>${escapeHtml(user.username)} / 123456</code>
-          `;
-          loginDomainList.appendChild(card);
-        });
+      if (loginDemoAccounts) {
+        const users = data.demo_mode ? (data.users || []) : [];
+        loginDemoAccounts.classList.toggle("hidden", !users.length);
+        loginDemoAccounts.innerHTML = users.length
+          ? `<b>演示账号</b>${users.map((user) => `<span>${escapeHtml(user.role_label)} ${escapeHtml(user.username)} / 123456</span>`).join("")}`
+          : "";
       }
     } catch {
       if (loginError) loginError.textContent = "登录选项加载失败，请确认后端服务已启动。";
     }
   }
 
-  function setAuthSession(payload) {
+  function showAuthMode(mode) {
+    const isLogin = mode === "login";
+    const isRegister = mode === "register";
+    loginForm?.classList.toggle("hidden", !isLogin);
+    registerForm?.classList.toggle("hidden", !isRegister);
+    registrationStatusPanel?.classList.toggle("hidden", mode !== "status");
+    roleSelectionPanel?.classList.toggle("hidden", mode !== "roles");
+    if (isLogin && loginUsername) loginUsername.focus();
+    if (isRegister && registerPassword) registerPassword.focus();
+  }
+
+  function roleBindingScopeText(binding) {
+    if (binding.organization_name) return binding.organization_name;
+    const scopes = binding.scopes || [];
+    if (!scopes.length) return "按该身份的默认业务范围";
+    return scopes.map((item) => `${item.scope_type} ${item.scope_id == null ? "" : item.scope_id}`.trim()).join("、");
+  }
+
+  function showRoleSelection() {
+    if (!currentUser) return;
+    if (loginScreen) loginScreen.classList.remove("hidden");
+    if (workspaceShell) workspaceShell.classList.add("app-locked");
+    showAuthMode("roles");
+    if (roleSelectionAccount) roleSelectionAccount.textContent = `${currentUser.display_name || currentUser.username} · ${currentUser.username}`;
+    if (roleSelectionError) roleSelectionError.textContent = "";
+    const bindings = currentUser.available_roles || [];
+    if (roleSelectionList) {
+      roleSelectionList.innerHTML = bindings.length ? bindings.map((binding) => {
+        const active = Number(binding.id) === Number(currentUser.role_binding_id);
+        return `<button class="role-selection-card${active ? " is-current" : ""}" type="button" data-role-binding-id="${binding.id}"><span><b>${escapeHtml(binding.position_title || binding.role_label)}</b><small>${escapeHtml(binding.role_label)} · ${escapeHtml(roleBindingScopeText(binding))}</small></span><em>${active ? "当前身份" : "进入"}</em></button>`;
+      }).join("") : '<div class="organization-empty">当前账号没有可用的工作身份</div>';
+    }
+  }
+
+  async function selectWorkRole(roleBindingId) {
+    if (roleSelectionError) roleSelectionError.textContent = "正在切换工作身份...";
+    try {
+      const payload = await api.switchRole(roleBindingId);
+      setAuthSession(payload);
+      clearHistory();
+      await bootWorkspace();
+    } catch (err) {
+      if (roleSelectionError) roleSelectionError.textContent = err.message || "工作身份切换失败";
+    }
+  }
+
+  function logoutSession() {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
+    clearHistory();
+    currentUser = null;
+    conversationSource = null;
+    dashboardCache = null;
+    showLogin();
+  }
+
+  function renderRegistrationStatus(item) {
+    if (!registrationStatusCard) return;
+    if (!item) {
+      registrationStatusCard.innerHTML = "<b>尚无身份申请</b><p>当前账号没有可显示的身份绑定申请，请联系平台管理员。</p>";
+      return;
+    }
+    const statusCopy = {
+      pending: "申请已按组织关系发送给负责人。审核通过前不会开放任何教学数据。",
+      approved: "身份已经确认，刷新后即可进入对应角色工作台。",
+      rejected: "申请未通过。请核对身份信息，并根据审核说明联系负责人。",
+      withdrawn: "申请已撤回。",
+    };
+    registrationStatusCard.innerHTML = `
+      <b>${escapeHtml(item.status_label || "等待审核")}</b>
+      <p>${escapeHtml(statusCopy[item.status] || "身份申请正在处理中。")}</p>
+      <div class="registration-status-meta">
+        <span>${escapeHtml(item.identity_type_label)} · ${escapeHtml(item.identifier)}</span>
+        <span>${escapeHtml(item.organization_name || "校内组织")}</span>
+        ${item.class_name ? `<span>${escapeHtml(item.class_name)}</span>` : ""}
+        <span>提交于 ${escapeHtml(item.submitted_at || "-")}</span>
+      </div>
+      ${item.review_note ? `<p>审核说明：${escapeHtml(item.review_note)}</p>` : ""}
+    `;
+  }
+
+  async function loadRegistrationStatus() {
+    if (registrationStatusAccount) registrationStatusAccount.textContent = `${currentUser?.display_name || currentUser?.username || "当前账号"} · ${currentUser?.scope_label || "身份待审核"}`;
+    if (registrationStatusCard) registrationStatusCard.textContent = "正在加载申请状态...";
+    try {
+      const data = await api.myIdentityApplication();
+      renderRegistrationStatus(data.item);
+    } catch (err) {
+      if (registrationStatusCard) registrationStatusCard.innerHTML = `<b>状态加载失败</b><p>${escapeHtml(err.message || "请稍后重试")}</p>`;
+    }
+  }
+
+  function showRegistrationStatus() {
+    if (loginScreen) loginScreen.classList.remove("hidden");
+    if (workspaceShell) workspaceShell.classList.add("app-locked");
+    showAuthMode("status");
+    loadRegistrationStatus();
+  }
+
+  async function refreshRegistrationSession() {
+    try {
+      const payload = await api.session();
+      setAuthSession(payload);
+      if (payload.user?.account_status === "active") await bootWorkspace();
+    } catch (err) {
+      if (registrationStatusCard) registrationStatusCard.innerHTML = `<b>刷新失败</b><p>${escapeHtml(err.message || "请重新登录")}</p>`;
+    }
+  }
+
+  function renderIdentityApplications(items) {
+    if (!approvalList) return;
+    const rows = Array.isArray(items) ? items : [];
+    const batchEnabled = (approvalStatusFilter?.value || "pending") === "pending";
+    approvalBatchBar?.classList.toggle("hidden", !batchEnabled);
+    if (approvalSelectAll) approvalSelectAll.checked = false;
+    updateApprovalSelection();
+    if (approvalSummary) approvalSummary.textContent = `当前范围内共 ${rows.length} 条申请`;
+    approvalList.innerHTML = "";
+    if (!rows.length) {
+      approvalList.innerHTML = '<div class="approval-empty">当前筛选条件下没有身份申请</div>';
+      return;
+    }
+    rows.forEach((item) => {
+      const article = document.createElement("article");
+      article.className = "approval-item";
+      const canReview = item.status === "pending";
+      article.innerHTML = `
+        <div><h3>${canReview ? `<input class="approval-row-check" type="checkbox" value="${item.id}" aria-label="选择 ${escapeHtml(item.submitted_name)} 的申请" />` : ""}${escapeHtml(item.submitted_name)} <small>申请成为${escapeHtml(item.identity_type_label)}</small></h3>
+          <p>账号 ${escapeHtml(item.username)} · ${escapeHtml(item.identifier)} · 系统匹配 ${escapeHtml(item.matched_name)}</p>
+          <div class="approval-item-meta"><span>${escapeHtml(item.organization_name)}</span>${item.class_name ? `<span>${escapeHtml(item.class_name)}</span>` : ""}<span>${escapeHtml(item.status_label)}</span><span>${escapeHtml(item.submitted_at)}</span></div>
+          ${item.review_note ? `<p>审核说明：${escapeHtml(item.review_note)}</p>` : ""}
+        </div>
+        <div class="approval-item-actions">${canReview ? `<button class="nav-btn secondary reject" type="button" data-identity-decision="reject" data-application-id="${item.id}">拒绝</button><button class="nav-btn" type="button" data-identity-decision="approve" data-application-id="${item.id}">通过</button>` : ""}</div>`;
+      approvalList.appendChild(article);
+    });
+  }
+
+  function selectedIdentityApplicationIds() {
+    if (!approvalList) return [];
+    return Array.from(approvalList.querySelectorAll(".approval-row-check:checked")).map((input) => Number(input.value));
+  }
+
+  function updateApprovalSelection() {
+    const selected = selectedIdentityApplicationIds();
+    const all = approvalList ? Array.from(approvalList.querySelectorAll(".approval-row-check")) : [];
+    if (approvalSelectedCount) approvalSelectedCount.textContent = `已选择 ${selected.length} 项`;
+    if (approvalSelectAll) {
+      approvalSelectAll.checked = all.length > 0 && selected.length === all.length;
+      approvalSelectAll.indeterminate = selected.length > 0 && selected.length < all.length;
+    }
+  }
+
+  async function submitBatchIdentityReview(decision) {
+    const applicationIds = selectedIdentityApplicationIds();
+    if (!applicationIds.length) {
+      window.alert("请先选择需要处理的身份申请");
+      return;
+    }
+    const message = decision === "approve" ? `确定批量通过 ${applicationIds.length} 条身份申请吗？` : `确定批量拒绝 ${applicationIds.length} 条身份申请吗？`;
+    if (!window.confirm(message)) return;
+    const note = window.prompt(decision === "approve" ? "批量审核说明（可选）" : "请填写批量拒绝原因", "") ?? null;
+    if (note == null) return;
+    try {
+      const result = await api.batchReviewIdentityApplications({ application_ids: applicationIds, decision, note });
+      window.alert(`已处理 ${result.processed_count || applicationIds.length} 条身份申请`);
+      await loadIdentityApplications();
+    } catch (err) {
+      window.alert(err.message || "批量审核失败");
+    }
+  }
+
+  function renderOrganizationUnits(items) {
+    organizationUnitsCache = Array.isArray(items) ? items : [];
+    if (organizationUnitGrid) {
+      organizationUnitGrid.innerHTML = organizationUnitsCache.length ? "" : '<div class="organization-empty">当前岗位没有可管理的组织单元</div>';
+      organizationUnitsCache.forEach((unit) => {
+        const card = document.createElement("article");
+        card.className = "organization-unit-card";
+        const issues = unit.issues || [];
+        card.innerHTML = `<h4>${escapeHtml(unit.name)}</h4><p>${escapeHtml(unit.code)} · ${escapeHtml(unit.unit_type)}</p>
+          ${unit.unit_type === "college" ? `<div class="organization-unit-metrics"><span><b>${formatNumber(unit.primary_managers)}</b>主要负责人</span><span><b>${formatNumber(unit.identity_reviewers)}</b>审核员</span><span><b>${formatNumber(unit.covered_class_count)}/${formatNumber(unit.class_count)}</b>辅导员覆盖</span></div><div class="organization-issues">${issues.map((issue) => `<em>${escapeHtml(issue)}</em>`).join("")}</div>` : ""}`;
+        organizationUnitGrid.appendChild(card);
+      });
+    }
+    const manageable = organizationUnitsCache.filter((item) => item.unit_type === "college" || ["academic_office", "platform"].includes(item.unit_type));
+    if (organizationUnitFilter) {
+      const current = Number(organizationUnitFilter.value || 0);
+      organizationUnitFilter.innerHTML = manageable.map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join("");
+      if (manageable.some((item) => item.id === current)) organizationUnitFilter.value = String(current);
+    }
+  }
+
+  function renderOrganizationPositions(items) {
+    organizationSlotsCache = Array.isArray(items) ? items : [];
+    if (organizationPositionList) {
+      organizationPositionList.innerHTML = organizationSlotsCache.length ? "" : '<div class="organization-empty">当前组织没有可管理的岗位编制</div>';
+      organizationSlotsCache.forEach((slot) => {
+        const row = document.createElement("article");
+        row.className = "organization-position";
+        row.innerHTML = `<div class="organization-position-head"><div><h4>${escapeHtml(slot.title)}</h4><small>${escapeHtml(slot.position_code)} · 在岗 ${formatNumber(slot.active_occupants)}${slot.max_occupants ? ` / ${formatNumber(slot.max_occupants)}` : ""}</small></div></div><div class="organization-assignees">${(slot.assignments || []).map((item) => `<div class="organization-assignee"><span>${escapeHtml(item.name)} · ${escapeHtml(item.staff_no)}<small>${escapeHtml(item.assignment_type)}${item.valid_until ? ` · 至 ${escapeHtml(item.valid_until)}` : " · 长期有效"}${(item.scope_ids || []).length ? ` · 班级 ${item.scope_ids.map((value) => escapeHtml(value)).join("、")}` : ""}</small></span><span class="organization-assignment-actions"><button type="button" data-update-assignment-id="${item.id}" data-position-code="${escapeHtml(slot.position_code)}" data-valid-until="${escapeHtml(item.valid_until || "")}" data-scope-ids="${escapeHtml((item.scope_ids || []).join(","))}">调整/续期</button><button type="button" data-transfer-assignment-id="${item.id}" data-user-id="${item.user_id}" data-assignee-name="${escapeHtml(item.name)}" data-position-code="${escapeHtml(slot.position_code)}" data-position-title="${escapeHtml(slot.title)}" data-valid-until="${escapeHtml(item.valid_until || "")}" data-scope-ids="${escapeHtml((item.scope_ids || []).join(","))}">交接</button><button class="organization-end-btn" type="button" data-end-assignment-id="${item.id}" data-position-code="${escapeHtml(slot.position_code)}" data-assignee-name="${escapeHtml(item.name)}">结束任职</button></span></div>`).join("") || '<small>当前岗位空缺</small>'}</div>`;
+        organizationPositionList.appendChild(row);
+      });
+    }
+    if (organizationPositionSelect) organizationPositionSelect.innerHTML = organizationSlotsCache.map((slot) => `<option value="${slot.id}">${escapeHtml(slot.title)}</option>`).join("");
+    updateOrganizationScopeVisibility();
+  }
+
+  function updateOrganizationScopeVisibility() {
+    const slot = organizationSlotsCache.find((item) => item.id === Number(organizationPositionSelect?.value || 0));
+    organizationScopeField?.classList.toggle("hidden", slot?.position_code !== "counselor");
+    organizationReauthField?.classList.toggle("hidden", slot?.position_code !== "platform_admin");
+  }
+
+  function renderOrganizationClassGroups(items) {
+    if (!organizationScopeIds) return;
+    const rows = Array.isArray(items) ? items : [];
+    organizationScopeIds.innerHTML = rows.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} · ${escapeHtml(item.major_name)} · ${escapeHtml(item.grade_year)}级${item.counselor_names ? ` · 当前 ${escapeHtml(item.counselor_names)}` : " · 当前未覆盖"}</option>`).join("");
+  }
+
+  function renderOrganizationStaff(items) {
+    organizationStaffCache = Array.isArray(items) ? items : [];
+    const accountStaff = organizationStaffCache.filter((item) => item.user_id);
+    if (organizationStaffSelect) organizationStaffSelect.innerHTML = accountStaff.map((item) => `<option value="${item.user_id}">${escapeHtml(item.name)} · ${escapeHtml(item.staff_no)}</option>`).join("");
+    if (!organizationStaffList) return;
+    organizationStaffList.innerHTML = organizationStaffCache.length ? "" : '<div class="organization-empty">当前范围没有匹配的教职工</div>';
+    organizationStaffCache.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "organization-staff-row";
+      row.innerHTML = `<div><b>${escapeHtml(item.name)} · ${escapeHtml(item.staff_no)}</b><small>${escapeHtml(item.college_name || "校级部门")} · ${escapeHtml(item.employment_status)}</small><div class="organization-role-tags">${(item.roles || []).map((role) => `<em>${escapeHtml(role)}</em>`).join("") || "<em>无岗位</em>"}</div></div><span>${item.user_id ? "账号已激活" : "尚未注册"}</span>`;
+      if (currentUser?.role === "admin" && item.person_identity_id && item.user_id) {
+        const accountStatus = item.account_status || "";
+        const status = row.querySelector("span");
+        if (accountStatus === "security_suspended" && status) status.firstChild.nodeValue = "账号已冻结";
+        status?.insertAdjacentHTML(
+          "beforeend",
+          `<button class="organization-security-btn" type="button" data-security-person-id="${item.person_identity_id}" data-security-name="${escapeHtml(item.name)}" data-security-status="${escapeHtml(accountStatus)}">${accountStatus === "security_suspended" ? "恢复账号" : "安全冻结"}</button>`,
+        );
+      }
+      organizationStaffList.appendChild(row);
+    });
+  }
+
+  async function securityAccountAction(button) {
+    const personIdentityId = Number(button.dataset.securityPersonId || 0);
+    const isRestore = button.dataset.securityStatus === "security_suspended";
+    if (!personIdentityId) return;
+    const actionLabel = isRestore ? "恢复" : "安全冻结";
+    const name = button.dataset.securityName || "该账号";
+    const reason = window.prompt(`请填写${name}${actionLabel}的依据`, "");
+    if (reason == null || !reason.trim()) return;
+    const reauthPassword = window.prompt("请输入当前管理员密码，完成二次安全验证", "");
+    if (!reauthPassword) return;
+    const confirmed = window.confirm(
+      isRestore
+        ? `确认恢复 ${name}？该用户需重新登录，且只会获得当前仍有效的岗位和身份。`
+        : `确认安全冻结 ${name}？该用户的所有既有会话会立即失效。`,
+    );
+    if (!confirmed) return;
+    try {
+      const payload = { reason: reason.trim(), reauth_password: reauthPassword };
+      if (isRestore) await api.securityRestoreAccount(personIdentityId, payload);
+      else await api.securitySuspendAccount(personIdentityId, payload);
+      await loadOrganizationManagement();
+    } catch (err) {
+      window.alert(err.message || `${actionLabel}账号失败`);
+    }
+  }
+
+  function studentLifecyclePanel() {
+    if (!organizationStaffList) return null;
+    let panel = $("student-lifecycle-panel");
+    if (!panel) {
+      panel = document.createElement("section");
+      panel.id = "student-lifecycle-panel";
+      panel.className = "organization-section student-lifecycle-panel";
+      organizationStaffList.closest(".organization-section")?.after(panel);
+    }
+    return panel;
+  }
+
+  async function loadStudentLifecycle(status = "active") {
+    const panel = studentLifecyclePanel();
+    if (!panel || currentUser?.role !== "academic_office") return;
+    panel.innerHTML = '<div class="organization-section-head"><div><h3>学生学籍生命周期</h3><p>休学暂停学生业务身份；毕业与退学归档账号。批量毕业会先校验整批学生。</p></div><select id="student-lifecycle-status"><option value="active">在读学生</option><option value="leave">休学学生</option><option value="graduated">已毕业</option><option value="withdrawn">已退学</option></select></div><div class="dashboard-loading">正在加载学生学籍...</div>';
+    try {
+      const data = await api.lifecycleStudents(status);
+      const items = data.items || [];
+      panel.innerHTML = `<div class="organization-section-head"><div><h3>学生学籍生命周期</h3><p>休学暂停学生业务身份；毕业与退学归档账号。批量毕业会先校验整批学生。</p></div><select id="student-lifecycle-status"><option value="active">在读学生</option><option value="leave">休学学生</option><option value="graduated">已毕业</option><option value="withdrawn">已退学</option></select></div>${status === "active" ? '<button class="nav-btn secondary" type="button" data-student-batch-graduate>批量办理毕业</button>' : ""}<div class="student-lifecycle-list">${items.map((item) => {
+        const actions = item.student_status === "active"
+          ? '<button type="button" data-student-event="student_leave">办理休学</button><button type="button" data-student-event="student_graduation">办理毕业</button><button type="button" data-student-event="student_withdrawal">办理退学</button>'
+          : item.student_status === "leave" ? '<button type="button" data-student-event="student_resume">办理复学</button><button type="button" data-student-event="student_graduation">办理毕业</button><button type="button" data-student-event="student_withdrawal">办理退学</button>' : "";
+        return `<div class="organization-staff-row"><div><b>${escapeHtml(item.name)} · ${escapeHtml(item.student_no)}</b><small>${escapeHtml(item.college_name || "-")} · ${escapeHtml(item.class_name || "-")} · ${escapeHtml(item.student_status)}</small></div><span>${item.student_status === "active" ? `<input type="checkbox" data-student-batch-id="${item.person_identity_id}" aria-label="选择 ${escapeHtml(item.name)}" />` : ""}${actions ? `<span class="student-lifecycle-actions" data-student-person-id="${item.person_identity_id}" data-student-name="${escapeHtml(item.name)}">${actions}</span>` : ""}</span></div>`;
+      }).join("") || '<div class="organization-empty">当前筛选没有学生</div>'}</div>`;
+      const select = $("student-lifecycle-status");
+      if (select) select.value = status;
+    } catch (err) {
+      panel.innerHTML = `<div class="dashboard-loading is-error">学生学籍加载失败：${escapeHtml(err.message || err)}</div>`;
+    }
+  }
+
+  async function studentLifecycleAction(button) {
+    const personIdentityId = Number(button.parentElement?.dataset.studentPersonId || 0);
+    const eventType = button.dataset.studentEvent || "";
+    if (!personIdentityId || !eventType) return;
+    const name = button.parentElement?.dataset.studentName || "该学生";
+    const labels = { student_leave: "休学", student_resume: "复学", student_graduation: "毕业", student_withdrawal: "退学" };
+    const reason = window.prompt(`请填写${name}办理${labels[eventType] || "学籍变动"}的依据`, "");
+    if (reason == null || !reason.trim() || !window.confirm(`确认办理${name}${labels[eventType]}？该操作会立即撤销旧会话。`)) return;
+    try {
+      await api.studentLifecycleAction(personIdentityId, eventType, { reason: reason.trim() });
+      await loadStudentLifecycle($("student-lifecycle-status")?.value || "active");
+    } catch (err) { window.alert(err.message || "办理学籍变动失败"); }
+  }
+
+  async function batchGraduateStudents() {
+    const ids = Array.from(document.querySelectorAll("[data-student-batch-id]:checked")).map((input) => Number(input.dataset.studentBatchId));
+    if (!ids.length) { window.alert("请先勾选需要办理毕业的学生"); return; }
+    const reason = window.prompt("请填写本批学生毕业的审核依据", "");
+    if (reason == null || !reason.trim() || !window.confirm(`确认批量办理 ${ids.length} 名学生毕业？整批会先完成一致性校验。`)) return;
+    try {
+      await api.batchGraduateStudents({ person_identity_ids: ids, reason: reason.trim() });
+      await loadStudentLifecycle("active");
+    } catch (err) { window.alert(err.message || "批量毕业失败"); }
+  }
+
+  function renderOrganizationQueues(items) {
+    if (!organizationQueueList) return;
+    const rows = Array.isArray(items) ? items : [];
+    organizationQueueList.innerHTML = rows.length ? "" : '<div class="organization-empty">当前范围没有审核队列</div>';
+    rows.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "organization-queue-row";
+      row.innerHTML = `<div><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.organization_name)} · SLA ${formatNumber(item.sla_hours)} 小时</small></div><span>${formatNumber(item.pending_count)} 待处理</span>`;
+      organizationQueueList.appendChild(row);
+    });
+  }
+
+  async function loadOrganizationUnitDetail() {
+    const unitId = Number(organizationUnitFilter?.value || 0) || null;
+    const unit = organizationUnitsCache.find((item) => item.id === unitId);
+    const collegeId = unit?.source_college_id || null;
+    try {
+      const [slots, staff, classes] = await Promise.all([
+        api.organizationPositionSlots(unitId),
+        api.organizationStaff({ college_id: collegeId, query: organizationStaffSearch?.value || "" }),
+        api.organizationClassGroups(collegeId),
+      ]);
+      renderOrganizationPositions(slots.items || []);
+      renderOrganizationStaff(staff.items || []);
+      renderOrganizationClassGroups(classes.items || []);
+    } catch (err) {
+      if (organizationPositionList) organizationPositionList.innerHTML = `<div class="dashboard-loading is-error">岗位数据加载失败：${escapeHtml(err.message || err)}</div>`;
+    }
+  }
+
+  async function loadOrganizationManagement() {
+    if (!hasFeature("organization_management") || !organizationUnitGrid) return;
+    organizationUnitGrid.innerHTML = '<div class="dashboard-loading">正在加载组织覆盖...</div>';
+    try {
+      const [units, queues] = await Promise.all([api.organizationUnits(), api.organizationReviewQueues()]);
+      renderOrganizationUnits(units.items || []);
+      renderOrganizationQueues(queues.items || []);
+      if (organizationValidFrom && !organizationValidFrom.value) organizationValidFrom.value = new Date().toISOString().slice(0, 10);
+      await loadOrganizationUnitDetail();
+      if (currentUser?.role === "academic_office") await loadStudentLifecycle();
+    } catch (err) {
+      organizationUnitGrid.innerHTML = `<div class="dashboard-loading is-error">组织数据加载失败：${escapeHtml(err.message || err)}</div>`;
+    }
+  }
+
+  async function loadNotifications() {
+    const box = $("notifications-list"); if (!box) return;
+    box.innerHTML='<div class="notification-state">正在加载通知...</div>';
+    try { const data = await api.notifications(); if($("notifications-unread-count")) $("notifications-unread-count").textContent=String(data.unread_count||0); box.innerHTML = (data.items || []).map((n) => `<article class="notification-card${n.read_at?" is-read":""}"><span class="notification-mark">${n.read_at?"✓":"!"}</span><div class="notification-copy"><div><b>${escapeHtml(n.title)}</b><em>${n.read_at?"已读":"未读"}</em></div><p>${escapeHtml(n.body)}</p><small>${escapeHtml(n.created_at)}</small></div><div class="notification-actions">${n.target_view?`<button class="notification-open" type="button" data-notification-target="${escapeHtml(n.target_view)}" data-notification-id="${n.id}">查看详情</button>`:""}${n.read_at?"":`<button type="button" data-notification-read="${n.id}">标记已读</button>`}</div></article>`).join("") || '<div class="notification-state"><b>暂无通知</b><span>课程和业务动态会集中出现在这里。</span></div>'; } catch (err) { box.innerHTML=`<div class="notification-state is-error"><b>通知加载失败</b><span>${escapeHtml(err.message||"请稍后重试")}</span></div>`; }
+  }
+  async function loadCourseSpace() {
+    const picker = $("course-space-picker"), box = $("course-space-content"); if (!picker || !box) return;
+    box.innerHTML = '<div class="course-space-loading">正在加载课程内容...</div>';
+    try {
+      const classes = await api.myTeachingClasses(); const items = classes.items || [];
+      if (!picker.options.length) picker.innerHTML = items.map((x) => `<option value="${x.id}">${escapeHtml(x.course_name)} · ${escapeHtml(x.course_code || "")}</option>`).join("");
+      const id = Number(picker.value || items[0]?.id); if (!id) { box.innerHTML='<div class="course-space-empty"><b>暂无可用课程</b><span>当前身份还没有关联的授课或选课记录。</span></div>'; $("course-space-teacher-actions").hidden=true; return; }
+      const data = await api.courseSpace(id); const item=data.item, course=item.course;
+      const summary=$("course-space-summary"); if(summary) summary.innerHTML=`<span>${escapeHtml(course.course_code || "COURSE")}</span><b>${escapeHtml(course.course_name)}</b><small>${escapeHtml(String(course.year || ""))} ${escapeHtml(course.semester || "")} · ${escapeHtml(course.classroom || "教室待定")}</small><em>${item.announcements.length} 条公告 · ${item.resources.length} 份资料</em>`;
+      const announcementHtml=item.announcements.map(x=>`<article class="course-announcement-card"><div class="course-card-mark">公告</div><div><div class="course-card-meta"><span>课程公告</span><div><time>${escapeHtml(x.published_at || "")}</time>${currentUser?.role==="teacher"?`<button type="button" class="course-announcement-delete" data-delete-announcement="${x.id}">删除</button>`:""}</div></div><h4>${escapeHtml(x.title)}</h4><p>${escapeHtml(x.body)}</p></div></article>`).join("")||'<div class="course-space-empty compact"><b>还没有课程公告</b><span>教师发布后会展示在这里，并通知本课程学生。</span></div>';
+      const resourceHtml=item.resources.map(x=>{ const externalUrl=/^https?:\/\//i.test(x.resource_url||"")?x.resource_url:""; const action=x.has_attachment?`<button type="button" class="course-resource-action" data-download-course-resource="${x.id}" data-file-name="${escapeHtml(x.file_name)}">下载附件</button>`:(externalUrl?`<a class="course-resource-action" href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">打开链接</a>`:'<span class="course-resource-unavailable">附件不可用</span>'); return `<article class="course-resource-card"><div class="course-resource-icon">${escapeHtml((x.file_name || "链").split(".").pop().slice(0,3).toUpperCase())}</div><div><b>${escapeHtml(x.title)}</b><span>${escapeHtml(x.description || "课程学习资料")}</span><small>${escapeHtml(x.file_name || x.resource_url || "在线资源")}${x.file_size?` · ${assignmentFileSize(x.file_size)}`:""}</small>${action}</div></article>`; }).join("")||'<div class="course-space-empty compact"><b>还没有课程资料</b><span>课件、讲义和外部链接会集中展示在这里。</span></div>';
+      box.innerHTML=`<section class="course-space-block" data-course-content="announcements"><div class="course-space-section-head"><div><span>LATEST UPDATES</span><h3>课程公告</h3></div><b>${item.announcements.length}</b></div><div class="course-announcement-list">${announcementHtml}</div></section><section class="course-space-block" data-course-content="resources"><div class="course-space-section-head"><div><span>LEARNING MATERIALS</span><h3>课程资料</h3></div><b>${item.resources.length}</b></div><div class="course-resource-grid">${resourceHtml}</div></section>`;
+      box.querySelectorAll("[data-download-course-resource]").forEach((button)=>button.addEventListener("click",()=>api.downloadCourseResource(button.dataset.downloadCourseResource,button.dataset.fileName)));
+      box.querySelectorAll("[data-delete-announcement]").forEach((button)=>button.addEventListener("click",async()=>{
+        if(!window.confirm("确定删除这条课程公告吗？删除后学生将无法再查看对应公告和通知。")) return;
+        try { button.disabled=true; button.textContent="删除中"; await api.deleteAnnouncement(button.dataset.deleteAnnouncement); await loadCourseSpace(); }
+        catch(err) { button.disabled=false; button.textContent="删除"; window.alert(err.message||"公告删除失败"); }
+      }));
+      $("course-space-teacher-actions").hidden=currentUser?.role!=="teacher";
+    } catch(err){box.innerHTML=`<div class="course-space-empty"><b>课程空间加载失败</b><span>${escapeHtml(err.message||err)}</span></div>`; $("course-space-teacher-actions").hidden=true;}
+  }
+
+  const attendanceStatusText = {present:"出勤",late:"迟到",leave:"请假",absent:"缺勤"};
+  const questionStatusText = {open:"待回复",answered:"已回复",closed:"已关闭"};
+
+  async function fillCoursePicker(picker) {
+    const data=await api.myTeachingClasses(), items=data.items||[];
+    const previous=picker.value;
+    picker.innerHTML=items.map(item=>`<option value="${item.id}">${escapeHtml(item.course_name)} · ${escapeHtml(item.course_code||"")}</option>`).join("");
+    if(previous&&items.some(item=>String(item.id)===previous)) picker.value=previous;
+    return {items,id:Number(picker.value||items[0]?.id)};
+  }
+
+  async function loadAttendanceWorkspace() {
+    const picker=$("attendance-course-picker"), list=$("attendance-session-list"), editor=$("attendance-editor"); if(!picker||!list) return;
+    list.innerHTML='<div class="stage-d-empty">正在加载课程场次...</div>';
+    $("attendance-teacher-tools").hidden=currentUser?.role!=="teacher";
+    $("attendance-page-title").textContent=currentUser?.role==="teacher"?"课程场次与考勤":"我的考勤记录";
+    try {
+      const {id}=await fillCoursePicker(picker); if(!id){list.innerHTML='<div class="stage-d-empty">当前没有关联课程</div>';return;}
+      const data=await api.courseSessions(id), items=data.items||[];
+      list.innerHTML=items.map(item=>`<button class="stage-d-session-card" type="button" data-attendance-session="${item.id}"><span>第 ${item.session_no} 次课 · ${escapeHtml(item.session_date)}</span><b>${escapeHtml(item.topic||"常规教学")}</b><small>${escapeHtml(item.start_time||"时间待定")}${item.end_time?`—${escapeHtml(item.end_time)}`:""} · ${escapeHtml(item.classroom||"教室待定")}</small>${currentUser?.role==="teacher"?`<em>${item.recorded_count}/${item.enrolled_count} 已登记</em>`:`<em class="attendance-${item.my_status||"pending"}">${attendanceStatusText[item.my_status]||"待登记"}</em>`}</button>`).join("")||'<div class="stage-d-empty">还没有课程场次</div>';
+      list.querySelectorAll("[data-attendance-session]").forEach(button=>button.addEventListener("click",()=>loadAttendanceEditor(button.dataset.attendanceSession)));
+      if(items.length) await loadAttendanceEditor(items[0].id); else if(editor) editor.innerHTML='<div class="stage-d-empty">教师建立场次后可开始点名</div>';
+    } catch(err){list.innerHTML=`<div class="stage-d-empty is-error">${escapeHtml(err.message||"考勤加载失败")}</div>`;}
+  }
+
+  async function loadAttendanceEditor(sessionId) {
+    const editor=$("attendance-editor"); if(!editor) return; editor.innerHTML='<div class="stage-d-empty">正在加载点名记录...</div>';
+    try {
+      const data=await api.sessionAttendance(sessionId), detail=data.item, session=detail.session, items=detail.items||[];
+      if(currentUser?.role!=="teacher") {
+        const own=items[0]; editor.innerHTML=own?`<article class="attendance-own-card"><span>${escapeHtml(session.session_date)} · 第 ${session.session_no} 次课</span><b class="attendance-${own.status}">${attendanceStatusText[own.status]||own.status}</b><p>${escapeHtml(own.note||"教师未填写备注")}</p></article>`:'<div class="stage-d-empty">本场次考勤尚未登记</div>'; return;
+      }
+      editor.innerHTML=`<form id="attendance-roster-form" data-session-id="${sessionId}"><div class="attendance-roster-head"><b>${escapeHtml(session.session_date)} · 第 ${session.session_no} 次课</b><button type="button" data-mark-all-present>全部设为出勤</button></div><div class="attendance-roster">${items.map(item=>`<div class="attendance-row"><div><b>${escapeHtml(item.student_name)}</b><small>${escapeHtml(item.student_no)}</small></div><select data-attendance-status="${item.student_id}"><option value="present" ${item.status==="present"?"selected":""}>出勤</option><option value="late" ${item.status==="late"?"selected":""}>迟到</option><option value="leave" ${item.status==="leave"?"selected":""}>请假</option><option value="absent" ${item.status==="absent"?"selected":""}>缺勤</option></select><input data-attendance-note="${item.student_id}" value="${escapeHtml(item.note||"")}" placeholder="修正说明或备注" /></div>`).join("")}</div><button class="nav-btn" type="submit">保存本场考勤</button><span class="stage-d-form-message"></span></form>`;
+      const form=$("attendance-roster-form"); form.querySelector("[data-mark-all-present]").addEventListener("click",()=>form.querySelectorAll("[data-attendance-status]").forEach(select=>{select.value="present";}));
+      form.addEventListener("submit",async event=>{event.preventDefault();const button=form.querySelector('button[type="submit"]'),message=form.querySelector(".stage-d-form-message");try{button.disabled=true;button.textContent="保存中...";const entries=Array.from(form.querySelectorAll("[data-attendance-status]")).map(select=>({student_id:Number(select.dataset.attendanceStatus),status:select.value,note:form.querySelector(`[data-attendance-note="${select.dataset.attendanceStatus}"]`).value}));await api.saveSessionAttendance(sessionId,{entries});message.textContent="考勤已保存，后续修正会记录审计痕迹";await loadAttendanceWorkspace();}catch(err){message.textContent=err.message||"保存失败";}finally{button.disabled=false;button.textContent="保存本场考勤";}});
+    } catch(err){editor.innerHTML=`<div class="stage-d-empty is-error">${escapeHtml(err.message||"点名记录加载失败")}</div>`;}
+  }
+
+  async function loadCourseQuestions() {
+    const picker=$("questions-course-picker"), list=$("course-question-list"); if(!picker||!list) return;
+    $("student-question-tools").hidden=currentUser?.role!=="student"; list.innerHTML='<div class="stage-d-empty">正在加载课程问题...</div>';
+    try {
+      const {id}=await fillCoursePicker(picker); if(!id){list.innerHTML='<div class="stage-d-empty">当前没有关联课程</div>';return;}
+      const data=await api.courseQuestions(id), items=data.items||[];
+      list.innerHTML=items.map(item=>`<article class="question-card is-${item.status}"><header><div><span>${item.pinned?"置顶 · ":""}${item.visibility==="private"?"私密问题":"课程公开"}</span><h3>${escapeHtml(item.title)}</h3><small>${escapeHtml(item.student_name||"学生")} · ${escapeHtml(item.created_at)}</small></div><em>${questionStatusText[item.status]||item.status}</em></header><p>${escapeHtml(item.body)}</p><div class="question-replies">${(item.replies||[]).map(reply=>`<div><b>${reply.reply_role==="teacher"?"教师回复":"学生追问"}</b><p>${escapeHtml(reply.body)}</p><small>${escapeHtml(reply.created_at)}</small></div>`).join("")}</div>${item.status!=="closed"&&(currentUser?.role==="teacher"||item.is_own)?`<form data-question-reply="${item.id}"><input required placeholder="${currentUser?.role==="teacher"?"回复学生问题":"继续追问"}" /><button type="submit">发送</button></form>`:""}${currentUser?.role==="teacher"?`<footer><button type="button" data-question-pin="${item.id}" data-pinned="${item.pinned?0:1}">${item.pinned?"取消置顶":"置顶"}</button><button type="button" data-question-status="${item.id}" data-status="${item.status==="closed"?"open":"closed"}">${item.status==="closed"?"重新打开":"关闭问题"}</button></footer>`:""}</article>`).join("")||'<div class="stage-d-empty">当前课程还没有问题</div>';
+      list.querySelectorAll("[data-question-reply]").forEach(form=>form.addEventListener("submit",async event=>{event.preventDefault();const button=form.querySelector("button"),input=form.querySelector("input");try{button.disabled=true;await api.replyCourseQuestion(form.dataset.questionReply,{body:input.value});await loadCourseQuestions();}catch(err){window.alert(err.message||"回复失败");button.disabled=false;}}));
+      list.querySelectorAll("[data-question-pin]").forEach(button=>button.addEventListener("click",async()=>{await api.moderateCourseQuestion(button.dataset.questionPin,{pinned:button.dataset.pinned==="1"});loadCourseQuestions();}));
+      list.querySelectorAll("[data-question-status]").forEach(button=>button.addEventListener("click",async()=>{if(button.dataset.status==="closed"&&!window.confirm("确定关闭这个问题吗？"))return;await api.moderateCourseQuestion(button.dataset.questionStatus,{status:button.dataset.status});loadCourseQuestions();}));
+    } catch(err){list.innerHTML=`<div class="stage-d-empty is-error">${escapeHtml(err.message||"课程答疑加载失败")}</div>`;}
+  }
+
+  const gradeStatusText={not_submitted:"未提交",draft:"草稿",submitted:"待审批",returned:"已退回",approved:"已审批",published:"已发布"};
+  function operationFilters(prefix){
+    return {keyword:$(prefix+"-keyword")?.value.trim()||"",year:$(prefix+"-year")?.value||"",college_id:$(prefix+"-college")?.value||"",semester:$(prefix+"-semester")?.value||"",grade_status:$(prefix+(prefix==="teaching-task"?"-grade-status":"-status"))?.value||""};
+  }
+  function populateOperationFilterOptions(options){
+    ["teaching-task-year","grade-submission-year"].forEach(id=>{const select=$(id);if(!select)return;const current=select.value;select.innerHTML='<option value="">全部学年</option>'+((options.years||[]).map(year=>`<option value="${escapeHtml(String(year))}">${escapeHtml(String(year))} 学年</option>`).join(""));select.value=current;});
+    ["teaching-task-college","grade-submission-college"].forEach(id=>{const select=$(id);if(!select)return;const current=select.value;select.innerHTML='<option value="">全部学院</option>'+((options.colleges||[]).map(college=>`<option value="${college.id}">${escapeHtml(college.name)}</option>`).join(""));select.value=current;});
+  }
+  async function loadTeachingOperations(){
+    const tasksBox=$("teaching-task-list"),gradesBox=$("grade-submission-list"),issuesBox=$("teaching-issue-list"),aggregateBox=$("college-aggregate-panels");if(!tasksBox)return;
+    [tasksBox,gradesBox,issuesBox].forEach(box=>box.innerHTML='<div class="stage-d-empty">正在加载...</div>');
+    const role=currentUser?.role;$("stage-e-title").textContent=role==="teacher"?"成绩提交":role==="college_manager"?"学院教学运行":"教务教学运行";$("refresh-teaching-issues").hidden=role!=="academic_office";$("teaching-issue-panel").hidden=role==="teacher";
+    try{
+      const taskFilters=operationFilters("teaching-task"),gradeFilters=operationFilters("grade-submission");
+      const [filterOptions,tasks,grades]=await Promise.all([api.teachingOperationFilterOptions(),api.teachingTasks(taskFilters),api.gradeSubmissions(gradeFilters)]);
+      populateOperationFilterOptions(filterOptions.item||{});
+      if($("teaching-task-result-count")) $("teaching-task-result-count").textContent=`共 ${tasks.items?.length||0} 条`;
+      if($("grade-submission-result-count")) $("grade-submission-result-count").textContent=`共 ${grades.items?.length||0} 条`;
+      tasksBox.innerHTML=(tasks.items||[]).map(x=>`<div class="stage-e-row"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.college_name)} · ${escapeHtml(x.teacher_name)} · ${escapeHtml(String(x.year))} ${escapeHtml(x.semester)}</small></div><span>${x.enrolled_count}/${x.capacity} 人</span><em>${escapeHtml(x.classroom||"未排教室")}</em></div>`).join("")||'<div class="stage-d-empty">当前筛选条件下暂无教学任务</div>';
+      gradesBox.innerHTML=(grades.items||[]).map(x=>{let actions="";if(role==="teacher"&&["not_submitted","returned","draft"].includes(x.status))actions=`<button data-submit-grades="${x.teaching_class_id}">提交成绩</button>`;if(["college_manager","academic_office"].includes(role)&&x.status==="submitted")actions=`<button data-grade-action="approve" data-grade-id="${x.id}">通过</button><button data-grade-action="return" data-grade-id="${x.id}">退回</button>`;if(role==="academic_office"&&x.status==="approved")actions=`<button data-grade-action="publish" data-grade-id="${x.id}">发布</button>`;return `<div class="stage-e-row"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.college_name)} · ${escapeHtml(x.teacher_name)} · ${escapeHtml(String(x.year))} ${escapeHtml(x.semester)}${x.returned_reason?` · 退回：${escapeHtml(x.returned_reason)}`:""}</small></div><span class="grade-${x.status}">${gradeStatusText[x.status]||x.status}</span><div>${actions}</div></div>`;}).join("")||'<div class="stage-d-empty">当前筛选条件下暂无成绩记录</div>';
+      if(role!=="teacher"){const [issues,summary]=await Promise.all([api.teachingIssues(),api.teachingOperationsSummary()]);issuesBox.innerHTML=(issues.items||[]).map(x=>`<div class="stage-e-row"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.evidence)}${x.resolution?` · ${escapeHtml(x.resolution)}`:""}</small></div><span>${escapeHtml(x.status)}</span><div>${x.status!=="resolved"?`<button data-issue-status="processing" data-issue-id="${x.id}">处理中</button><button data-issue-status="resolved" data-issue-id="${x.id}">解决</button>`:""}</div></div>`).join("")||'<div class="stage-d-empty">暂无教学异常</div>';const item=summary.item;$("stage-e-summary").innerHTML=`<article><b>${item.operations.length}</b><span>开课班</span></article><article><b>${issues.items.length}</b><span>异常事项</span></article>${role==="college_manager"?`<article><b>${item.workload.length}</b><span>授课教师</span></article>`:""}`;aggregateBox.innerHTML=role==="college_manager"?`<section class="stage-d-panel"><div class="stage-d-panel-head"><h3>教师工作量</h3></div>${item.workload.map(x=>`<div class="stage-e-row"><b>${escapeHtml(x.teacher_name)}</b><span>${x.class_count} 个班 · ${x.student_count} 人次</span></div>`).join("")}</section><section class="stage-d-panel"><div class="stage-d-panel-head"><h3>教学质量聚合</h3></div>${item.quality.map(x=>`<div class="stage-e-row"><b>${escapeHtml(x.course_name)}</b><span>${x.sample_size<5?"样本不足，不展示":`均分 ${x.average_score} · 通过率 ${x.pass_rate}%`}</span></div>`).join("")}</section>`:"";}
+    }catch(err){const message=`<div class="stage-d-empty is-error">${escapeHtml(err.message||"教学运行加载失败")}</div>`;tasksBox.innerHTML=message;gradesBox.innerHTML=message;}
+  }
+
+  async function submitOrganizationAssignment(event) {
+    event.preventDefault();
+    if (organizationAssignmentMessage) organizationAssignmentMessage.textContent = "";
+    const scopeIds = Array.from(organizationScopeIds?.selectedOptions || []).map((option) => Number(option.value)).filter((value) => Number.isInteger(value) && value > 0);
+    try {
+      await api.createPositionAssignment({
+        position_slot_id: Number(organizationPositionSelect?.value),
+        user_id: Number(organizationStaffSelect?.value),
+        assignment_type: organizationAssignmentType?.value || "primary",
+        scope_ids: scopeIds,
+        valid_from: organizationValidFrom?.value || new Date().toISOString().slice(0, 10),
+        valid_until: organizationValidUntil?.value || null,
+        reason: (organizationAssignmentReason?.value || "").trim(),
+        reauth_password: organizationReauthPassword?.value || null,
+      });
+      if (organizationAssignmentMessage) organizationAssignmentMessage.textContent = "岗位任命已生效";
+      if (organizationAssignmentReason) organizationAssignmentReason.value = "";
+      if (organizationReauthPassword) organizationReauthPassword.value = "";
+      await loadOrganizationManagement();
+    } catch (err) {
+      if (organizationAssignmentMessage) organizationAssignmentMessage.textContent = err.message || "岗位任命失败";
+    }
+  }
+
+  async function endOrganizationAssignment(button) {
+    const assignmentId = Number(button.dataset.endAssignmentId);
+    let impact;
+    try {
+      impact = (await api.positionAssignmentImpact(assignmentId)).item;
+    } catch (err) {
+      window.alert(err.message || "无法检查岗位撤销影响");
+      return;
+    }
+    if (!impact.can_end) {
+      window.alert((impact.warnings || []).join("\n") || "当前岗位不能结束任职");
+      return;
+    }
+    const warningText = (impact.warnings || []).join("\n");
+    if (!window.confirm(`即将结束“${impact.name || button.dataset.assigneeName || "当前人员"}”的${impact.position_title || "岗位"}任职。\n${warningText}\n原岗位会话将立即失效，是否继续？`)) return;
+    const reason = window.prompt("请填写结束任职或岗位交接原因", "") ?? null;
+    if (reason == null || !reason.trim()) return;
+    let reauthPassword = null;
+    if (button.dataset.positionCode === "platform_admin") {
+      reauthPassword = window.prompt("请输入当前管理员密码完成二次验证", "") ?? null;
+      if (!reauthPassword) return;
+    }
+    try {
+      await api.endPositionAssignment(assignmentId, { reason: reason.trim(), reauth_password: reauthPassword });
+      await loadOrganizationManagement();
+    } catch (err) {
+      window.alert(err.message || "结束任职失败");
+    }
+  }
+
+  async function updateOrganizationAssignment(button) {
+    const currentValidUntil = button.dataset.validUntil || "";
+    const validUntil = window.prompt("请输入新的任职截止日期（YYYY-MM-DD，留空表示长期有效）", currentValidUntil);
+    if (validUntil == null) return;
+    let scopeIds = null;
+    if (button.dataset.positionCode === "counselor") {
+      const scopeText = window.prompt("请输入负责的行政班 ID，多个用英文逗号分隔", button.dataset.scopeIds || "");
+      if (scopeText == null) return;
+      scopeIds = scopeText.split(",").map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0);
+      if (!scopeIds.length) {
+        window.alert("辅导员岗位至少需要一个行政班范围");
+        return;
+      }
+    }
+    const reason = window.prompt("请填写本次调整或续期依据", "") ?? null;
+    if (reason == null || !reason.trim()) return;
+    let reauthPassword = null;
+    if (button.dataset.positionCode === "platform_admin") {
+      reauthPassword = window.prompt("平台管理员岗位调整属于高风险操作，请输入当前管理员密码", "") ?? null;
+      if (!reauthPassword) return;
+    }
+    try {
+      await api.updatePositionAssignment(Number(button.dataset.updateAssignmentId), {
+        scope_ids: scopeIds,
+        valid_until: validUntil.trim() || null,
+        reason: reason.trim(),
+        reauth_password: reauthPassword,
+      });
+      await loadOrganizationManagement();
+    } catch (err) {
+      window.alert(err.message || "调整任职失败");
+    }
+  }
+
+  function closeOrganizationTransfer() {
+    if (organizationTransferModal) organizationTransferModal.hidden = true;
+    if (organizationTransferMessage) organizationTransferMessage.textContent = "";
+    if (organizationTransferReauthPassword) organizationTransferReauthPassword.value = "";
+  }
+
+  function openOrganizationTransfer(button) {
+    if (!organizationTransferModal) return;
+    const positionCode = button.dataset.positionCode || "";
+    const currentUserId = Number(button.dataset.userId || 0);
+    const candidates = organizationStaffCache.filter((item) => item.user_id && Number(item.user_id) !== currentUserId);
+    if (organizationTransferAssignmentId) organizationTransferAssignmentId.value = button.dataset.transferAssignmentId || "";
+    if (organizationTransferPositionCode) organizationTransferPositionCode.value = positionCode;
+    if (organizationTransferTitle) organizationTransferTitle.textContent = `${button.dataset.positionTitle || "岗位"}交接`;
+    if (organizationTransferImpact) organizationTransferImpact.textContent = `当前任职人：${button.dataset.assigneeName || "-"}。确认后将先建立继任授权，再结束原任职；原任职人的旧会话立即失效。`;
+    if (organizationTransferSuccessor) organizationTransferSuccessor.innerHTML = candidates.map((item) => `<option value="${item.user_id}">${escapeHtml(item.name)} · ${escapeHtml(item.staff_no)}</option>`).join("");
+    if (organizationTransferType) organizationTransferType.value = button.dataset.assignmentType || (positionCode === "identity_reviewer" ? "reviewer" : "primary");
+    if (organizationTransferValidFrom) organizationTransferValidFrom.value = new Date().toISOString().slice(0, 10);
+    if (organizationTransferValidUntil) organizationTransferValidUntil.value = button.dataset.validUntil || "";
+    if (organizationTransferReason) organizationTransferReason.value = "";
+    if (organizationTransferScopes && organizationScopeIds) {
+      organizationTransferScopes.innerHTML = organizationScopeIds.innerHTML;
+      const selected = new Set((button.dataset.scopeIds || "").split(",").filter(Boolean));
+      Array.from(organizationTransferScopes.options).forEach((option) => { option.selected = selected.has(option.value); });
+    }
+    organizationTransferScopeField?.classList.toggle("hidden", positionCode !== "counselor");
+    organizationTransferReauthField?.classList.toggle("hidden", positionCode !== "platform_admin");
+    if (organizationTransferMessage) organizationTransferMessage.textContent = candidates.length ? "" : "当前组织没有其他已激活教职工账号可作为继任人";
+    organizationTransferModal.hidden = false;
+  }
+
+  async function submitOrganizationTransfer(event) {
+    event.preventDefault();
+    if (organizationTransferMessage) organizationTransferMessage.textContent = "";
+    const scopeIds = Array.from(organizationTransferScopes?.selectedOptions || []).map((option) => Number(option.value));
+    try {
+      await api.transferPositionAssignment(Number(organizationTransferAssignmentId?.value), {
+        successor_user_id: Number(organizationTransferSuccessor?.value),
+        assignment_type: organizationTransferType?.value || "primary",
+        scope_ids: organizationTransferPositionCode?.value === "counselor" ? scopeIds : null,
+        valid_from: organizationTransferValidFrom?.value || new Date().toISOString().slice(0, 10),
+        valid_until: organizationTransferValidUntil?.value || null,
+        reason: (organizationTransferReason?.value || "").trim(),
+        reauth_password: organizationTransferReauthPassword?.value || null,
+      });
+      closeOrganizationTransfer();
+      await loadOrganizationManagement();
+    } catch (err) {
+      if (organizationTransferMessage) organizationTransferMessage.textContent = err.message || "岗位交接失败";
+    }
+  }
+
+  async function loadIdentityApplications() {
+    if (!approvalList || !hasFeature("approval_center")) return;
+    approvalList.innerHTML = '<div class="dashboard-loading">正在加载身份申请...</div>';
+    try {
+      const data = await api.identityApplications(approvalStatusFilter?.value || "pending");
+      renderIdentityApplications(data.items || []);
+    } catch (err) {
+      approvalList.innerHTML = `<div class="dashboard-loading is-error">身份申请加载失败：${escapeHtml(err.message || err)}</div>`;
+    }
+  }
+
+  async function submitIdentityReview(applicationId, decision) {
+    const note = window.prompt(decision === "approve" ? "审核说明（可选）" : "请填写拒绝原因", "") ?? null;
+    if (note == null) return;
+    try {
+      await api.reviewIdentityApplication(applicationId, { decision, note });
+      await loadIdentityApplications();
+    } catch (err) {
+      window.alert(err.message || "审核失败");
+    }
+  }
+
+  function setAuthSession(payload, options) {
+    const deferWorkspace = Boolean(options && options.deferWorkspace);
     currentUser = payload.user;
     localStorage.setItem(AUTH_TOKEN_KEY, payload.token);
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(payload.user || {}));
     dashboardCache = null;
-    domainSettingsCache = null;
     schemaCache = {};
     profileCache = {};
     qualityCache = {};
@@ -3236,7 +3949,9 @@
     selectedSource = "teaching";
     selectedKb = "teaching";
     applyUserUi();
-    showWorkspace();
+    if (currentUser?.account_status === "active" && !deferWorkspace) showWorkspace();
+    else if (currentUser?.account_status === "active") showRoleSelection();
+    else showRegistrationStatus();
   }
 
   async function restoreAuthSession() {
@@ -3254,10 +3969,13 @@
   }
 
   async function bootWorkspace() {
+    if (currentUser?.account_status !== "active") {
+      showRegistrationStatus();
+      return;
+    }
     applyUserUi();
-    await loadSources();
-    await loadDashboard(true);
-    await loadDomainSettings(true);
+    if (["ask","knowledge","schema","governance","data_access"].some(hasFeature)) await loadSources();
+    if (hasFeature("dashboard")) await loadDashboard(true);
     showView(preferredHomeView());
   }
 
@@ -3270,14 +3988,18 @@
         selectedKb = "teaching";
       }
       renderSourceTags(availableSources);
-      if (governanceView) governanceView.renderSourceOptions();
+      if (hasFeature("governance") && governanceView) governanceView.renderSourceOptions();
       renderSuggestions();
-      if (governanceView) await governanceView.loadSettings();
-      await loadFeedback();
-      renderKbList();
-      renderKbOverview();
-      renderSchemaConsole();
-      loadAllSchemas();
+      if (hasFeature("governance") && governanceView) await governanceView.loadSettings();
+      if (hasFeature("knowledge")) {
+        await loadFeedback();
+        renderKbList();
+        renderKbOverview();
+      }
+      if (hasFeature("schema")) {
+        renderSchemaConsole();
+        loadAllSchemas();
+      }
     } catch {
       sourceTags.innerHTML = '<span class="source-tag active">（数据源加载失败）</span>';
     }
@@ -3412,7 +4134,7 @@
           updateHistoryBadge();
         }
         conversationSource = data.source;
-        loadSchema(data.source);
+        if (hasFeature("schema")) loadSchema(data.source);
         renderSuggestions();
         renderGlossary();   // 数据源确定/切换后,刷新术语表面板到对应库
       }
@@ -3475,7 +4197,6 @@
         renderTable(data.columns, data.rows, data.column_sources);
         resultWrap.classList.add("visible");
         renderKbOverview();
-        renderDebugSteps();
         fetchConfidence(data);   // 结果已出,异步补准确率勋章(不阻塞结果显示)
 
         const isPlaceholder = data.columns.length === 1 && data.columns[0] === "error";
@@ -3523,6 +4244,125 @@
   navTargets.forEach((btn) => {
     btn.addEventListener("click", () => showView(btn.dataset.viewTarget));
   });
+  [workbenchSections, workbenchActions].forEach((container) => {
+    if (!container) return;
+    container.addEventListener("click", (event) => {
+      const trigger = event.target.closest("[data-workbench-target]");
+      if (trigger?.dataset.workbenchTarget) showView(trigger.dataset.workbenchTarget);
+    });
+  });
+  if (approvalList) {
+    approvalList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-identity-decision]");
+      if (!button) return;
+      submitIdentityReview(Number(button.dataset.applicationId), button.dataset.identityDecision);
+    });
+    approvalList.addEventListener("change", (event) => {
+      if (event.target.classList.contains("approval-row-check")) updateApprovalSelection();
+    });
+  }
+  if (approvalSelectAll) {
+    approvalSelectAll.addEventListener("change", () => {
+      approvalList?.querySelectorAll(".approval-row-check").forEach((input) => { input.checked = approvalSelectAll.checked; });
+      updateApprovalSelection();
+    });
+  }
+  if (approvalBatchApprove) approvalBatchApprove.addEventListener("click", () => submitBatchIdentityReview("approve"));
+  if (approvalBatchReject) approvalBatchReject.addEventListener("click", () => submitBatchIdentityReview("reject"));
+  if (organizationRefreshBtn) organizationRefreshBtn.addEventListener("click", loadOrganizationManagement);
+  if ($("course-space-picker")) $("course-space-picker").addEventListener("change", loadCourseSpace);
+  if ($("attendance-course-picker")) $("attendance-course-picker").addEventListener("change", loadAttendanceWorkspace);
+  if ($("questions-course-picker")) $("questions-course-picker").addEventListener("change", loadCourseQuestions);
+  if ($("course-session-form")) $("course-session-form").addEventListener("submit", async (event) => {
+    event.preventDefault(); const button=event.currentTarget.querySelector("button");
+    try { button.disabled=true; button.textContent="建立中..."; await api.createCourseSession(Number($("attendance-course-picker").value),{session_date:$("session-date").value,start_time:$("session-start").value||null,end_time:$("session-end").value||null,classroom:$("session-classroom").value,topic:$("session-topic").value}); event.currentTarget.reset(); await loadAttendanceWorkspace(); }
+    catch(err){window.alert(err.message||"课程场次创建失败");} finally{button.disabled=false;button.textContent="建立场次";}
+  });
+  if ($("course-question-form")) $("course-question-form").addEventListener("submit", async (event) => {
+    event.preventDefault(); const button=event.currentTarget.querySelector("button");
+    try { button.disabled=true; button.textContent="提交中..."; await api.createCourseQuestion(Number($("questions-course-picker").value),{title:$("question-title").value,body:$("question-body").value,visibility:$("question-visibility").value}); event.currentTarget.reset(); await loadCourseQuestions(); }
+    catch(err){window.alert(err.message||"问题提交失败");} finally{button.disabled=false;button.textContent="提交问题";}
+  });
+  document.querySelectorAll("[data-course-section]").forEach((button) => button.addEventListener("click", () => {
+    document.querySelectorAll("[data-course-section]").forEach((item) => item.classList.toggle("active", item === button));
+    document.querySelector(`[data-course-content="${button.dataset.courseSection}"]`)?.scrollIntoView({behavior: "smooth", block: "start"});
+  }));
+  if ($("course-announcement-form")) $("course-announcement-form").addEventListener("submit", async (event) => { event.preventDefault(); await api.publishAnnouncement(Number($("course-space-picker").value), {title: $("course-announcement-title").value, body: $("course-announcement-body").value}); $("course-announcement-title").value=""; $("course-announcement-body").value=""; loadCourseSpace(); });
+  if ($("course-resource-file")) $("course-resource-file").addEventListener("change", () => {
+    const file=$("course-resource-file").files[0], hint=$("course-resource-file-hint");
+    if(hint) hint.textContent=file?`已选择：${file.name} · ${assignmentFileSize(file.size)}`:"支持文档、表格、演示文稿、压缩包、图片和文本，最大 20MB";
+  });
+  if ($("course-resource-form")) $("course-resource-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const file=$("course-resource-file").files[0], url=$("course-resource-url").value.trim(), message=$("course-resource-message"), button=event.currentTarget.querySelector('button[type="submit"]');
+    try {
+      if(!file&&!url) throw new Error("请选择一个附件，或填写外部链接");
+      if(file&&file.size>20*1024*1024) throw new Error("课程资料附件不能超过 20MB");
+      button.disabled=true; button.textContent=file?"正在上传...":"正在发布..."; if(message) message.textContent="";
+      await api.addCourseResource(Number($("course-space-picker").value), {title: $("course-resource-title").value, description: $("course-resource-description").value, file_name: file?file.name:"", file_content_base64: await assignmentFileBase64(file,20*1024*1024,"课程资料附件不能超过 20MB"), content_type: file?.type||"", resource_url:url});
+      event.currentTarget.reset(); $("course-resource-file-hint").textContent="支持文档、表格、演示文稿、压缩包、图片和文本，最大 20MB"; if(message) message.textContent="课程资料已发布"; await loadCourseSpace();
+    } catch(err) { if(message) message.textContent=err.message||"课程资料发布失败"; }
+    finally { button.disabled=false; button.textContent="上传并发布资料"; }
+  });
+  document.addEventListener("click", async (event) => { const targetButton=event.target.closest("[data-notification-target]");if(targetButton){try{await api.readNotification(targetButton.dataset.notificationId);}catch(_err){}showView(targetButton.dataset.notificationTarget);return;}const button=event.target.closest("[data-notification-read]"); if(button){await api.readNotification(button.dataset.notificationRead); loadNotifications();} });
+  document.addEventListener("click",async(event)=>{
+    const submit=event.target.closest("[data-submit-grades]");if(submit){try{await api.submitCourseGrades(submit.dataset.submitGrades);loadTeachingOperations();}catch(err){window.alert(err.message||"提交失败");}return;}
+    const grade=event.target.closest("[data-grade-action]");if(grade){let reason="";if(grade.dataset.gradeAction==="return"){reason=window.prompt("请输入退回原因","")||"";if(!reason)return;}try{await api.reviewGradeSubmission(grade.dataset.gradeId,{action:grade.dataset.gradeAction,reason});loadTeachingOperations();}catch(err){window.alert(err.message||"处理失败");}return;}
+    const issue=event.target.closest("[data-issue-status]");if(issue){let resolution="";if(issue.dataset.issueStatus==="resolved"){resolution=window.prompt("请输入异常处理说明","")||"";if(!resolution)return;}await api.updateTeachingIssue(issue.dataset.issueId,{status:issue.dataset.issueStatus,resolution});loadTeachingOperations();}
+  });
+  if($("refresh-teaching-issues")) $("refresh-teaching-issues").addEventListener("click",async()=>{await api.refreshTeachingIssues();loadTeachingOperations();});
+  if($("teaching-task-filter-form")) $("teaching-task-filter-form").addEventListener("submit",event=>{event.preventDefault();loadTeachingOperations();});
+  if($("teaching-task-filter-reset")) $("teaching-task-filter-reset").addEventListener("click",()=>{$("teaching-task-filter-form").reset();loadTeachingOperations();});
+  if($("grade-submission-filter-form")) $("grade-submission-filter-form").addEventListener("submit",event=>{event.preventDefault();loadTeachingOperations();});
+  if($("grade-submission-filter-reset")) $("grade-submission-filter-reset").addEventListener("click",()=>{$("grade-submission-filter-form").reset();loadTeachingOperations();});
+  document.querySelectorAll("[data-stage-e-toggle]").forEach(button=>button.addEventListener("click",()=>{const body=$(button.dataset.stageEToggle);if(!body)return;const willExpand=body.hidden;body.hidden=!willExpand;button.setAttribute("aria-expanded",String(willExpand));button.textContent=willExpand?"收起":"展开";}));
+  if (organizationUnitFilter) organizationUnitFilter.addEventListener("change", loadOrganizationUnitDetail);
+  if (organizationPositionSelect) organizationPositionSelect.addEventListener("change", updateOrganizationScopeVisibility);
+  if (organizationAssignmentForm) organizationAssignmentForm.addEventListener("submit", submitOrganizationAssignment);
+  if (organizationTransferForm) organizationTransferForm.addEventListener("submit", submitOrganizationTransfer);
+  if (organizationTransferClose) organizationTransferClose.addEventListener("click", closeOrganizationTransfer);
+  if (organizationTransferCancel) organizationTransferCancel.addEventListener("click", closeOrganizationTransfer);
+  if (organizationTransferModal) organizationTransferModal.addEventListener("click", (event) => {
+    if (event.target === organizationTransferModal) closeOrganizationTransfer();
+  });
+  if (organizationPositionList) {
+    organizationPositionList.addEventListener("click", (event) => {
+      const transferButton = event.target.closest("[data-transfer-assignment-id]");
+      if (transferButton) {
+        openOrganizationTransfer(transferButton);
+        return;
+      }
+      const updateButton = event.target.closest("[data-update-assignment-id]");
+      if (updateButton) {
+        updateOrganizationAssignment(updateButton);
+        return;
+      }
+      const button = event.target.closest("[data-end-assignment-id]");
+      if (button) endOrganizationAssignment(button);
+    });
+  }
+  if (organizationStaffSearch) {
+    organizationStaffSearch.addEventListener("change", loadOrganizationUnitDetail);
+    organizationStaffSearch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); loadOrganizationUnitDetail(); }
+    });
+  }
+  if (organizationStaffList) {
+    organizationStaffList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-security-person-id]");
+      if (button) securityAccountAction(button);
+    });
+  }
+  document.addEventListener("change", (event) => {
+    if (event.target?.id === "student-lifecycle-status") loadStudentLifecycle(event.target.value);
+  });
+  document.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-student-event]");
+    if (action) { studentLifecycleAction(action); return; }
+    if (event.target.closest("[data-student-batch-graduate]")) batchGraduateStudents();
+  });
+  if (approvalStatusFilter) approvalStatusFilter.addEventListener("change", loadIdentityApplications);
+  if (approvalRefreshBtn) approvalRefreshBtn.addEventListener("click", loadIdentityApplications);
   document.querySelectorAll(".dashboard-ask-btn").forEach((btn) => {
     btn.addEventListener("click", () => askDashboardQuestion(btn.dataset.question || ""));
   });
@@ -3598,13 +4438,6 @@
     kbRefreshBtn.addEventListener("click", async () => {
       await loadSources();
       await loadSchema(activeSourceName() || undefined);
-    });
-  }
-  if (debugRunBtn) {
-    debugRunBtn.addEventListener("click", () => {
-      const text = (debugQuestion && debugQuestion.value || "").trim();
-      if (text) input.value = text;
-      runRetrievalDebug();
     });
   }
   if (relationAddBtn) relationAddBtn.addEventListener("click", addRelationEntry);
@@ -3769,8 +4602,6 @@
     supportRequestForm.reset();
     await loadSupportWorkbench(true);
   });
-  if (domainRefreshBtn) domainRefreshBtn.addEventListener("click", () => loadDomainSettings(true));
-  if (roleRefreshBtn) roleRefreshBtn.addEventListener("click", () => loadDomainSettings(true));
   if (passwordForm) {
     passwordForm.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -3811,23 +4642,63 @@
           username: (loginUsername && loginUsername.value || "").trim(),
           password: loginPassword.value || "",
         });
-        setAuthSession(payload);
-        await bootWorkspace();
+        const needsRoleSelection = Boolean(payload.role_selection_required && (payload.user?.available_roles || []).length > 1);
+        setAuthSession(payload, { deferWorkspace: needsRoleSelection });
+        if (!needsRoleSelection) await bootWorkspace();
       } catch (err) {
         if (loginError) loginError.textContent = err.message || "登录失败";
       }
     });
   }
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", () => {
+  if (showRegisterBtn) showRegisterBtn.addEventListener("click", () => showAuthMode("register"));
+  if (showLoginBtn) showLoginBtn.addEventListener("click", () => showAuthMode("login"));
+  if (registerIdentityType) {
+    registerIdentityType.addEventListener("change", () => {
+      const isStudent = registerIdentityType.value === "student";
+      if (registerIdentifierLabel) registerIdentifierLabel.textContent = isStudent ? "学号" : "工号";
+      if (registerIdentifier) registerIdentifier.placeholder = isStudent ? "请输入学号" : "请输入工号";
+    });
+  }
+  if (registerForm) {
+    registerForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (registerError) registerError.textContent = "";
+      const password = registerPassword?.value || "";
+      const identifier = (registerIdentifier?.value || "").trim();
+      try {
+        await api.register({
+          password,
+          display_name: (registerName?.value || "").trim(),
+          identity_type: registerIdentityType?.value || "student",
+          identifier,
+        });
+        const payload = await api.login({ username: identifier, password });
+        setAuthSession(payload);
+      } catch (err) {
+        if (registerError) registerError.textContent = err.message || "注册失败";
+      }
+    });
+  }
+  if (registrationRefreshBtn) registrationRefreshBtn.addEventListener("click", refreshRegistrationSession);
+  if (registrationLogoutBtn) {
+    registrationLogoutBtn.addEventListener("click", () => {
       localStorage.removeItem(AUTH_TOKEN_KEY);
       localStorage.removeItem(AUTH_USER_KEY);
-      clearHistory();
       currentUser = null;
-      conversationSource = null;
-      dashboardCache = null;
-      domainSettingsCache = null;
       showLogin();
+    });
+  }
+  if (roleSelectionList) {
+    roleSelectionList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-role-binding-id]");
+      if (button) selectWorkRole(Number(button.dataset.roleBindingId));
+    });
+  }
+  if (roleSelectionLogoutBtn) roleSelectionLogoutBtn.addEventListener("click", logoutSession);
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", () => {
+      if ((currentUser?.available_roles || []).length > 1) showRoleSelection();
+      else logoutSession();
     });
   }
 
@@ -3839,7 +4710,7 @@
     const restored = await restoreAuthSession();
     if (restored) {
       await bootWorkspace();
-      await loadSchema();
+      if (hasFeature("schema")) await loadSchema();
     }
     updateHistoryBadge();
     renderQueryLog();
@@ -3848,7 +4719,6 @@
     renderKbList();
     renderKbOverview();
     renderSchemaConsole();
-    renderDebugSteps();
-    if (restored) showView(hasFeature("dashboard") ? "dashboard-view" : "assistant-view");
+    if (restored && currentUser?.account_status === "active") showView(preferredHomeView());
   })();
 })();

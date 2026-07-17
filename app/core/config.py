@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     dashscope_api_key: str = ""
     auth_secret: str = "nl2sql-course-project-change-me"
+    demo_mode: bool = False
     qwen_model: str = "qwen-max"
     # 数据源路由模型:只做"从库目录里选一个库"的分类小任务,无需主生成那么强,
     # 用快模型砍掉路由这一步的延迟(只影响选库速度,不碰库内 schema 召回质量)。
