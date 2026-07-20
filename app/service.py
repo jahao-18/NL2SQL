@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from app.core.chain import generate_sql, repair_sql
@@ -131,7 +132,12 @@ def ask(
     # 同时避免 5 轮老话题稀释当前语义)。失败/库太小返回 None,回退整库 DDL;validator 仍用全量表。
     schema_text = schema_info.ddl_text
     retrieval_used = False
-    retrieval_trace: dict[str, Any] = {"retrieval_used": False}
+    retrieval_started = time.perf_counter()
+    retrieval_trace: dict[str, Any] = {
+        "retrieval_used": False,
+        "retrieval_status": "not_used",
+        "stage_timings": {},
+    }
     try:
         n_hist = max(0, settings.retrieval_history_turns)
         recent_q = [t.question for t in trimmed_history][-n_hist:] if n_hist else []
@@ -142,12 +148,22 @@ def ask(
             retrieval_used = True
             retrieval_trace = {
                 "retrieval_used": True,
+                "retrieval_status": "used",
                 "tables": rc.tables,
                 "retrievers_used": rc.retrievers_used,
                 "context_preview": rc.context_text[:1200],
+                "stage_timings": {},
             }
     except Exception:
         logger.exception("schema 检索异常,回退整库 DDL")
+        retrieval_trace.update(
+            retrieval_status="degraded",
+            degraded=True,
+            degradation_reason="Schema 检索不可用，已回退到完整授权结构",
+        )
+    retrieval_trace["stage_timings"]["retrieval_ms"] = max(
+        0, round((time.perf_counter() - retrieval_started) * 1000)
+    )
 
     # 用户为该库补充的术语/取值映射:拼在 schema 末尾(放在检索替换之后,保证一定喂到模型)。
     # 专治"加密取值"——如"交易后出账 = frequency 的 POPLATEK PO OBRATU",模型就不用猜了。
@@ -170,8 +186,13 @@ def ask(
 
     last_sql: str | None = None
     last_err: str | None = None
+    model_elapsed_ms = 0
+    validation_elapsed_ms = 0
+    execution_elapsed_ms = 0
 
     for attempt in range(MAX_REPAIR_ROUNDS + 1):
+        retrieval_trace["attempts"] = attempt + 1
+        model_started = time.perf_counter()
         try:
             if attempt == 0:
                 kind, content = generate_sql(
@@ -184,38 +205,57 @@ def ask(
                     dialect=ds.dialect,
                 )
         except Exception as e:
+            model_elapsed_ms += max(0, round((time.perf_counter() - model_started) * 1000))
+            retrieval_trace["stage_timings"]["model_ms"] = model_elapsed_ms
+            retrieval_trace["failed_stage"] = "model"
             logger.exception("LLM 调用失败")
-            return format_error(f"LLM 调用失败: {e}", **src_kw)
+            return format_error(f"LLM 调用失败: {e}", trace=retrieval_trace, **src_kw)
+        model_elapsed_ms += max(0, round((time.perf_counter() - model_started) * 1000))
+        retrieval_trace["stage_timings"]["model_ms"] = model_elapsed_ms
 
         if kind == "clarify":
             if last_turn_was_clarify:
                 logger.warning("已澄清一次仍触发 CLARIFY,降级为错误 | q=%s | clarify=%s", question, content)
+                retrieval_trace["failed_stage"] = "model"
                 return format_error(
-                    "经过澄清后仍无法生成 SQL,请尝试更具体地描述需求。", **src_kw
+                    "经过澄清后仍无法生成 SQL,请尝试更具体地描述需求。",
+                    trace=retrieval_trace,
+                    **src_kw,
                 )
             logger.info("ask clarify | source=%s | q=%s | history=%d | clarify=%s",
                         ds.name, question, len(trimmed_history), content)
-            return format_clarify(content, **src_kw)
+            return format_clarify(content, trace=retrieval_trace, **src_kw)
 
         raw_sql = content
+        validation_started = time.perf_counter()
         try:
             safe_sql, truncated = validate_and_fix(
                 raw_sql, schema_info.tables, schema_info.blocked_columns,
                 row_scope=row_scope if enforce_teaching_policy else None,
             )
         except SQLValidationError as e:
+            validation_elapsed_ms += max(0, round((time.perf_counter() - validation_started) * 1000))
+            retrieval_trace["stage_timings"]["validation_ms"] = validation_elapsed_ms
             if str(e).startswith(("引用了未授权的表", "引用了不可用于问数的字段")):
-                return format_error(str(e), sql=raw_sql, **src_kw)
+                retrieval_trace["failed_stage"] = "validation"
+                return format_error(str(e), sql=raw_sql, trace=retrieval_trace, **src_kw)
             last_sql, last_err = raw_sql, str(e)
             logger.warning("SQL 校验失败 attempt=%s err=%s sql=%s", attempt, e, raw_sql)
             continue
+        validation_elapsed_ms += max(0, round((time.perf_counter() - validation_started) * 1000))
+        retrieval_trace["stage_timings"]["validation_ms"] = validation_elapsed_ms
 
+        execution_started = time.perf_counter()
         try:
             columns, rows, elapsed_ms, capped = execute(safe_sql, source_name=ds.name)
         except SQLExecutionError as e:
+            execution_elapsed_ms += max(0, round((time.perf_counter() - execution_started) * 1000))
+            retrieval_trace["stage_timings"]["execution_ms"] = execution_elapsed_ms
             last_sql, last_err = safe_sql, str(e)
             logger.warning("SQL 执行失败 attempt=%s err=%s sql=%s", attempt, e, safe_sql)
             continue
+        execution_elapsed_ms += max(0, round((time.perf_counter() - execution_started) * 1000))
+        retrieval_trace["stage_timings"]["execution_ms"] = execution_elapsed_ms
         # 兜底:实际结果撞到行上限就算截断,不依赖 LLM 是否守规矩(它可能擅自写了 LIMIT MAX_ROWS,
         # 校验器看不出超限 → truncated 漏标。这里以真实行数为准,补上提示)。
         truncated = truncated or capped
@@ -245,4 +285,10 @@ def ask(
             judge_id=judge_id, explanation=explanation, trace=retrieval_trace, **src_kw,
         )
 
-    return format_error(f"经过 {MAX_REPAIR_ROUNDS + 1} 次尝试仍失败: {last_err}", sql=last_sql, **src_kw)
+    retrieval_trace["failed_stage"] = "execution" if execution_elapsed_ms else "validation"
+    return format_error(
+        f"经过 {MAX_REPAIR_ROUNDS + 1} 次尝试仍失败: {last_err}",
+        sql=last_sql,
+        trace=retrieval_trace,
+        **src_kw,
+    )

@@ -8,7 +8,7 @@
    需要种子,所以是二阶段(跑在前三路并行召回 + 首次融合之后),不与前三路并行。
 2. 渲染(connect):选表定下后,用 FK 最短路径补桥接表 + 输出 JOIN 条件行喂给 LLM。
 
-边来自 SQLAlchemy inspect.get_foreign_keys(BIRD sqlite 已声明外键),跨方言通用。
+边来自 SQLAlchemy `inspect.get_foreign_keys`，跨方言通用。
 """
 from __future__ import annotations
 

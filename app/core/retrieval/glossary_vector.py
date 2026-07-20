@@ -38,8 +38,8 @@ class GlossaryEntry:
 def parse_glossary(text: str, known_tables: list[str]) -> list[GlossaryEntry]:
     """把 glossary markdown 拆成条目。
 
-    - `## 表 X` / `## X` 这类二级标题设定"当前表"上下文(BIRD 式按表分组的词表)。
-    - 每个 `- ` 开头的项是一条;紧随其后的非项、非标题行视为该条的续行(如 BIRD 的多行取值说明)。
+    - `## 表 X` / `## X` 这类二级标题设定“当前表”上下文。
+    - 每个 `- ` 开头的项是一条；紧随其后的非项、非标题行视为该条的续行。
     - `【...】`、`#` 标题等只作分节,不单独成条。
     - 每条引用的表 = 当前节的表(若有)+ 正文里出现的已知表名(按标识符边界匹配,兼容 `users.city`)。
     """

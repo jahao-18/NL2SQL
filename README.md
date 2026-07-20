@@ -101,7 +101,6 @@ AUTH_SECRET=一段仅本机使用的随机字符串
 QWEN_MODEL=qwen3.7-plus
 JUDGE_MODEL=qwen3.6-plus
 ROUTER_MODEL=qwen-turbo
-BIRD_DATABASE_ROOT=D:/dev/dev_databases
 LLM_TIMEOUT_SECONDS=45
 MAX_UPLOAD_BYTES=20971520
 PREWARM_ENABLED=false
@@ -158,24 +157,7 @@ sources:
 
 `data/teaching.db` 是模拟数据，已经纳入仓库。clone 后无需额外生成即可使用默认演示。
 
-### BIRD 数据集
-
-`data_sources.yaml` 中还保留了若干 BIRD benchmark 示例源，路径由
-`.env` 的 `BIRD_DATABASE_ROOT` 指定，目录结构形如：
-
-```text
-<BIRD_DATABASE_ROOT>/<db>/<db>.sqlite
-```
-
-这些原始数据库体积较大，未放入 Git 仓库。缺少 BIRD 数据不会影响默认教学库启动；只有当你手动选择或评测 BIRD 数据源时才需要下载并配置对应目录。
-
 登录成功后后端会返回 HMAC 签名的演示令牌。修改 `AUTH_SECRET` 后，浏览器中旧的登录状态会失效，重新登录即可。
-
-如果要重新生成 BIRD 数据源配置，可参考：
-
-```powershell
-python scripts/eval_bird.py --bird-dir <你的BIRD数据目录> --gen-sources
-```
 
 ## 连接自己的数据库
 
@@ -390,7 +372,6 @@ data/managed/*.db
 data/audit/
 data/governance/
 data/retrieval_index/
-data/bird/
 volumes/
 ```
 
@@ -407,7 +388,7 @@ git ls-files --others --exclude-standard
 
 - LLM 生成 SQL 不是确定性程序，复杂问题仍可能需要业务词表、画像或示例来约束。
 - 默认账号密码仅用于演示，不能用于生产。
-- BIRD 原始数据库未内置，需要自行下载。
+- 默认运行时只注册教学业务库；新增数据源应当是经过审核的教学业务数据库。
 - 修改数据源、prompt、词表和画像后通常需要重启服务清理缓存。
 - server 检索依赖 Docker 组件，组件未就绪时会自动降级，但效果会下降。
 

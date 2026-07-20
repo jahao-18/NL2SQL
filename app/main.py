@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.data_access import router as data_access_router
+from app.api.assistant import router as assistant_router
 from app.api.governance import router as governance_router
 from app.api.routes import router
 from app.api.teaching import router as teaching_router
@@ -57,6 +58,7 @@ def _authorization_error(_: Request, exc: AuthorizationError) -> JSONResponse:
     return JSONResponse(status_code=403, content={"detail": str(exc)})
 
 app.include_router(router)
+app.include_router(assistant_router)
 app.include_router(governance_router)
 app.include_router(data_access_router)
 app.include_router(teaching_router)

@@ -1,8 +1,8 @@
 """把一个数据源的 schema 拆成可检索的 SchemaAtom 列表(每列一个 + 每表一个)。
 
-元数据来源(尽量通用,不绑定 BIRD):
+元数据来源：
   - 表/列/类型/主键/注释: SQLAlchemy inspect(跨方言)
-  - 列业务描述/自然名/取值含义: 若 sqlite 库旁有 database_description/*.csv 则解析(BIRD 自带)
+  - 列业务描述/自然名/取值含义: 若 SQLite 库旁有 database_description/*.csv 则解析
   - 低基数取值示例: 对文本列采样 SELECT DISTINCT
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ def _sqlite_path_from_url(url: str) -> Path | None:
 def _load_descriptions(url: str) -> dict[tuple[str, str], tuple[str, str, str]]:
     """返回 {(table, column): (自然名, 描述, 取值含义)};没有 database_description 目录则空。
 
-    BIRD 的 description CSV 每表一个文件,文件名即表名,列名大小写/留空不统一,做容错。
+    description CSV 每表一个文件，文件名即表名；对列名大小写和空值做容错。
     """
     db_path = _sqlite_path_from_url(url)
     if not db_path:

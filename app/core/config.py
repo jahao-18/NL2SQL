@@ -24,7 +24,6 @@ class Settings(BaseSettings):
     query_timeout_seconds: int = 5
     llm_timeout_seconds: int = 45
     max_upload_bytes: int = 20 * 1024 * 1024
-    bird_database_root: str = "data/bird/dev_databases"
     enum_discovery_enabled: bool = True
     enum_discovery_max_tables: int = 20
     enum_discovery_max_columns: int = 120
