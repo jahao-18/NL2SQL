@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -16,7 +14,6 @@ from app.core.business_domains import (
 from app.api import routes as api_routes
 from app.core.config import ROOT_DIR, settings
 from app.core.data_sources import _normalized_sqlite_url, load_sources
-from app.core.schema import list_table_names
 from app.core.schema import SchemaInfo
 from app.core.business_domains import filter_schema_info
 from app.core.schema_profile import _version_yaml_path
@@ -107,15 +104,8 @@ def test_relative_sqlite_url_is_rooted_at_project_directory():
     assert (ROOT_DIR / "data" / "teaching.db").resolve().as_posix() in normalized
 
 
-def test_configured_bird_databases_when_dataset_is_available():
-    root = Path(settings.bird_database_root)
-    if not root.is_absolute():
-        root = ROOT_DIR / root
-    if not root.exists():
-        pytest.skip("本机未安装 BIRD 数据集")
-    names = [name for name in load_sources() if name != "teaching"]
-    assert names
-    assert all(list_table_names(name) for name in names)
+def test_default_runtime_registry_only_connects_teaching_database():
+    assert list(load_sources()) == ["teaching"]
 
 
 @pytest.mark.parametrize(

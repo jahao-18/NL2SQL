@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.core.authorization import connect, forbidden, require_counselor_of_student, require_student_self, require_support_case_access
 from app.core.business_domains import AuthContext
@@ -267,6 +268,98 @@ def list_support_cases(ctx: AuthContext, status: str | None = None) -> list[dict
     for item in items:
         item["evidence"] = _evidence(item["evidence"])
     return items
+
+
+def counselor_review_queue(
+    ctx: AuthContext, student_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Return overdue and current-week review cases in the counselor's own scope."""
+    counselor_id = ctx.row_scope.get("counselor_id")
+    if ctx.role != "counselor" or not counselor_id:
+        forbidden()
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    week_end = (now + timedelta(days=6 - now.weekday())).replace(
+        hour=23, minute=59, second=59, microsecond=0
+    )
+    clauses = [
+        "sc.counselor_id = ?",
+        "sc.status <> 'closed'",
+        "sc.review_at IS NOT NULL",
+        "datetime(sc.review_at) <= datetime(?)",
+    ]
+    params: list[Any] = [counselor_id, week_end.isoformat()]
+    if student_id:
+        clauses.append("sc.student_id = ?")
+        params.append(student_id)
+    with connect() as conn:
+        rows = conn.execute(
+            f"""SELECT sc.id AS support_case_id, s.name AS student_name,
+                       cg.name AS class_name, sc.title, sc.status, sc.review_at,
+                       sc.evidence, sc.updated_at
+                FROM support_case sc
+                JOIN student s ON s.id = sc.student_id
+                JOIN class_group cg ON cg.id = s.class_id
+                JOIN counselor_class_group ccg
+                  ON ccg.class_group_id = s.class_id AND ccg.counselor_id = sc.counselor_id
+                WHERE {' AND '.join(clauses)}
+                ORDER BY datetime(sc.review_at), sc.id
+                LIMIT 200""",
+            params,
+        ).fetchall()
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        evidence = _evidence(item.pop("evidence"))
+        item["evidence_summary"] = " · ".join(
+            str(value) for value in (
+                evidence.get("course") if isinstance(evidence, dict) else None,
+                evidence.get("fact") if isinstance(evidence, dict) else None,
+                evidence.get("summary") if isinstance(evidence, dict) else None,
+            ) if value
+        ) or "已记录可核实的学习事实"
+        try:
+            review_at = datetime.fromisoformat(str(item["review_at"]).replace("Z", "+00:00"))
+            if review_at.tzinfo is None:
+                review_at = review_at.replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+            item["review_state"] = "已逾期" if review_at < now else "本周待复查"
+        except ValueError:
+            item["review_state"] = "待复查"
+        items.append(item)
+    return items
+
+
+def counselor_appointment_queue(
+    ctx: AuthContext, student_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Return active student appointments limited to assigned administrative classes."""
+    counselor_id = ctx.row_scope.get("counselor_id")
+    if ctx.role != "counselor" or not counselor_id:
+        forbidden()
+    clauses = [
+        "ccg.counselor_id = ?",
+        "(sr.counselor_id IS NULL OR sr.counselor_id = ?)",
+        "sr.request_type = 'appointment'",
+        "sr.status IN ('submitted', 'accepted')",
+    ]
+    params: list[Any] = [counselor_id, counselor_id]
+    if student_id:
+        clauses.append("sr.student_id = ?")
+        params.append(student_id)
+    with connect() as conn:
+        rows = conn.execute(
+            f"""SELECT s.name AS student_name, cg.name AS class_name,
+                       sr.message, sr.preferred_time, sr.status, sr.created_at
+                FROM support_request sr
+                JOIN student s ON s.id = sr.student_id
+                JOIN class_group cg ON cg.id = s.class_id
+                JOIN counselor_class_group ccg ON ccg.class_group_id = s.class_id
+                WHERE {' AND '.join(clauses)}
+                ORDER BY CASE sr.status WHEN 'submitted' THEN 1 ELSE 2 END,
+                         COALESCE(sr.preferred_time, sr.created_at), sr.id
+                LIMIT 200""",
+            params,
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def get_support_case(ctx: AuthContext, case_id: int) -> dict[str, Any]:

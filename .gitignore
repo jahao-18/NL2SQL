@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .pytest-tmp/
 .pytest-runtime/
+.pytest_cache/
+.tmp/
 .env
 data/*.db
 !data/teaching.db
@@ -20,11 +22,6 @@ outputs/
 data/submissions/
 data/course_resources/
 docs/demo_accounts_private.md
-
-# BIRD benchmark: raw datasets can be several GB; generated work dirs are not tracked.
-/bird_dev/
-data/bird/
-bird_result.json
 
 # Retrieval/embedding indexes are cache files and can be rebuilt from schema files.
 data/retrieval_index/

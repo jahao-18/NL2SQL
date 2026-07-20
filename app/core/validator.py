@@ -143,8 +143,18 @@ _ROW_SCOPE_RULES: dict[str, dict[str, object]] = {
         "label": "counselor_id",
     },
     "teaching_class_id": {
-        "tables": {"course_assignment_analytics", "student_task_analytics"},
+        "tables": {
+            "course", "teaching_class", "enrollment", "score", "evaluation",
+            "assignment", "assignment_submission", "attendance", "learning_activity",
+            "course_assignment_analytics", "student_task_analytics",
+        },
         "columns": {
+            "teaching_class": "id",
+            "enrollment": "teaching_class_id",
+            "evaluation": "teaching_class_id",
+            "assignment": "teaching_class_id",
+            "attendance": "teaching_class_id",
+            "learning_activity": "teaching_class_id",
             "course_assignment_analytics": "teaching_class_id",
             "student_task_analytics": "teaching_class_id",
         },
@@ -294,7 +304,10 @@ def _direct_identifier_names(token) -> set[str]:
             return set()
         real = _clean_name(token.get_real_name())
         return {real} if real else set()
-    if token.ttype is Name:
+    # sqlparse classifies table names such as ``assignment`` as Keyword when
+    # they appear unquoted. At this point the token is already the object after
+    # FROM/JOIN, so accepting Keyword here is necessary for scope enforcement.
+    if token.ttype is Name or token.ttype in Keyword:
         name = _clean_name(token.value)
         return {name} if name else set()
     return set()

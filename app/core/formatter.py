@@ -59,6 +59,7 @@ def format_error(
     source_label: str | None = None,
     auto_routed: bool = False,
     route_reason: str | None = None,
+    trace: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "sql": sql,
@@ -71,7 +72,7 @@ def format_error(
         "error": error,
         "clarify": None,
         "explanation": {},
-        "trace": {},
+        "trace": trace or {},
         **_source_fields(source, source_label, auto_routed, route_reason),
     }
 
@@ -82,6 +83,7 @@ def format_clarify(
     source_label: str | None = None,
     auto_routed: bool = False,
     route_reason: str | None = None,
+    trace: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """LLM 需要用户先回答澄清问题再生成 SQL。不走 validator/executor。"""
     return {
@@ -95,6 +97,6 @@ def format_clarify(
         "error": None,
         "clarify": question,
         "explanation": {},
-        "trace": {},
+        "trace": trace or {},
         **_source_fields(source, source_label, auto_routed, route_reason),
     }

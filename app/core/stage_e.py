@@ -141,8 +141,48 @@ def list_issues(ctx: AuthContext) -> list[dict[str, Any]]:
     scope=""; params=()
     if ctx.role=="college_manager": scope=" AND ti.college_id=?"; params=(ctx.row_scope["college_id"],)
     with connect() as conn:
-        rows=conn.execute(f"SELECT ti.*,c.name course_name,t.name teacher_name FROM teaching_issue ti JOIN teaching_class tc ON tc.id=ti.teaching_class_id JOIN course c ON c.id=tc.course_id JOIN teacher t ON t.id=tc.teacher_id WHERE 1=1 {scope} ORDER BY CASE ti.status WHEN 'open' THEN 1 WHEN 'processing' THEN 2 ELSE 3 END,ti.id DESC",params).fetchall()
+        rows=conn.execute(f"SELECT ti.*,tc.year academic_year,tc.semester,c.name course_name,col.name college_name,t.name teacher_name FROM teaching_issue ti JOIN teaching_class tc ON tc.id=ti.teaching_class_id JOIN course c ON c.id=tc.course_id JOIN college col ON col.id=c.college_id JOIN teacher t ON t.id=tc.teacher_id WHERE 1=1 {scope} ORDER BY CASE ti.status WHEN 'open' THEN 1 WHEN 'processing' THEN 2 ELSE 3 END,ti.id DESC",params).fetchall()
     return [dict(r) for r in rows]
+
+
+def assistant_issue_queue(
+    ctx: AuthContext,
+    *,
+    overdue_only: bool = False,
+    overdue_hours: int = 72,
+    college_id: int | None = None,
+    academic_year: int | None = None,
+    semester: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return unresolved teaching issues with a deterministic SLA state."""
+    now = datetime.now(timezone.utc)
+    items: list[dict[str, Any]] = []
+    for raw in list_issues(ctx):
+        if college_id is not None and int(raw["college_id"]) != int(college_id):
+            continue
+        if academic_year is not None and int(raw["academic_year"]) != int(academic_year):
+            continue
+        if semester is not None and raw["semester"] != semester:
+            continue
+        if raw["status"] == "resolved":
+            continue
+        timestamp = raw.get("updated_at") or raw.get("created_at")
+        try:
+            changed_at = datetime.fromisoformat(str(timestamp))
+            if changed_at.tzinfo is None:
+                changed_at = changed_at.replace(tzinfo=timezone.utc)
+            age_hours = max(0, int((now - changed_at.astimezone(timezone.utc)).total_seconds() // 3600))
+        except (TypeError, ValueError):
+            age_hours = 0
+        is_overdue = age_hours >= overdue_hours
+        if overdue_only and not is_overdue:
+            continue
+        item = dict(raw)
+        item["age_hours"] = age_hours
+        item["queue_state"] = "已逾期" if is_overdue else ("处理中" if raw["status"] == "processing" else "待处理")
+        items.append(item)
+    items.sort(key=lambda item: (not item["queue_state"] == "已逾期", -item["age_hours"], item["id"]))
+    return items
 
 
 def update_issue(ctx: AuthContext, issue_id: int, status: str, resolution: str) -> dict[str, Any]:

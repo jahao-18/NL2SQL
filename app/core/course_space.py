@@ -64,8 +64,14 @@ def course_space(ctx: AuthContext, teaching_class_id: int) -> dict[str, Any]:
         if not _member(conn, ctx, teaching_class_id): forbidden()
         info = conn.execute("SELECT tc.id, c.name AS course_name, c.course_code, tc.year, tc.semester, tc.classroom FROM teaching_class tc JOIN course c ON c.id = tc.course_id WHERE tc.id = ?", (teaching_class_id,)).fetchone()
         announcements = conn.execute("SELECT id, title, body, published_at FROM course_announcement WHERE teaching_class_id = ? AND status = 'published' ORDER BY published_at DESC, id DESC", (teaching_class_id,)).fetchall()
+        drafts = []
+        if ctx.role == "teacher":
+            drafts = conn.execute(
+                "SELECT id, title, body, created_at FROM course_announcement WHERE teaching_class_id = ? AND publisher_user_id = ? AND status = 'draft' ORDER BY created_at DESC, id DESC",
+                (teaching_class_id, ctx.user_id),
+            ).fetchall()
         resources = conn.execute("SELECT id, title, description, file_name, file_size, content_type, resource_url, CASE WHEN file_key IS NOT NULL AND file_key <> '' THEN 1 ELSE 0 END AS has_attachment, visible_from, visible_until FROM course_resource WHERE teaching_class_id = ? AND status = 'published' AND (visible_from IS NULL OR visible_from <= ?) AND (visible_until IS NULL OR visible_until > ?) ORDER BY id DESC", (teaching_class_id, _now(), _now())).fetchall()
-    return {"item": {"course": dict(info), "announcements": [dict(r) for r in announcements], "resources": [dict(r) for r in resources]}}
+    return {"item": {"course": dict(info), "announcements": [dict(r) for r in announcements], "announcement_drafts": [dict(r) for r in drafts], "resources": [dict(r) for r in resources]}}
 
 
 def publish_announcement(ctx: AuthContext, teaching_class_id: int, title: str, body: str) -> dict[str, Any]:
@@ -73,11 +79,43 @@ def publish_announcement(ctx: AuthContext, teaching_class_id: int, title: str, b
     with connect() as conn:
         require_teacher_of_class(ctx, teaching_class_id)
         now = _now(); cur = conn.execute("INSERT INTO course_announcement(teaching_class_id, publisher_user_id, title, body, status, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'published', ?, ?, ?)", (teaching_class_id, ctx.user_id, title.strip(), body.strip(), now, now, now)); aid = int(cur.lastrowid)
-        students = conn.execute("SELECT au.id, au.username FROM enrollment e JOIN person_identity pi ON pi.person_type = 'student' AND pi.entity_id = e.student_id AND pi.status = 'verified' JOIN app_user au ON au.id = pi.user_id WHERE e.teaching_class_id = ? AND au.status = 'active'", (teaching_class_id,)).fetchall()
-        for row in students:
-            conn.execute("INSERT INTO announcement_receipt(announcement_id, recipient_user_id, delivered_at) VALUES (?, ?, ?)", (aid, row["id"], now)); conn.execute("INSERT INTO notification(recipient_username, type, title, body, resource_type, resource_id, created_at) VALUES (?, 'course_announcement', ?, ?, 'course_announcement', ?, ?)", (row["username"], title.strip(), body.strip(), aid, now))
+        students = _deliver_announcement(conn, aid, teaching_class_id, title.strip(), body.strip(), now)
         conn.commit()
     return {"item": {"id": aid, "recipient_count": len(students)}}
+
+
+def publish_announcement_draft(ctx: AuthContext, announcement_id: int) -> dict[str, Any]:
+    """Publish an assistant-created draft only after a teacher explicitly confirms it."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT id, teaching_class_id, publisher_user_id, title, body, status FROM course_announcement WHERE id = ?",
+            (announcement_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("公告草稿不存在")
+        require_teacher_of_class(ctx, row["teaching_class_id"])
+        if row["publisher_user_id"] != ctx.user_id:
+            forbidden()
+        if row["status"] != "draft":
+            raise ValueError("该公告草稿已发布或不可发布")
+        now = _now()
+        changed = conn.execute(
+            "UPDATE course_announcement SET status = 'published', published_at = ?, updated_at = ? WHERE id = ? AND status = 'draft'",
+            (now, now, announcement_id),
+        ).rowcount
+        if changed != 1:
+            raise ValueError("该公告草稿状态已变化，请刷新后重试")
+        students = _deliver_announcement(conn, announcement_id, row["teaching_class_id"], row["title"], row["body"], now)
+        conn.commit()
+    return {"item": {"id": announcement_id, "published": True, "recipient_count": len(students)}}
+
+
+def _deliver_announcement(conn, announcement_id: int, teaching_class_id: int, title: str, body: str, delivered_at: str):
+    students = conn.execute("SELECT au.id, au.username FROM enrollment e JOIN person_identity pi ON pi.person_type = 'student' AND pi.entity_id = e.student_id AND pi.status = 'verified' JOIN app_user au ON au.id = pi.user_id WHERE e.teaching_class_id = ? AND au.status = 'active'", (teaching_class_id,)).fetchall()
+    for row in students:
+        conn.execute("INSERT INTO announcement_receipt(announcement_id, recipient_user_id, delivered_at) VALUES (?, ?, ?)", (announcement_id, row["id"], delivered_at))
+        conn.execute("INSERT INTO notification(recipient_username, type, title, body, resource_type, resource_id, created_at) VALUES (?, 'course_announcement', ?, ?, 'course_announcement', ?, ?)", (row["username"], title, body, announcement_id, delivered_at))
+    return students
 
 
 def delete_announcement(ctx: AuthContext, announcement_id: int) -> dict[str, Any]:

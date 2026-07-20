@@ -8,7 +8,7 @@
    需要种子,所以是二阶段(跑在前三路并行召回 + 首次融合之后),不与前三路并行。
 2. 渲染(connect):选表定下后,用 FK 最短路径补桥接表 + 输出 JOIN 条件行喂给 LLM。
 
-边来自 SQLAlchemy inspect.get_foreign_keys(BIRD sqlite 已声明外键),跨方言通用。
+边来自 SQLAlchemy `inspect.get_foreign_keys`，跨方言通用。
 """
 from __future__ import annotations
 
@@ -62,35 +62,42 @@ class RelationGraph:
     def available(self) -> bool:
         return len(self.fks) > 0
 
-    def rank(self, seeds: dict[str, float], top_k: int) -> list[tuple[str, float]]:
+    def rank(
+        self,
+        seeds: dict[str, float],
+        top_k: int,
+        allowed_tables: set[str] | None = None,
+    ) -> list[tuple[str, float]]:
         """图结构检索:以 seeds(表 -> 权重)为重启分布跑 Personalized PageRank,沿 FK 边扩散,
         返回按 PPR 分降序的 (表, 分数) 列表(最多 top_k)。
 
         PPR 把种子的"相关度质量"沿外键传播:种子自身分高,与种子 FK 相连的桥接/中心表也获得
         可观分数。这样结构上关键、但内容路没捞到的表能进入候选。无边/无有效种子时返回空。
         """
-        if self.g.number_of_edges() == 0:
+        graph = self.g.subgraph(allowed_tables).copy() if allowed_tables is not None else self.g
+        if graph.number_of_edges() == 0:
             return []
-        pers = {t: w for t, w in seeds.items() if t in self.g and w > 0}
+        pers = {t: w for t, w in seeds.items() if t in graph and w > 0}
         if not pers:
             return []
         try:
-            pr = self._ppr(pers)
+            pr = self._ppr(pers, graph)
         except Exception:
             logger.exception("PageRank 失败 | source=%s", self.source)
             return []
         ranked = sorted(pr.items(), key=lambda kv: kv[1], reverse=True)
         return ranked[:top_k]
 
-    def _ppr(self, pers: dict[str, float], alpha: float = 0.85,
+    def _ppr(self, pers: dict[str, float], graph: nx.Graph | None = None, alpha: float = 0.85,
              max_iter: int = 100, tol: float = 1e-9) -> dict[str, float]:
         """Personalized PageRank 的 numpy 幂迭代(图小,避免引入 scipy)。
         无向 FK 图 -> 对称邻接;列归一化得转移矩阵;无外键的孤立表是 dangling,质量回灌 personalization。"""
-        nodes = list(self.g.nodes())
+        graph = graph or self.g
+        nodes = list(graph.nodes())
         idx = {n: i for i, n in enumerate(nodes)}
         n = len(nodes)
         adj = np.zeros((n, n), dtype=float)
-        for u, v in self.g.edges():
+        for u, v in graph.edges():
             adj[idx[u], idx[v]] = 1.0
             adj[idx[v], idx[u]] = 1.0
         colsum = adj.sum(axis=0)
@@ -112,20 +119,26 @@ class RelationGraph:
             r = r_new
         return {nodes[i]: float(r[i]) for i in range(n)}
 
-    def connect(self, selected: list[str], max_extra: int = 3) -> tuple[list[str], list[str]]:
+    def connect(
+        self,
+        selected: list[str],
+        max_extra: int = 3,
+        allowed_tables: set[str] | None = None,
+    ) -> tuple[list[str], list[str]]:
         """把召回到的表用最短外键路径连通,补少量桥接表;返回(最终表序, JOIN 条件行)。
 
         近似 Steiner 树:对每对选中表取最短路径,把路径上的中间表并进来(总量受 max_extra 限制),
         这样模型能拿到完成多表 JOIN 所需的中间表。
         """
-        final = list(dict.fromkeys(selected))  # 保序去重
-        present = [t for t in final if t in self.g]
+        graph = self.g.subgraph(allowed_tables).copy() if allowed_tables is not None else self.g
+        final = [t for t in dict.fromkeys(selected) if allowed_tables is None or t in allowed_tables]
+        present = [t for t in final if t in graph]
         extra: list[str] = []
 
         for i in range(len(present)):
             for j in range(i + 1, len(present)):
                 try:
-                    path = nx.shortest_path(self.g, present[i], present[j])
+                    path = nx.shortest_path(graph, present[i], present[j])
                 except (nx.NetworkXNoPath, nx.NodeNotFound):
                     continue
                 for node in path:
@@ -144,6 +157,7 @@ class RelationGraph:
             f"{t1}.{c1} = {t2}.{c2}"
             for (t1, c1, t2, c2) in self.fks
             if t1 in final_set and t2 in final_set
+            and (allowed_tables is None or (t1 in allowed_tables and t2 in allowed_tables))
         ]
         # 去重保序
         join_lines = list(dict.fromkeys(join_lines))

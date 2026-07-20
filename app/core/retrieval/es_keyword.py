@@ -6,7 +6,7 @@
 比 standard 逐字切精度高(把"出版商"当整词,不会被"商品库存"的单字"商"误召回)。analyzer 由
 config.es_analyzer 配置;IK 插件没装时 _create_index 自动回退 standard,不影响可用。
 连不上 / 依赖缺失时 available() 返回 False,pipeline 自动跳过 -> 回退整库 DDL。
-注意:schema 描述是英文(如 BIRD)、问题是中文时,跨语言 BM25 本就难命中,语义靠向量路兜底。
+当 schema 描述和问题使用不同语言时，BM25 命中率会下降，语义由向量检索补充。
 """
 from __future__ import annotations
 

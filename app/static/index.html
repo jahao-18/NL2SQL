@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>教学数据智能问数平台</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:opsz,wght@14..32,200;14..32,300;14..32,400;14..32,500;14..32,600&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css?v=support-workspace-1" />
+  <link rel="stylesheet" href="/style.css?v=v3-3-5-quality" />
+  <link rel="stylesheet" href="/assistant-panel.css?v=v3-3-2" />
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
@@ -109,6 +110,7 @@
       <div class="nav-group-label">治理</div>
       <button class="side-nav-item" data-view-target="governance-queue-view" type="button"><span>G</span>质量治理</button>
       <button class="side-nav-item" data-view-target="governance-settings-view" type="button"><span>C</span>治理设置</button>
+      <button class="side-nav-item" data-view-target="assistant-quality-view" type="button"><span>O</span>助手运营</button>
       <div class="nav-group-label">系统</div>
       <button class="side-nav-item" data-view-target="profile-view" type="button"><span>U</span>个人中心</button>
     </nav>
@@ -143,7 +145,7 @@
               <h2 id="workbench-title">角色首页</h2>
               <p id="workbench-description">正在加载与当前岗位相关的课程、待办和快捷操作。</p>
             </div>
-            <button class="nav-btn" type="button" id="dashboard-refresh-btn">刷新数据</button>
+            <div><button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="dashboard" data-view-target="assistant-view">问智能助手</button><button class="nav-btn" type="button" id="dashboard-refresh-btn">刷新数据</button></div>
           </section>
           <section class="dashboard-filter-panel hidden" aria-hidden="true">
             <label><span>学年学期</span><select id="dashboard-term-filter"><option value="">全部学期</option><option value="2025-spring">2025 春季学期</option></select></label>
@@ -260,7 +262,7 @@
             <div><div class="panel-kicker">Course Analytics</div><h2>课程学习进展</h2><p id="analytics-scope-copy">按当前身份和课程范围汇总作业进展。</p></div>
             <div class="analytics-context-actions">
               <label><span>当前课程</span><select id="analytics-course-picker"></select></label>
-              <button class="assignment-icon-btn" type="button" id="analytics-refresh-btn" title="刷新分析" aria-label="刷新分析">↻</button>
+              <button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="course_analytics" data-view-target="assistant-view">询问课程分析</button><button class="assignment-icon-btn" type="button" id="analytics-refresh-btn" title="刷新分析" aria-label="刷新分析">↻</button>
             </div>
           </header>
           <div class="analytics-meta" id="analytics-meta"></div>
@@ -297,7 +299,7 @@
                 <span>当前课程</span>
                 <select id="assignment-course-picker"></select>
               </label>
-              <button class="assignment-icon-btn" type="button" id="assignment-refresh-btn" title="刷新任务" aria-label="刷新任务">↻</button>
+              <button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="assignment_workflow" data-view-target="assistant-view">询问作业情况</button><button class="assignment-icon-btn" type="button" id="assignment-refresh-btn" title="刷新任务" aria-label="刷新任务">↻</button>
             </div>
           </section>
           <section class="assignment-overview" id="assignment-overview">
@@ -375,7 +377,7 @@
               <h2 id="support-page-heading">学习支持</h2>
               <p id="support-page-lead">基于明确事实开展联系、跟进和复查。</p>
             </div>
-            <button class="nav-btn" type="button" id="support-refresh-btn">检查最新事项</button>
+            <div><button class="nav-btn secondary role-assistant-entry" type="button" id="support-assistant-btn" data-role-assistant-entry="support_workbench" data-assistant-question="本周有哪些待复查事项？" data-view-target="assistant-view">询问待复查</button><button class="nav-btn" type="button" id="support-refresh-btn">检查最新事项</button></div>
           </section>
           <section class="support-overview">
             <div><span>待确认</span><b id="support-metric-open">0</b><small>规则命中，等待人工确认</small></div>
@@ -505,7 +507,8 @@
       </section>
 
       <section class="work-view" id="assistant-view" data-page-title="教学数据智能问数" data-breadcrumb="教学数据 / 智能问数">
-        <div class="assistant-grid">
+        <div id="v3-assistant-panel" data-assistant-panel data-page="assistant"></div>
+        <div class="assistant-grid legacy-assistant-shell" hidden aria-hidden="true">
           <section class="assistant-main">
             <div class="query-wrapper" id="query-wrapper">
               <div class="query-label">用自然语言查询教学数据</div>
@@ -896,6 +899,36 @@
         </div>
       </section>
 
+      <section class="work-view" id="assistant-quality-view" data-page-title="助手质量运营" data-breadcrumb="智能问数 / 治理 / 助手运营">
+        <div class="quality-shell">
+          <section class="quality-hero">
+            <div>
+              <div class="panel-kicker">Assistant Operations</div>
+              <h2>助手质量运营</h2>
+              <p>查看问数链路的成功率、响应耗时、失败阶段与治理积压。所有问题仅按安全类别汇总，不展示原始问题、SQL、结果行或反馈原因。</p>
+            </div>
+            <div class="quality-controls">
+              <label><span>统计周期</span><select id="assistant-quality-days"><option value="7">近 7 天</option><option value="30" selected>近 30 天</option><option value="90">近 90 天</option></select></label>
+              <button class="nav-btn" id="assistant-quality-refresh" type="button">刷新数据</button>
+            </div>
+          </section>
+          <div id="assistant-quality-status" class="quality-status">等待加载运营数据…</div>
+          <section id="assistant-quality-summary" class="quality-summary-grid"></section>
+          <div class="quality-main-grid">
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Reliability</span><h3>失败阶段分布</h3></div></div><div id="assistant-quality-failures" class="quality-bar-list"></div></section>
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Retrieval</span><h3>检索使用与降级</h3></div></div><div id="assistant-quality-retrieval" class="quality-retrieval-grid"></div></section>
+          </div>
+          <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Trend</span><h3>每日查询与成功率</h3></div><small>仅展示聚合计数</small></div><div id="assistant-quality-daily" class="quality-daily-chart"></div></section>
+          <div class="quality-category-grid">
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Traffic</span><h3>高频问题类别</h3></div></div><div id="assistant-quality-frequent" class="quality-category-list"></div></section>
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Confidence</span><h3>低置信度类别</h3></div></div><div id="assistant-quality-low-confidence" class="quality-category-list"></div></section>
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Feedback</span><h3>负向反馈类别</h3></div></div><div id="assistant-quality-negative" class="quality-category-list"></div></section>
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Governance</span><h3>待治理事项</h3></div></div><div id="assistant-quality-governance" class="quality-category-list"></div></section>
+          </div>
+          <div class="quality-privacy-note"><b>隐私保护已启用</b><span>本页接口不返回原始问题、生成 SQL、查询结果行和反馈原因；类别未知时统一归入“其他”。</span></div>
+        </div>
+      </section>
+
       <section class="work-view" id="data-access-view" data-page-title="数据接入与维护" data-breadcrumb="教学数据 / 数据接入">
         <div class="dashboard-shell data-access-shell">
           <section class="dashboard-hero access-hero">
@@ -1005,7 +1038,7 @@
         <div class="course-space-shell">
           <header class="course-space-hero">
             <div><div class="course-space-kicker"><i></i><span>COURSE SPACE</span></div><h2>我的课程空间</h2><p>围绕一门课程查看公告、学习资料、作业和课程分析。</p></div>
-            <label class="course-space-selector"><span>当前课程</span><select id="course-space-picker"></select></label>
+            <div><button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="course_space" data-view-target="assistant-view">询问本课程</button><label class="course-space-selector"><span>当前课程</span><select id="course-space-picker"></select></label></div>
           </header>
           <div class="course-space-layout">
             <aside class="course-space-aside">
@@ -1027,7 +1060,7 @@
       </section>
       <section class="work-view" id="attendance-view" data-page-title="课程考勤" data-breadcrumb="教学业务 / 课程考勤">
         <div class="stage-d-shell">
-          <header class="stage-d-hero"><div><div class="panel-kicker">Attendance</div><h2 id="attendance-page-title">课程场次与考勤</h2><p>按真实课次登记、修正并查看考勤事实。</p></div><label><span>当前课程</span><select id="attendance-course-picker"></select></label></header>
+          <header class="stage-d-hero"><div><div class="panel-kicker">Attendance</div><h2 id="attendance-page-title">课程场次与考勤</h2><p>按真实课次登记、修正并查看考勤事实。</p></div><div><button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="attendance" data-view-target="assistant-view">询问考勤情况</button><label><span>当前课程</span><select id="attendance-course-picker"></select></label></div></header>
           <section class="stage-d-create" id="attendance-teacher-tools" hidden><div><b>新建课程场次</b><span>场次建立后即可按选课名单点名</span></div><form id="course-session-form"><label>日期<input id="session-date" type="date" required /></label><label>开始时间<input id="session-start" type="time" /></label><label>结束时间<input id="session-end" type="time" /></label><label>教室<input id="session-classroom" placeholder="例如 A101" /></label><label class="wide">本次主题<input id="session-topic" placeholder="例如：索引与查询优化" /></label><button class="nav-btn" type="submit">建立场次</button></form></section>
           <div class="stage-d-layout"><section class="stage-d-panel"><div class="stage-d-panel-head"><div><span>COURSE SESSIONS</span><h3>课程场次</h3></div></div><div id="attendance-session-list" class="stage-d-list"></div></section><section class="stage-d-panel" id="attendance-editor-panel"><div class="stage-d-panel-head"><div><span>ATTENDANCE ROSTER</span><h3>点名记录</h3></div></div><div id="attendance-editor" class="stage-d-empty">请选择一个课程场次</div></section></div>
         </div>
@@ -1040,7 +1073,7 @@
         </div>
       </section>
       <section class="work-view" id="teaching-operations-view" data-page-title="教学运行" data-breadcrumb="教学管理 / 教学运行">
-        <div class="stage-e-shell"><header class="stage-d-hero"><div><div class="panel-kicker">Teaching Operations</div><h2 id="stage-e-title">教学运行工作台</h2><p id="stage-e-description">处理课程任务、教学异常和成绩提交状态。</p></div><button class="nav-btn" id="refresh-teaching-issues" type="button" hidden>刷新确定性异常</button></header>
+        <div class="stage-e-shell"><header class="stage-d-hero"><div><div class="panel-kicker">Teaching Operations</div><h2 id="stage-e-title">教学运行工作台</h2><p id="stage-e-description">处理课程任务、教学异常和成绩提交状态。</p></div><div><button class="nav-btn secondary role-assistant-entry" id="teaching-operations-assistant-btn" type="button" data-role-assistant-entry="teaching_operations" data-view-target="assistant-view">询问教学异常</button><button class="nav-btn" id="refresh-teaching-issues" type="button" hidden>刷新确定性异常</button></div></header>
           <div class="stage-e-summary" id="stage-e-summary"></div>
           <section class="stage-d-panel stage-e-collapsible" id="teaching-task-panel">
             <div class="stage-d-panel-head"><div><span>TEACHING TASKS</span><h3>教学任务台账</h3></div><div class="stage-e-panel-actions"><small id="teaching-task-result-count"></small><button class="stage-e-collapse-toggle" type="button" data-stage-e-toggle="teaching-task-panel-body" aria-expanded="true">收起</button></div></div>
@@ -1070,7 +1103,7 @@
               <div class="stage-e-table stage-e-scroll-list" id="grade-submission-list"></div>
             </div>
           </section>
-          <section class="stage-d-panel" id="teaching-issue-panel"><div class="stage-d-panel-head"><div><span>DETERMINISTIC ISSUES</span><h3>教学异常待办</h3></div></div><div class="stage-e-table" id="teaching-issue-list"></div></section>
+          <section class="stage-d-panel" id="teaching-issue-panel"><div class="stage-d-panel-head"><div><span>DETERMINISTIC ISSUES</span><h3>教学异常待办</h3></div><label class="stage-e-issue-filter"><span>处理状态</span><select id="teaching-issue-status-filter"><option value="all">全部</option><option value="unresolved">未解决</option><option value="overdue">已逾期（72 小时）</option><option value="open">待处理</option><option value="processing">处理中</option><option value="resolved">已解决</option></select></label></div><div class="stage-e-table" id="teaching-issue-list"></div></section>
           <div class="stage-e-grid" id="college-aggregate-panels"></div>
         </div>
       </section>
@@ -1150,10 +1183,11 @@
   </section>
 </div>
 
-<script src="/api.js?v=support-workspace-1"></script>
+<script src="/api.js?v=v3-3-5-quality"></script>
+<script src="/assistant-panel.js?v=v3-3-4-operations"></script>
 <script src="/modal.js?v=p0-product-3"></script>
 <script src="/governance-view.js?v=p0-product-3"></script>
 <script src="/data-access-view.js?v=schema-workbench-1"></script>
-<script src="/app.js?v=support-workspace-1"></script>
+<script src="/app.js?v=v3-3-5-quality"></script>
 </body>
 </html>

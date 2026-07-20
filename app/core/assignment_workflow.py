@@ -133,6 +133,37 @@ def list_my_classes(ctx: AuthContext) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def teacher_missing_assignment_roster(
+    ctx: AuthContext, teaching_class_id: int | None = None
+) -> list[dict[str, Any]]:
+    """Return a teacher's own missing-submission roster without model-generated SQL."""
+    if ctx.role != "teacher" or not ctx.row_scope.get("teacher_id"):
+        forbidden()
+    clauses = ["tc.teacher_id = ?", "a.status IN ('published', 'closed')"]
+    params: list[Any] = [ctx.row_scope["teacher_id"]]
+    if teaching_class_id:
+        clauses.append("tc.id = ?")
+        params.append(teaching_class_id)
+    clauses.append("(sub.id IS NULL OR sub.submit_time IS NULL OR sub.status IN ('missing', 'not_submitted'))")
+    with connect() as conn:
+        rows = conn.execute(
+            f"""SELECT stu.name AS student_name, c.name AS course_name,
+                       a.title AS assignment_title, a.due_time
+                FROM assignment a
+                JOIN teaching_class tc ON tc.id = a.teaching_class_id
+                JOIN course c ON c.id = tc.course_id
+                JOIN enrollment e ON e.teaching_class_id = tc.id
+                JOIN student stu ON stu.id = e.student_id
+                LEFT JOIN assignment_submission sub
+                  ON sub.assignment_id = a.id AND sub.student_id = e.student_id
+                WHERE {' AND '.join(clauses)}
+                ORDER BY c.name, a.due_time, stu.name
+                LIMIT 200""",
+            params,
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def list_class_assignments(ctx: AuthContext, teaching_class_id: int) -> list[dict[str, Any]]:
     require_teacher_of_class(ctx, teaching_class_id)
     with connect() as conn:

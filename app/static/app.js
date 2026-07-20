@@ -121,6 +121,17 @@
   const logoutBtn = $("logout-btn");
   const currentUserName = $("current-user-name");
   const currentUserRole = $("current-user-role");
+  const assistantQualityDays = $("assistant-quality-days");
+  const assistantQualityRefresh = $("assistant-quality-refresh");
+  const assistantQualityStatus = $("assistant-quality-status");
+  const assistantQualitySummary = $("assistant-quality-summary");
+  const assistantQualityFailures = $("assistant-quality-failures");
+  const assistantQualityRetrieval = $("assistant-quality-retrieval");
+  const assistantQualityDaily = $("assistant-quality-daily");
+  const assistantQualityFrequent = $("assistant-quality-frequent");
+  const assistantQualityLowConfidence = $("assistant-quality-low-confidence");
+  const assistantQualityNegative = $("assistant-quality-negative");
+  const assistantQualityGovernance = $("assistant-quality-governance");
 
   const input = $("query-input");
   const submit = $("query-submit");
@@ -277,6 +288,7 @@
   const analyticsAnswer = $("analytics-answer");
   const analyticsHistoryList = $("analytics-history-list");
   const supportRefreshBtn = $("support-refresh-btn");
+  const supportAssistantBtn = $("support-assistant-btn");
   const supportRoleContext = $("support-role-context");
   const supportPageHeading = $("support-page-heading");
   const supportPageLead = $("support-page-lead");
@@ -412,6 +424,8 @@
   let organizationSlotsCache = [];
   let organizationStaffCache = [];
   let selectedSupportCaseId = null;
+  let selectedTeachingIssueId = null;
+  let pendingTeachingOperationParameters = null;
 
   /* ---------------- helpers ---------------- */
 
@@ -473,6 +487,7 @@
       "data-access-view": "data_access",
       "governance-queue-view": "governance",
       "governance-settings-view": "governance",
+      "assistant-quality-view": "assistant_quality",
       "profile-view": "personal_center",
     };
     const serverViews = new Set((currentUser.navigation || []).map((item) => item.view));
@@ -621,11 +636,81 @@
     return parts.length ? `${question} ${parts.join("，")}。` : question;
   }
 
-  function askDashboardQuestion(question) {
-    if (!input) return;
-    input.value = enrichDashboardQuestion(question);
+  function assistantContextFor(page) {
+    const context = { page };
+    const classPickers = {
+      course_space: "course-space-picker",
+      assignment_workflow: "assignment-course-picker",
+      attendance: "attendance-course-picker",
+      course_analytics: "analytics-course-picker",
+    };
+    const picker = classPickers[page] && $(classPickers[page]);
+    const teachingClassId = Number(picker?.value || 0);
+    if (teachingClassId > 0) context.teaching_class_id = teachingClassId;
+    if (page === "teaching_operations") {
+      const year = Number($("teaching-task-year")?.value || 0);
+      const collegeId = Number($("teaching-task-college")?.value || 0);
+      const semester = $("teaching-task-semester")?.value || "";
+      const issueStatus = $("teaching-issue-status-filter")?.value || "all";
+      if (year > 0) context.academic_year = year;
+      if (collegeId > 0) context.college_id = collegeId;
+      if (semester) context.semester = semester;
+      if (issueStatus !== "all") context.filters = { issue_status: issueStatus };
+    }
+    return context;
+  }
+
+  function openUnifiedAssistant(question, context) {
     showView("assistant-view");
-    input.focus();
+    const panel = window.NL2SQLAssistantPanelInstance;
+    if (panel) {
+      panel.setContext(context || { page: "assistant" });
+      panel.prefill(question || "");
+      return;
+    }
+    if (input) {
+      input.value = question || "";
+      input.focus();
+    }
+  }
+
+  function installRoleAssistantEntrances() {
+    const entries = [
+      ["dashboard-view", "dashboard", "问智能助手"],
+      ["course-space-view", "course_space", "询问本课程"],
+      ["assignment-workflow-view", "assignment_workflow", "询问作业情况"],
+      ["attendance-view", "attendance", "询问考勤情况"],
+      ["course-analytics-view", "course_analytics", "询问课程分析"],
+      ["support-workbench-view", "support_workbench", "询问待复查"],
+      ["teaching-operations-view", "teaching_operations", "询问教学异常"],
+    ];
+    entries.forEach(([viewId, page, label]) => {
+      const view = $(viewId);
+      const header = view?.querySelector("header, .support-hero");
+      if (!header) return;
+      let button = header.querySelector(`[data-role-assistant-entry="${page}"]`);
+      if (!button) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.className = "nav-btn secondary role-assistant-entry";
+        button.dataset.roleAssistantEntry = page;
+        button.textContent = label;
+        header.append(button);
+      }
+      if (button.dataset.assistantBound === "true") return;
+      button.dataset.assistantBound = "true";
+      button.addEventListener("click", () => {
+        let question = button.dataset.assistantQuestion || "";
+        if (!question && page === "teaching_operations") {
+          question = currentUser?.role === "college_manager" ? "本学院有哪些逾期教学异常？" : "有哪些逾期教学异常？";
+        }
+        openUnifiedAssistant(question, assistantContextFor(page));
+      });
+    });
+  }
+
+  function askDashboardQuestion(question) {
+    openUnifiedAssistant(enrichDashboardQuestion(question));
   }
 
   function populateDashboardFilters(data) {
@@ -1350,6 +1435,7 @@
     supportCounselorPanel?.classList.toggle("hidden", currentUser.role !== "counselor");
     supportStudentPanel?.classList.toggle("hidden", currentUser.role !== "student");
     supportRefreshBtn?.classList.toggle("hidden", currentUser.role !== "counselor");
+    supportAssistantBtn?.classList.toggle("hidden", currentUser.role !== "counselor");
     try {
       if (currentUser.role === "counselor") {
         if (supportRoleContext) supportRoleContext.textContent = "辅导员工作空间";
@@ -1475,6 +1561,79 @@
     }
   }
 
+  function qualityValue(value, suffix = "") {
+    return value == null ? "—" : `${escapeHtml(value)}${suffix}`;
+  }
+
+  function renderQualityCategoryList(root, items, kind = "query") {
+    if (!root) return;
+    if (!items?.length) {
+      root.innerHTML = '<div class="quality-empty">当前周期暂无记录</div>';
+      return;
+    }
+    root.innerHTML = items.map((item) => {
+      const title = kind === "query"
+        ? `${escapeHtml(item.page_label)} · ${escapeHtml(item.answer_label)}`
+        : escapeHtml(item.category);
+      const detail = kind === "query"
+        ? `路由 ${escapeHtml(item.route)}`
+        : (item.source ? escapeHtml(item.source) : "安全分类汇总");
+      return `<div class="quality-category-row"><div><b>${title}</b><span>${detail}</span></div><strong>${Number(item.count || 0)}</strong></div>`;
+    }).join("");
+  }
+
+  function renderAssistantQuality(data) {
+    const summary = data.summary || {};
+    if (assistantQualityStatus) {
+      assistantQualityStatus.textContent = `统计周期：近 ${data.window?.days || 30} 天 · 低置信度阈值：${data.window?.confidence_threshold ?? "—"}`;
+    }
+    const cards = [
+      ["查询总量", summary.total_queries, "次"],
+      ["成功率", summary.success_rate, "%"],
+      ["P50 响应", summary.p50_ms, " ms"],
+      ["P95 响应", summary.p95_ms, " ms"],
+      ["越权拒绝", summary.unauthorized_rejections, "次"],
+      ["低置信度", summary.low_confidence_queries, "次"],
+      ["负向反馈", summary.negative_feedback, "条"],
+      ["待治理", summary.pending_governance, "项"],
+    ];
+    if (assistantQualitySummary) assistantQualitySummary.innerHTML = cards.map(([label, value, suffix]) => `<article class="quality-stat-card"><span>${label}</span><b>${qualityValue(value, suffix)}</b></article>`).join("");
+
+    const failureItems = data.failure_distribution || [];
+    const failureMax = Math.max(1, ...failureItems.map((item) => Number(item.count || 0)));
+    if (assistantQualityFailures) assistantQualityFailures.innerHTML = failureItems.map((item) => `<div class="quality-bar-row"><span>${escapeHtml(item.label)}</span><div><i style="width:${Math.round(Number(item.count || 0) * 100 / failureMax)}%"></i></div><b>${Number(item.count || 0)}</b></div>`).join("");
+
+    const retrieval = data.retrieval || {};
+    if (assistantQualityRetrieval) assistantQualityRetrieval.innerHTML = [
+      ["本地检索", retrieval.local_count, qualityValue(retrieval.local_share, "%")],
+      ["服务端检索", retrieval.server_count, qualityValue(retrieval.server_share, "%")],
+      ["未使用检索", retrieval.not_used_count, "按路由直达"],
+      ["检索降级", retrieval.degraded_count, qualityValue(retrieval.degraded_rate, "%")],
+    ].map(([label, count, detail]) => `<article><span>${label}</span><b>${Number(count || 0)}</b><small>${detail}</small></article>`).join("");
+
+    const daily = data.daily || [];
+    const dailyMax = Math.max(1, ...daily.map((item) => Number(item.total || 0)));
+    if (assistantQualityDaily) assistantQualityDaily.innerHTML = daily.length ? daily.map((item) => `<div class="quality-day" title="${escapeHtml(item.date)}：${Number(item.total || 0)} 次，成功率 ${qualityValue(item.success_rate, "%")}"><div><i style="height:${Math.max(4, Math.round(Number(item.total || 0) * 100 / dailyMax))}%"></i></div><b>${Number(item.total || 0)}</b><span>${escapeHtml(String(item.date || "").slice(5))}</span><small>${qualityValue(item.success_rate, "%")}</small></div>`).join("") : '<div class="quality-empty">当前周期暂无趋势数据</div>';
+
+    renderQualityCategoryList(assistantQualityFrequent, data.frequent_categories);
+    renderQualityCategoryList(assistantQualityLowConfidence, data.low_confidence_categories);
+    renderQualityCategoryList(assistantQualityNegative, data.negative_feedback_categories, "feedback");
+    renderQualityCategoryList(assistantQualityGovernance, data.governance_categories, "governance");
+  }
+
+  async function loadAssistantQuality() {
+    if (!hasFeature("assistant_quality") || !assistantQualityStatus) return;
+    assistantQualityStatus.textContent = "正在汇总运营数据…";
+    if (assistantQualityRefresh) assistantQualityRefresh.disabled = true;
+    try {
+      renderAssistantQuality(await api.assistantQuality(Number(assistantQualityDays?.value || 30)));
+    } catch (err) {
+      assistantQualityStatus.textContent = err.message || "助手运营数据加载失败";
+    } finally {
+      if (assistantQualityRefresh) assistantQualityRefresh.disabled = false;
+    }
+  }
+
   function showView(id) {
     const trigger = document.querySelector(`[data-view-target="${id}"]`);
     if (trigger && trigger.classList.contains("hidden")) {
@@ -1511,7 +1670,32 @@
     if (id === "notifications-view") loadNotifications();
     if (id === "governance-queue-view" && governanceView) governanceView.renderQueue();
     if (id === "governance-settings-view" && governanceView) governanceView.renderSettings();
+    if (id === "assistant-quality-view") loadAssistantQuality();
   }
+
+  window.addEventListener("nl2sql:assistant:navigate", (event) => {
+    const targetView = event.detail && event.detail.target_view;
+    if (!targetView) return;
+    const parameters = event.detail.parameters || event.detail.context || {};
+    if (targetView === "support-workbench-view" && parameters.support_case_id) {
+      selectedSupportCaseId = Number(parameters.support_case_id);
+    }
+    if (targetView === "teaching-operations-view") {
+      selectedTeachingIssueId = Number(parameters.teaching_issue_id || 0) || null;
+      pendingTeachingOperationParameters = parameters;
+      const issueStatus = parameters.filters?.issue_status;
+      if (issueStatus && $("teaching-issue-status-filter")) $("teaching-issue-status-filter").value = issueStatus;
+      if (parameters.academic_year && $("teaching-task-year")) $("teaching-task-year").value = String(parameters.academic_year);
+      if (parameters.semester && $("teaching-task-semester")) $("teaching-task-semester").value = parameters.semester;
+      if (parameters.college_id && $("teaching-task-college")) $("teaching-task-college").value = String(parameters.college_id);
+    }
+    showView(targetView);
+    window.dispatchEvent(new CustomEvent("nl2sql:assistant:context", {
+      detail: { target_view: targetView, parameters },
+    }));
+  });
+
+  installRoleAssistantEntrances();
 
   function sourceByName(name) {
     return availableSources.find((s) => s.name === name);
@@ -1692,8 +1876,7 @@
       askBtn.textContent = "问数";
       askBtn.addEventListener("click", () => {
         setManualSource(row.name || "");
-        showView("assistant-view");
-        input.focus();
+        openUnifiedAssistant("");
       });
       actions.appendChild(openBtn);
       actions.appendChild(askBtn);
@@ -1779,9 +1962,8 @@
       row.className = "activity-row";
       row.innerHTML = `<span>${escapeHtml(item.question || "")}</span><small>${escapeHtml(item.source_label || item.source || "自动识别")} · ${escapeHtml(item.row_count || 0)} 行 · ${escapeHtml(item.elapsed_ms || 0)} ms</small>`;
       row.addEventListener("click", () => {
-        input.value = item.question || "";
         setManualSource(item.source || "");
-        showView("assistant-view");
+        openUnifiedAssistant(item.question || "");
       });
       activityList.appendChild(row);
     });
@@ -1863,10 +2045,8 @@
         writeJsonList(SAVED_QUERY_KEY, next);
       }
       card.querySelector(".saved-example-use").addEventListener("click", () => {
-        input.value = questionInput.value.trim() || item.question || "";
         setManualSource(item.source || "");
-        showView("assistant-view");
-        input.focus();
+        openUnifiedAssistant(questionInput.value.trim() || item.question || "");
       });
       card.querySelector(".saved-example-save").addEventListener("click", () => {
         persistExample().then(() => renderSavedExamples(source));
@@ -3352,6 +3532,8 @@
     clearHistory();
     currentUser = null;
     conversationSource = null;
+    selectedTeachingIssueId = null;
+    pendingTeachingOperationParameters = null;
     dashboardCache = null;
     showLogin();
   }
@@ -3683,15 +3865,22 @@
       if (!picker.options.length) picker.innerHTML = items.map((x) => `<option value="${x.id}">${escapeHtml(x.course_name)} · ${escapeHtml(x.course_code || "")}</option>`).join("");
       const id = Number(picker.value || items[0]?.id); if (!id) { box.innerHTML='<div class="course-space-empty"><b>暂无可用课程</b><span>当前身份还没有关联的授课或选课记录。</span></div>'; $("course-space-teacher-actions").hidden=true; return; }
       const data = await api.courseSpace(id); const item=data.item, course=item.course;
-      const summary=$("course-space-summary"); if(summary) summary.innerHTML=`<span>${escapeHtml(course.course_code || "COURSE")}</span><b>${escapeHtml(course.course_name)}</b><small>${escapeHtml(String(course.year || ""))} ${escapeHtml(course.semester || "")} · ${escapeHtml(course.classroom || "教室待定")}</small><em>${item.announcements.length} 条公告 · ${item.resources.length} 份资料</em>`;
+      const drafts=item.announcement_drafts||[];
+      const summary=$("course-space-summary"); if(summary) summary.innerHTML=`<span>${escapeHtml(course.course_code || "COURSE")}</span><b>${escapeHtml(course.course_name)}</b><small>${escapeHtml(String(course.year || ""))} ${escapeHtml(course.semester || "")} · ${escapeHtml(course.classroom || "教室待定")}</small><em>${item.announcements.length} 条公告 · ${drafts.length} 条待发布草稿 · ${item.resources.length} 份资料</em>`;
       const announcementHtml=item.announcements.map(x=>`<article class="course-announcement-card"><div class="course-card-mark">公告</div><div><div class="course-card-meta"><span>课程公告</span><div><time>${escapeHtml(x.published_at || "")}</time>${currentUser?.role==="teacher"?`<button type="button" class="course-announcement-delete" data-delete-announcement="${x.id}">删除</button>`:""}</div></div><h4>${escapeHtml(x.title)}</h4><p>${escapeHtml(x.body)}</p></div></article>`).join("")||'<div class="course-space-empty compact"><b>还没有课程公告</b><span>教师发布后会展示在这里，并通知本课程学生。</span></div>';
+      const draftHtml=drafts.map(x=>`<article class="course-announcement-card course-announcement-draft"><div class="course-card-mark">草稿</div><div><div class="course-card-meta"><span>未发布课程公告</span><div><time>${escapeHtml(x.created_at || "")}</time><button type="button" class="course-announcement-publish" data-publish-announcement="${x.id}">发布并通知学生</button></div></div><h4>${escapeHtml(x.title)}</h4><p>${escapeHtml(x.body)}</p></div></article>`).join("")||'<div class="course-space-empty compact"><b>暂无待发布草稿</b><span>智能问数生成的提醒草稿会显示在这里，发布前不会通知学生。</span></div>';
       const resourceHtml=item.resources.map(x=>{ const externalUrl=/^https?:\/\//i.test(x.resource_url||"")?x.resource_url:""; const action=x.has_attachment?`<button type="button" class="course-resource-action" data-download-course-resource="${x.id}" data-file-name="${escapeHtml(x.file_name)}">下载附件</button>`:(externalUrl?`<a class="course-resource-action" href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">打开链接</a>`:'<span class="course-resource-unavailable">附件不可用</span>'); return `<article class="course-resource-card"><div class="course-resource-icon">${escapeHtml((x.file_name || "链").split(".").pop().slice(0,3).toUpperCase())}</div><div><b>${escapeHtml(x.title)}</b><span>${escapeHtml(x.description || "课程学习资料")}</span><small>${escapeHtml(x.file_name || x.resource_url || "在线资源")}${x.file_size?` · ${assignmentFileSize(x.file_size)}`:""}</small>${action}</div></article>`; }).join("")||'<div class="course-space-empty compact"><b>还没有课程资料</b><span>课件、讲义和外部链接会集中展示在这里。</span></div>';
-      box.innerHTML=`<section class="course-space-block" data-course-content="announcements"><div class="course-space-section-head"><div><span>LATEST UPDATES</span><h3>课程公告</h3></div><b>${item.announcements.length}</b></div><div class="course-announcement-list">${announcementHtml}</div></section><section class="course-space-block" data-course-content="resources"><div class="course-space-section-head"><div><span>LEARNING MATERIALS</span><h3>课程资料</h3></div><b>${item.resources.length}</b></div><div class="course-resource-grid">${resourceHtml}</div></section>`;
+      box.innerHTML=`<section class="course-space-block" data-course-content="announcements"><div class="course-space-section-head"><div><span>LATEST UPDATES</span><h3>课程公告</h3></div><b>${item.announcements.length}</b></div><div class="course-announcement-list">${announcementHtml}</div></section>${currentUser?.role==="teacher"?`<section class="course-space-block course-draft-block" data-course-content="announcement-drafts"><div class="course-space-section-head"><div><span>READY TO PUBLISH</span><h3>待发布草稿</h3></div><b>${drafts.length}</b></div><div class="course-announcement-list">${draftHtml}</div></section>`:""}<section class="course-space-block" data-course-content="resources"><div class="course-space-section-head"><div><span>LEARNING MATERIALS</span><h3>课程资料</h3></div><b>${item.resources.length}</b></div><div class="course-resource-grid">${resourceHtml}</div></section>`;
       box.querySelectorAll("[data-download-course-resource]").forEach((button)=>button.addEventListener("click",()=>api.downloadCourseResource(button.dataset.downloadCourseResource,button.dataset.fileName)));
       box.querySelectorAll("[data-delete-announcement]").forEach((button)=>button.addEventListener("click",async()=>{
         if(!window.confirm("确定删除这条课程公告吗？删除后学生将无法再查看对应公告和通知。")) return;
         try { button.disabled=true; button.textContent="删除中"; await api.deleteAnnouncement(button.dataset.deleteAnnouncement); await loadCourseSpace(); }
         catch(err) { button.disabled=false; button.textContent="删除"; window.alert(err.message||"公告删除失败"); }
+      }));
+      box.querySelectorAll("[data-publish-announcement]").forEach((button)=>button.addEventListener("click",async()=>{
+        if(!window.confirm("确认发布这条课程公告吗？发布后会通知本课程学生。")) return;
+        try { button.disabled=true; button.textContent="发布中"; await api.publishAnnouncementDraft(button.dataset.publishAnnouncement); await loadCourseSpace(); }
+        catch(err) { button.disabled=false; button.textContent="发布并通知学生"; window.alert(err.message||"公告发布失败"); }
       }));
       $("course-space-teacher-actions").hidden=currentUser?.role!=="teacher";
     } catch(err){box.innerHTML=`<div class="course-space-empty"><b>课程空间加载失败</b><span>${escapeHtml(err.message||err)}</span></div>`; $("course-space-teacher-actions").hidden=true;}
@@ -3756,19 +3945,46 @@
     ["teaching-task-year","grade-submission-year"].forEach(id=>{const select=$(id);if(!select)return;const current=select.value;select.innerHTML='<option value="">全部学年</option>'+((options.years||[]).map(year=>`<option value="${escapeHtml(String(year))}">${escapeHtml(String(year))} 学年</option>`).join(""));select.value=current;});
     ["teaching-task-college","grade-submission-college"].forEach(id=>{const select=$(id);if(!select)return;const current=select.value;select.innerHTML='<option value="">全部学院</option>'+((options.colleges||[]).map(college=>`<option value="${college.id}">${escapeHtml(college.name)}</option>`).join(""));select.value=current;});
   }
+  function isOverdueTeachingIssue(item){
+    if(item.status==="resolved")return false;
+    const changedAt=Date.parse(item.updated_at||item.created_at||"");
+    return Number.isFinite(changedAt)&&(Date.now()-changedAt)>=72*60*60*1000;
+  }
+  function renderTeachingIssues(items,issuesBox){
+    const selectedFilter=$("teaching-issue-status-filter")?.value||"all";
+    const filtered=(items||[]).filter(item=>{
+      if(selectedFilter==="all")return true;
+      if(selectedFilter==="unresolved")return item.status!=="resolved";
+      if(selectedFilter==="overdue")return isOverdueTeachingIssue(item);
+      return item.status===selectedFilter;
+    });
+    issuesBox.innerHTML=filtered.map(x=>`<div class="stage-e-row teaching-issue-row${Number(selectedTeachingIssueId)===Number(x.id)?" is-assistant-target":""}" data-teaching-issue-row="${x.id}"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.college_name||"")} · ${escapeHtml(x.evidence)}${isOverdueTeachingIssue(x)?" · 已逾期 72 小时以上":""}${x.resolution?` · ${escapeHtml(x.resolution)}`:""}</small></div><span>${escapeHtml(x.status)}</span><div>${x.status!=="resolved"?`<button data-issue-status="processing" data-issue-id="${x.id}">处理中</button><button data-issue-status="resolved" data-issue-id="${x.id}">解决</button>`:""}</div></div>`).join("")||'<div class="stage-d-empty">当前筛选条件下暂无教学异常</div>';
+    const target=issuesBox.querySelector(".is-assistant-target");
+    if(target)setTimeout(()=>target.scrollIntoView({behavior:"smooth",block:"center"}),0);
+    return filtered;
+  }
   async function loadTeachingOperations(){
     const tasksBox=$("teaching-task-list"),gradesBox=$("grade-submission-list"),issuesBox=$("teaching-issue-list"),aggregateBox=$("college-aggregate-panels");if(!tasksBox)return;
     [tasksBox,gradesBox,issuesBox].forEach(box=>box.innerHTML='<div class="stage-d-empty">正在加载...</div>');
-    const role=currentUser?.role;$("stage-e-title").textContent=role==="teacher"?"成绩提交":role==="college_manager"?"学院教学运行":"教务教学运行";$("refresh-teaching-issues").hidden=role!=="academic_office";$("teaching-issue-panel").hidden=role==="teacher";
+    const role=currentUser?.role;$("stage-e-title").textContent=role==="teacher"?"成绩提交":role==="college_manager"?"学院教学运行":"教务教学运行";$("refresh-teaching-issues").hidden=role!=="academic_office";$("teaching-issue-panel").hidden=role==="teacher";$("teaching-operations-assistant-btn").hidden=!["college_manager","academic_office"].includes(role);
     try{
       const taskFilters=operationFilters("teaching-task"),gradeFilters=operationFilters("grade-submission");
       const [filterOptions,tasks,grades]=await Promise.all([api.teachingOperationFilterOptions(),api.teachingTasks(taskFilters),api.gradeSubmissions(gradeFilters)]);
       populateOperationFilterOptions(filterOptions.item||{});
+      if(pendingTeachingOperationParameters){
+        const parameters=pendingTeachingOperationParameters;
+        const issueStatus=parameters.filters?.issue_status;
+        if(issueStatus&&$("teaching-issue-status-filter"))$("teaching-issue-status-filter").value=issueStatus;
+        if(parameters.academic_year&&$("teaching-task-year"))$("teaching-task-year").value=String(parameters.academic_year);
+        if(parameters.semester&&$("teaching-task-semester"))$("teaching-task-semester").value=parameters.semester;
+        if(parameters.college_id&&$("teaching-task-college"))$("teaching-task-college").value=String(parameters.college_id);
+        pendingTeachingOperationParameters=null;
+      }
       if($("teaching-task-result-count")) $("teaching-task-result-count").textContent=`共 ${tasks.items?.length||0} 条`;
       if($("grade-submission-result-count")) $("grade-submission-result-count").textContent=`共 ${grades.items?.length||0} 条`;
       tasksBox.innerHTML=(tasks.items||[]).map(x=>`<div class="stage-e-row"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.college_name)} · ${escapeHtml(x.teacher_name)} · ${escapeHtml(String(x.year))} ${escapeHtml(x.semester)}</small></div><span>${x.enrolled_count}/${x.capacity} 人</span><em>${escapeHtml(x.classroom||"未排教室")}</em></div>`).join("")||'<div class="stage-d-empty">当前筛选条件下暂无教学任务</div>';
       gradesBox.innerHTML=(grades.items||[]).map(x=>{let actions="";if(role==="teacher"&&["not_submitted","returned","draft"].includes(x.status))actions=`<button data-submit-grades="${x.teaching_class_id}">提交成绩</button>`;if(["college_manager","academic_office"].includes(role)&&x.status==="submitted")actions=`<button data-grade-action="approve" data-grade-id="${x.id}">通过</button><button data-grade-action="return" data-grade-id="${x.id}">退回</button>`;if(role==="academic_office"&&x.status==="approved")actions=`<button data-grade-action="publish" data-grade-id="${x.id}">发布</button>`;return `<div class="stage-e-row"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.college_name)} · ${escapeHtml(x.teacher_name)} · ${escapeHtml(String(x.year))} ${escapeHtml(x.semester)}${x.returned_reason?` · 退回：${escapeHtml(x.returned_reason)}`:""}</small></div><span class="grade-${x.status}">${gradeStatusText[x.status]||x.status}</span><div>${actions}</div></div>`;}).join("")||'<div class="stage-d-empty">当前筛选条件下暂无成绩记录</div>';
-      if(role!=="teacher"){const [issues,summary]=await Promise.all([api.teachingIssues(),api.teachingOperationsSummary()]);issuesBox.innerHTML=(issues.items||[]).map(x=>`<div class="stage-e-row"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.evidence)}${x.resolution?` · ${escapeHtml(x.resolution)}`:""}</small></div><span>${escapeHtml(x.status)}</span><div>${x.status!=="resolved"?`<button data-issue-status="processing" data-issue-id="${x.id}">处理中</button><button data-issue-status="resolved" data-issue-id="${x.id}">解决</button>`:""}</div></div>`).join("")||'<div class="stage-d-empty">暂无教学异常</div>';const item=summary.item;$("stage-e-summary").innerHTML=`<article><b>${item.operations.length}</b><span>开课班</span></article><article><b>${issues.items.length}</b><span>异常事项</span></article>${role==="college_manager"?`<article><b>${item.workload.length}</b><span>授课教师</span></article>`:""}`;aggregateBox.innerHTML=role==="college_manager"?`<section class="stage-d-panel"><div class="stage-d-panel-head"><h3>教师工作量</h3></div>${item.workload.map(x=>`<div class="stage-e-row"><b>${escapeHtml(x.teacher_name)}</b><span>${x.class_count} 个班 · ${x.student_count} 人次</span></div>`).join("")}</section><section class="stage-d-panel"><div class="stage-d-panel-head"><h3>教学质量聚合</h3></div>${item.quality.map(x=>`<div class="stage-e-row"><b>${escapeHtml(x.course_name)}</b><span>${x.sample_size<5?"样本不足，不展示":`均分 ${x.average_score} · 通过率 ${x.pass_rate}%`}</span></div>`).join("")}</section>`:"";}
+      if(role!=="teacher"){const [issues,summary]=await Promise.all([api.teachingIssues(),api.teachingOperationsSummary()]);renderTeachingIssues(issues.items||[],issuesBox);const item=summary.item;$("stage-e-summary").innerHTML=`<article><b>${item.operations.length}</b><span>开课班</span></article><article><b>${issues.items.length}</b><span>异常事项</span></article>${role==="college_manager"?`<article><b>${item.workload.length}</b><span>授课教师</span></article>`:""}`;aggregateBox.innerHTML=role==="college_manager"?`<section class="stage-d-panel"><div class="stage-d-panel-head"><h3>教师工作量</h3></div>${item.workload.map(x=>`<div class="stage-e-row"><b>${escapeHtml(x.teacher_name)}</b><span>${x.class_count} 个班 · ${x.student_count} 人次</span></div>`).join("")}</section><section class="stage-d-panel"><div class="stage-d-panel-head"><h3>教学质量聚合</h3></div>${item.quality.map(x=>`<div class="stage-e-row"><b>${escapeHtml(x.course_name)}</b><span>${x.sample_size<5?"样本不足，不展示":`均分 ${x.average_score} · 通过率 ${x.pass_rate}%`}</span></div>`).join("")}</section>`:"";}
     }catch(err){const message=`<div class="stage-d-empty is-error">${escapeHtml(err.message||"教学运行加载失败")}</div>`;tasksBox.innerHTML=message;gradesBox.innerHTML=message;}
   }
 
@@ -3939,6 +4155,9 @@
     currentUser = payload.user;
     localStorage.setItem(AUTH_TOKEN_KEY, payload.token);
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(payload.user || {}));
+    window.dispatchEvent(new CustomEvent("nl2sql:identity-changed", {
+      detail: { role_binding_id: payload.user && payload.user.role_binding_id },
+    }));
     dashboardCache = null;
     schemaCache = {};
     profileCache = {};
@@ -3946,6 +4165,8 @@
     standardExamplesCache = {};
     profileVersionsCache = {};
     conversationSource = null;
+    selectedTeachingIssueId = null;
+    pendingTeachingOperationParameters = null;
     selectedSource = "teaching";
     selectedKb = "teaching";
     applyUserUi();
@@ -4311,6 +4532,7 @@
     const issue=event.target.closest("[data-issue-status]");if(issue){let resolution="";if(issue.dataset.issueStatus==="resolved"){resolution=window.prompt("请输入异常处理说明","")||"";if(!resolution)return;}await api.updateTeachingIssue(issue.dataset.issueId,{status:issue.dataset.issueStatus,resolution});loadTeachingOperations();}
   });
   if($("refresh-teaching-issues")) $("refresh-teaching-issues").addEventListener("click",async()=>{await api.refreshTeachingIssues();loadTeachingOperations();});
+  if($("teaching-issue-status-filter")) $("teaching-issue-status-filter").addEventListener("change",()=>loadTeachingOperations());
   if($("teaching-task-filter-form")) $("teaching-task-filter-form").addEventListener("submit",event=>{event.preventDefault();loadTeachingOperations();});
   if($("teaching-task-filter-reset")) $("teaching-task-filter-reset").addEventListener("click",()=>{$("teaching-task-filter-form").reset();loadTeachingOperations();});
   if($("grade-submission-filter-form")) $("grade-submission-filter-form").addEventListener("submit",event=>{event.preventDefault();loadTeachingOperations();});
@@ -4701,6 +4923,8 @@
       else logoutSession();
     });
   }
+  if (assistantQualityRefresh) assistantQualityRefresh.addEventListener("click", loadAssistantQuality);
+  if (assistantQualityDays) assistantQualityDays.addEventListener("change", loadAssistantQuality);
 
   /* ---------------- init ---------------- */
 

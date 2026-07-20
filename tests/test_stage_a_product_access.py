@@ -26,6 +26,7 @@ TECHNICAL_VIEWS = {
     "schema-console-view",
     "governance-queue-view",
     "governance-settings-view",
+    "assistant-quality-view",
 }
 
 
@@ -85,6 +86,7 @@ def test_session_payload_exposes_product_scope_not_internal_policy():
         ("get", "/api/examples?source=teaching"),
         ("get", "/api/data-access/sources"),
         ("get", "/api/governance/settings"),
+        ("get", "/api/assistant/quality-operations"),
     ],
 )
 def test_students_cannot_call_platform_administration_apis(method: str, path: str):

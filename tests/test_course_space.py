@@ -20,6 +20,8 @@ def test_course_space_frontend_has_structured_responsive_workspace():
     assert 'data-course-section="announcements"' in html
     assert 'data-course-content="announcements"' in script
     assert "data-delete-announcement" in script
+    assert "data-publish-announcement" in script
+    assert "publishAnnouncementDraft" in script
     assert "course-space-composer-grid" in style
     assert "@media(max-width:900px)" in style
 

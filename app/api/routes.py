@@ -70,7 +70,7 @@ from app.core.schema_profile import (
 )
 from app.core.teaching_dashboard import teaching_dashboard
 from app.core.workbench import build_workbench
-from app.core.course_space import add_resource, announcement_receipts, course_space, delete_announcement, get_resource_file, notifications, publish_announcement, read_notification
+from app.core.course_space import add_resource, announcement_receipts, course_space, delete_announcement, get_resource_file, notifications, publish_announcement, publish_announcement_draft, read_notification
 from app.models.schemas import (
     AskRequest,
     AskResponse,
@@ -575,6 +575,13 @@ def teaching_course_space(teaching_class_id: int, ctx=Header(None, alias="X-Demo
 @router.post("/teaching/classes/{teaching_class_id}/announcements")
 def teaching_publish_announcement(teaching_class_id: int, req: AnnouncementRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
     return publish_announcement(user_from_token(ctx), teaching_class_id, req.title, req.body)
+
+@router.post("/teaching/announcements/{announcement_id}/publish")
+def teaching_publish_announcement_draft(announcement_id: int, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    try:
+        return publish_announcement_draft(user_from_token(ctx), announcement_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 @router.get("/teaching/announcements/{announcement_id}/receipts")
 def teaching_announcement_receipts(announcement_id: int, ctx=Header(None, alias="X-Demo-Token")) -> dict:

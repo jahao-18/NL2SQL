@@ -1,10 +1,27 @@
 (function () {
   async function request(path, options) {
     const opts = options || {};
+    const timeoutMs = Number(opts.timeoutMs || 0);
+    const fetchOptions = { ...opts };
+    delete fetchOptions.timeoutMs;
     const headers = new Headers(opts.headers || {});
     const token = localStorage.getItem("nl2sql.auth.token");
     if (token) headers.set("X-Demo-Token", token);
-    const resp = await fetch(path, { ...opts, headers });
+    const controller = timeoutMs > 0 ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    let resp;
+    try {
+      resp = await fetch(path, { ...fetchOptions, headers, signal: controller ? controller.signal : fetchOptions.signal });
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        const timeoutError = new Error("智能问数请求超时，请稍后重试。");
+        timeoutError.status = 408;
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
     let data = null;
     try {
       data = await resp.json();
@@ -28,11 +45,12 @@
     return text ? `?${text}` : "";
   }
 
-  function json(method, path, body) {
+  function json(method, path, body, timeoutMs) {
     return request(path, {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
+      timeoutMs,
     });
   }
 
@@ -83,6 +101,7 @@
     readNotification: (id) => json("POST", `/api/notifications/${encodeURIComponent(id)}/read`, {}),
     courseSpace: (id) => request(`/api/teaching/classes/${encodeURIComponent(id)}/space`),
     publishAnnouncement: (id, payload) => json("POST", `/api/teaching/classes/${encodeURIComponent(id)}/announcements`, payload),
+    publishAnnouncementDraft: (id) => json("POST", `/api/teaching/announcements/${encodeURIComponent(id)}/publish`, {}),
     deleteAnnouncement: (id) => json("DELETE", `/api/teaching/announcements/${encodeURIComponent(id)}`, {}),
     addCourseResource: (id, payload) => json("POST", `/api/teaching/classes/${encodeURIComponent(id)}/resources`, payload),
     downloadCourseResource: (id, fileName) => download(`/api/teaching/resources/${encodeURIComponent(id)}/file`, fileName),
@@ -132,6 +151,11 @@
     createSupportRequest: (payload) => json("POST", "/api/teaching/support/requests", payload),
     updateSupportRequest: (id, payload) => json("PATCH", `/api/teaching/support/requests/${encodeURIComponent(id)}`, payload),
     ask: (payload) => json("POST", "/api/ask", payload),
+    queryAssistant: (payload) => json("POST", "/api/assistant/query", payload, 50000),
+    createAssistantAction: (payload) => json("POST", "/api/assistant/action-drafts", payload),
+    assistantAction: (id) => request(`/api/assistant/action-drafts/${encodeURIComponent(id)}`),
+    confirmAssistantAction: (id) => json("POST", `/api/assistant/action-drafts/${encodeURIComponent(id)}/confirm`, {}),
+    assistantQuality: (days = 30) => request(`/api/assistant/quality-operations?days=${encodeURIComponent(days)}`),
     judge: (judgeId) => json("POST", "/api/judge", { judge_id: judgeId }),
     schema: (source) => request(source ? `/api/schema?source=${encodeURIComponent(source)}` : "/api/schema"),
     profile: (source) => request(`/api/profile?source=${encodeURIComponent(source)}`),

@@ -93,6 +93,7 @@ class ChatQwenMultiModal(BaseChatModel):
                     messages=self._to_dashscope(messages),
                     temperature=self.temperature,
                     timeout=settings.llm_timeout_seconds,
+                    enable_thinking=settings.llm_enable_thinking,
                 )
                 if resp.status_code == 200:
                     break

@@ -16,7 +16,7 @@ class SchemaAtom:
     table: str
     column: str = ""          # 空字符串表示表级原子
     col_type: str = ""
-    natural_name: str = ""    # 自然语言名(如 BIRD 的 column_names)
+    natural_name: str = ""    # 字段的自然语言名称
     description: str = ""     # 业务含义(来自 database_description / 注释 / 词表)
     value_hints: str = ""     # 低基数取值示例
     is_pk: bool = False

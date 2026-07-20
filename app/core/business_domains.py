@@ -150,7 +150,7 @@ ROLES: dict[str, dict[str, Any]] = {
         "label": "校级管理员",
         "description": "可查看全部教学业务域和治理配置。",
         "domains": list(BUSINESS_DOMAINS),
-        "features": ["dashboard", "ask", "knowledge", "schema", "governance", "data_access", "approval_center", "organization_management", "personal_center"],
+        "features": ["dashboard", "ask", "knowledge", "schema", "governance", "assistant_quality", "data_access", "approval_center", "organization_management", "personal_center"],
     },
     "academic_office": {
         "name": "academic_office",
@@ -174,7 +174,13 @@ ROLES: dict[str, dict[str, Any]] = {
         "description": "关注授课班级、成绩质量和评教反馈。",
         "domains": ["teaching_operation", "grade_quality", "evaluation_feedback"],
         "features": ["dashboard", "ask", "assignments", "course_analytics", "course_space", "attendance", "course_questions", "teaching_operations", "notifications", "personal_center"],
-        "denied_resources": ["schoolwide_scope", "student_identity", "evaluation_raw", "teacher_private_id"],
+        "denied_resources": ["schoolwide_scope", "evaluation_raw", "teacher_private_id"],
+        # 任课教师可以在本人授课班范围内查看学生姓名；内部关联键仍只允许
+        # 用于 JOIN/WHERE，不能作为问数结果直接输出。
+        "denied_columns": [
+            "student.id", "assignment_submission.student_id", "evaluation.student_id",
+            "attendance.student_id", "learning_activity.student_id",
+        ],
     },
     "counselor": {
         "name": "counselor",
@@ -240,6 +246,7 @@ NAVIGATION_ITEMS: tuple[dict[str, str], ...] = (
     {"view": "kb-list-view", "label": "问数知识库", "feature": "knowledge", "group": "平台运维"},
     {"view": "schema-console-view", "label": "Schema 画像", "feature": "schema", "group": "平台运维"},
     {"view": "governance-queue-view", "label": "质量治理", "feature": "governance", "group": "平台运维"},
+    {"view": "assistant-quality-view", "label": "助手运营", "feature": "assistant_quality", "group": "平台运维"},
     {"view": "governance-settings-view", "label": "治理设置", "feature": "governance", "group": "平台运维"},
     {"view": "profile-view", "label": "个人中心", "feature": "personal_center", "group": "我的"},
 )
@@ -849,7 +856,8 @@ def row_scope_context(ctx: AuthContext) -> str:
         return (
             f"当前登录账号绑定 teacher_id = {ctx.row_scope['teacher_id']}。"
             "用户说“我负责/我的课程/本人授课/my classes”时，必须限定 teaching_class.teacher_id 为该值；"
-            "只做统计或课程层面分析，不展示学生身份字段。"
+            "可以展示本人授课班学生姓名，但必须通过 teaching_class 与 enrollment/assignment 关系验证课程归属；"
+            "不得输出数据库内部 student_id，也不得查询其他教师课程的学生。"
         )
     if ctx.role == "college_manager" and ctx.row_scope.get("college_id"):
         cid = ctx.row_scope["college_id"]
@@ -901,15 +909,28 @@ def filter_schema_info(
         columns = {name: cols for name, cols in info.columns.items() if name in allowed}
         pure_ddl = filter_ddl(info.pure_ddl, allowed)
     if denied:
+        # 外键/主键可能是安全落实 JOIN 和行级范围所必需的。它们继续出现在
+        # 授权 Schema 中，但 blocked_columns 会禁止作为结果输出；姓名、原文、
+        # 工号等非关联敏感字段仍从 Schema 中彻底移除。
+        join_only = {
+            full for full in denied
+            if "." in full and (full.rsplit(".", 1)[1] == "id" or full.rsplit(".", 1)[1].endswith("_id"))
+        }
+        hidden = denied - join_only
         tables = {
-            table: [col for col in cols if f"{table}.{col}" not in denied]
+            table: [col for col in cols if f"{table}.{col}" not in hidden]
             for table, cols in tables.items()
         }
         columns = {
-            table: [col for col in cols if f"{table}.{col.get('column_name')}" not in denied]
+            table: [col for col in cols if f"{table}.{col.get('column_name')}" not in hidden]
             for table, cols in columns.items()
         }
-        pure_ddl = filter_ddl_columns(pure_ddl, denied, set(tables))
+        pure_ddl = filter_ddl_columns(pure_ddl, hidden, set(tables))
+        if join_only:
+            pure_ddl += (
+                "\n\n-- 以下字段仅允许用于 JOIN/WHERE 与服务端行级范围校验，严禁 SELECT 输出：\n-- "
+                + ", ".join(sorted(join_only))
+            )
     ddl_text = pure_ddl
     return SchemaInfo(
         ddl_text=ddl_text,

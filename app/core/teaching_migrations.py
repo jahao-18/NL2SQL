@@ -46,6 +46,12 @@ def ensure_mvp_schema(db_path: Path | None = None) -> None:
             _sync_staff_directory(conn)
         _seed_lifecycle_baseline(conn)
         conn.commit()
+    # V3 and later schema changes use an ordered, checksummed transaction ledger.
+    # Keep this outside the legacy connection so a V3 failure is rolled back as
+    # one independent unit and can be retried safely on the next startup.
+    from app.core.v3_migrations import apply_v3_migrations
+
+    apply_v3_migrations(db_path)
 
 
 def identity_position_migration_report(db_path: Path | None = None) -> dict[str, int | bool | str]:

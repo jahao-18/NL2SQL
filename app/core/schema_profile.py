@@ -215,7 +215,11 @@ def load_profile(source_name: str | None = None) -> SchemaProfile:
     )
 
 
-def profile_context(source_name: str, selected_tables: list[str] | None = None) -> str:
+def profile_context(
+    source_name: str,
+    selected_tables: list[str] | None = None,
+    allowed_columns: dict[str, set[str]] | None = None,
+) -> str:
     """Render profile guidance for the LLM."""
     profile = load_profile(source_name)
     selected = set(selected_tables or [])
@@ -229,10 +233,26 @@ def profile_context(source_name: str, selected_tables: list[str] | None = None) 
             parts.append(item.business_name)
         if item.grain:
             parts.append(f"粒度: {item.grain}")
-        if item.default_time_column:
+        if item.default_time_column and (
+            allowed_columns is None
+            or item.default_time_column in allowed_columns.get(name, set())
+        ):
             parts.append(f"默认时间字段: {item.default_time_column}")
         if item.default_filters:
-            parts.append("默认过滤: " + " AND ".join(item.default_filters))
+            filters = item.default_filters
+            if allowed_columns is not None:
+                filters = [
+                    value for value in filters
+                    if all(
+                        column in allowed_columns.get(table, set())
+                        for table, column in re.findall(
+                            r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b",
+                            value,
+                        )
+                    )
+                ]
+            if filters:
+                parts.append("默认过滤: " + " AND ".join(filters))
         if not item.enabled:
             parts.append("不参与问数")
         if item.description:
@@ -244,6 +264,8 @@ def profile_context(source_name: str, selected_tables: list[str] | None = None) 
     column_lines: list[str] = []
     for key, item in profile.columns.items():
         if selected and item.table not in selected:
+            continue
+        if allowed_columns is not None and item.column not in allowed_columns.get(item.table, set()):
             continue
         parts = [key]
         if item.business_name:
@@ -279,8 +301,13 @@ def profile_context(source_name: str, selected_tables: list[str] | None = None) 
         if not parts:
             continue
         lt, _, rt, _ = parts
-        if selected and lt not in selected and rt not in selected:
+        if selected and (lt not in selected or rt not in selected):
             continue
+        if allowed_columns is not None:
+            lc = rel.left.rsplit(".", 1)[-1]
+            rc = rel.right.rsplit(".", 1)[-1]
+            if lc not in allowed_columns.get(lt, set()) or rc not in allowed_columns.get(rt, set()):
+                continue
         bits = [f"{rel.left} = {rel.right}"]
         if rel.relation_type:
             bits.append(rel.relation_type)
@@ -293,6 +320,19 @@ def profile_context(source_name: str, selected_tables: list[str] | None = None) 
     metric_lines: list[str] = []
     for metric in profile.metrics.values():
         if not metric.enabled:
+            continue
+        column_refs = re.findall(
+            r"\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b",
+            metric.formula,
+        )
+        if selected:
+            refs = {table for table, _column in column_refs}
+            if refs and not refs.issubset(selected):
+                continue
+        if allowed_columns is not None and any(
+            column not in allowed_columns.get(table, set())
+            for table, column in column_refs
+        ):
             continue
         bits = [f"{metric.name} = {metric.formula}"]
         if metric.default_filters:
