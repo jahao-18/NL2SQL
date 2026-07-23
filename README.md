@@ -1,5 +1,7 @@
 # NL2SQL 教学数据智能问数平台
 
+> 当前已实现功能、角色权限、完整页面/API 清单及明确边界，请参阅 [项目功能总览与维护基线](docs/project_feature_catalog.md)。后续功能变更须同步维护该文档。
+
 这是一个基于 **FastAPI + LangChain + 通义千问 Qwen + SQLite/PostgreSQL** 的自然语言问数系统。用户用中文提问，系统自动选择数据源、检索相关 Schema、生成只读 SQL、执行查询，并把结果、SQL、可信度评估和治理建议展示在前端工作台。
 
 当前仓库默认包含一套模拟教学数据 `data/teaching.db`，clone 后安装依赖、配置 DashScope API Key 即可启动默认演示。
@@ -96,11 +98,11 @@ AUTH_SECRET=一段仅本机使用的随机字符串
 可选模型配置：
 
 ```env
-QWEN_MODEL=qwen3.7-plus
-JUDGE_MODEL=qwen3.6-plus
+QWEN_MODEL=qwen-plus
+JUDGE_MODEL=qwen-plus
 ROUTER_MODEL=qwen-turbo
-BIRD_DATABASE_ROOT=D:/dev/dev_databases
 LLM_TIMEOUT_SECONDS=45
+LLM_ENABLE_THINKING=false
 MAX_UPLOAD_BYTES=20971520
 PREWARM_ENABLED=false
 ```
@@ -156,24 +158,7 @@ sources:
 
 `data/teaching.db` 是模拟数据，已经纳入仓库。clone 后无需额外生成即可使用默认演示。
 
-### BIRD 数据集
-
-`data_sources.yaml` 中还保留了若干 BIRD benchmark 示例源，路径由
-`.env` 的 `BIRD_DATABASE_ROOT` 指定，目录结构形如：
-
-```text
-<BIRD_DATABASE_ROOT>/<db>/<db>.sqlite
-```
-
-这些原始数据库体积较大，未放入 Git 仓库。缺少 BIRD 数据不会影响默认教学库启动；只有当你手动选择或评测 BIRD 数据源时才需要下载并配置对应目录。
-
 登录成功后后端会返回 HMAC 签名的演示令牌。修改 `AUTH_SECRET` 后，浏览器中旧的登录状态会失效，重新登录即可。
-
-如果要重新生成 BIRD 数据源配置，可参考：
-
-```powershell
-python scripts/eval_bird.py --bird-dir <你的BIRD数据目录> --gen-sources
-```
 
 ## 连接自己的数据库
 
@@ -256,14 +241,19 @@ data/schema_profiles/.versions/
 默认模式，无需 Docker：
 
 ```env
+RETRIEVAL_ENABLED=true
 RETRIEVAL_BACKEND=local
+RETRIEVAL_QUERY_EXPANSION=false
+RETRIEVAL_MIN_TABLES=15
+RETRIEVAL_MIN_COLUMNS=120
 ```
 
 使用：
 
-- `numpy` 向量相似度
-- `rank-bm25` 关键词召回
-- `networkx` 关系图谱
+- 先按当前角色过滤表和字段，检索不能扩大授权范围。
+- 授权后不超过 15 张表且不超过 120 列时，直接使用完整授权 Schema，不调用 embedding。
+- 更大的授权视图并行使用 `numpy` 向量相似度和 `rank-bm25` 关键词召回，再由 `networkx` 关系图补全授权范围内的 JOIN。
+- 业务术语只在问题明确命中且引用表均已授权时注入，不作为独立召回路。
 
 适合本地开发、默认教学库和轻量演示。
 
@@ -335,7 +325,7 @@ python scripts/verify_server_backend.py
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
 | `DASHSCOPE_API_KEY` | 空 | 必填，DashScope API Key |
-| `QWEN_MODEL` | `qwen-max` | 主 SQL 生成模型 |
+| `QWEN_MODEL` | `qwen-plus` | 主 SQL 生成模型 |
 | `JUDGE_MODEL` | `qwen-plus` | 可信度评估模型 |
 | `ROUTER_MODEL` | `qwen-turbo` | 数据源路由和查询扩展模型 |
 | `MAX_ROWS` | `200` | 单次最多返回行数 |
@@ -345,11 +335,13 @@ python scripts/verify_server_backend.py
 | `JUDGE_FALLBACK_SECONDS` | `12` | 评估模型超时后的规则兜底秒数 |
 | `RETRIEVAL_ENABLED` | `true` | 是否启用 Schema linking |
 | `RETRIEVAL_BACKEND` | `local` | `local` 或 `server` |
+| `RETRIEVAL_MIN_TABLES` | `15` | 授权后表数超过该值时触发检索 |
+| `RETRIEVAL_MIN_COLUMNS` | `120` | 授权后列数超过该值时触发检索 |
 | `RETRIEVAL_TOP_TABLES` | `8` | 检索保留相关表数量 |
 | `RETRIEVAL_TOP_K` | `30` | 每路召回数量 |
 | `RETRIEVAL_COL_CAP` | `25` | 宽表列裁剪上限 |
-| `RETRIEVAL_QUERY_EXPANSION` | `true` | 是否用快模型扩展检索 query |
-| `PREWARM_ENABLED` | `true` | 启动后后台预热检索器 |
+| `RETRIEVAL_QUERY_EXPANSION` | `true` | 是否用快模型扩展检索 query；本地推荐配置为 `false` 以减少一次模型往返 |
+| `PREWARM_ENABLED` | `false` | 启动后是否后台预热检索器 |
 
 ## 安全边界
 
@@ -366,6 +358,16 @@ python scripts/verify_server_backend.py
 python -m compileall -q app tests scripts
 python -m pytest
 ```
+
+V3 多角色智能问数场景评测默认只运行不依赖外部模型的确定性用例，并使用临时数据库：
+
+```powershell
+python scripts/eval_v3_scenarios.py
+python scripts/eval_v3_scenarios.py --include-model
+python scripts/eval_v3_scenarios.py --validate-only
+```
+
+`--include-model` 会额外执行依赖当前 DashScope 与检索配置的 NL2SQL、上下文追问、空结果和小样本场景。
 
 如果只想确认应用能导入：
 
@@ -388,7 +390,6 @@ data/managed/*.db
 data/audit/
 data/governance/
 data/retrieval_index/
-data/bird/
 volumes/
 ```
 
@@ -405,7 +406,7 @@ git ls-files --others --exclude-standard
 
 - LLM 生成 SQL 不是确定性程序，复杂问题仍可能需要业务词表、画像或示例来约束。
 - 默认账号密码仅用于演示，不能用于生产。
-- BIRD 原始数据库未内置，需要自行下载。
+- 默认运行时只注册教学业务库；新增数据源应当是经过审核的教学业务数据库。
 - 修改数据源、prompt、词表和画像后通常需要重启服务清理缓存。
 - server 检索依赖 Docker 组件，组件未就绪时会自动降级，但效果会下降。
 

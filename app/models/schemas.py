@@ -1,7 +1,7 @@
 """API 请求 / 响应模型。"""
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,10 +23,10 @@ class FewShotExample(BaseModel):
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500, description="用户的自然语言问题")
-    history: list[Turn] = Field(default_factory=list, description="历史对话,最近 N 轮,无状态由前端持有")
-    source: str | None = Field(None, description="手动选定的数据源(硬锁,跳过自动路由);None=自动路由")
-    current_source: str | None = Field(None, description="本会话当前所在数据源,自动路由时作为提示,让追问留在原库、换话题再切库")
-    user_glossary: list[str] = Field(default_factory=list, max_length=50,
+    history: list[Turn] = Field(default_factory=list, max_length=20, description="历史对话,最近 N 轮,无状态由前端持有")
+    source: str | None = Field(None, max_length=100, description="手动选定的数据源(硬锁,跳过自动路由);None=自动路由")
+    current_source: str | None = Field(None, max_length=100, description="本会话当前所在数据源,自动路由时作为提示,让追问留在原库、换话题再切库")
+    user_glossary: list[Annotated[str, Field(min_length=1, max_length=500)]] = Field(default_factory=list, max_length=50,
                                      description="用户为当前数据源补充的术语/取值映射,逐条拼进 schema 喂模型(前端按库存 localStorage)")
     few_shots: list[FewShotExample] = Field(default_factory=list, max_length=20,
                                             description="用户收藏的样例 SQL,后端按本次数据源筛选后作为 few-shot 注入")
@@ -35,6 +35,95 @@ class AskRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=80)
     password: str = Field(..., min_length=1, max_length=80)
+
+
+class RoleSwitchRequest(BaseModel):
+    role_binding_id: int = Field(..., gt=0)
+
+
+class RegisterRequest(BaseModel):
+    password: str = Field(..., min_length=8, max_length=32)
+    display_name: str = Field(..., min_length=2, max_length=40)
+    identity_type: Literal["student", "teacher"]
+    identifier: str = Field(..., min_length=1, max_length=40)
+
+
+class IdentityReviewRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+    note: str = Field("", max_length=500)
+
+
+class IdentityBatchReviewRequest(IdentityReviewRequest):
+    application_ids: list[int] = Field(..., min_length=1, max_length=100)
+
+
+class PositionAssignmentCreateRequest(BaseModel):
+    position_slot_id: int = Field(..., gt=0)
+    user_id: int = Field(..., gt=0)
+    assignment_type: Literal["primary", "deputy", "acting", "temporary", "reviewer"] = "primary"
+    scope_ids: list[int] = Field(default_factory=list, max_length=200)
+    valid_from: str = Field(..., min_length=8, max_length=40)
+    valid_until: str | None = Field(None, max_length=40)
+    reason: str = Field(..., min_length=1, max_length=500)
+    reauth_password: str | None = Field(None, max_length=80)
+
+
+class PositionAssignmentEndRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500)
+    reauth_password: str | None = Field(None, max_length=80)
+
+
+class PositionAssignmentUpdateRequest(BaseModel):
+    scope_ids: list[int] | None = Field(None, max_length=200)
+    valid_until: str | None = Field(None, max_length=40)
+    reason: str = Field(..., min_length=1, max_length=500)
+    reauth_password: str | None = Field(None, max_length=80)
+
+
+class PositionAssignmentTransferRequest(BaseModel):
+    successor_user_id: int = Field(..., gt=0)
+    assignment_type: Literal["primary", "deputy", "acting", "temporary", "reviewer"] = "primary"
+    scope_ids: list[int] | None = Field(None, max_length=200)
+    valid_from: str = Field(..., min_length=8, max_length=40)
+    valid_until: str | None = Field(None, max_length=40)
+    reason: str = Field(..., min_length=1, max_length=500)
+    reauth_password: str | None = Field(None, max_length=80)
+
+
+class AccountSecurityActionRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500)
+    reauth_password: str = Field(..., min_length=1, max_length=80)
+
+
+class StudentLifecycleActionRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class StudentBatchGraduationRequest(StudentLifecycleActionRequest):
+    person_identity_ids: list[int] = Field(..., min_length=1, max_length=500)
+
+
+class StaffLifecycleRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500)
+    reauth_password: str = Field(..., min_length=1, max_length=80)
+
+
+class StaffTransferRequest(StaffLifecycleRequest):
+    destination_college_id: int = Field(..., gt=0)
+
+class AnnouncementRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    body: str = Field(..., min_length=1, max_length=4000)
+
+class CourseResourceRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=160)
+    description: str = Field("", max_length=1000)
+    file_name: str = Field("", max_length=255)
+    file_content_base64: str | None = None
+    content_type: str = Field("", max_length=160)
+    resource_url: str = Field("", max_length=1000)
+    visible_from: str | None = Field(None, max_length=40)
+    visible_until: str | None = Field(None, max_length=40)
 
 
 class ChangePasswordRequest(BaseModel):

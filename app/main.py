@@ -13,10 +13,13 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.data_access import router as data_access_router
+from app.api.assistant import router as assistant_router
 from app.api.governance import router as governance_router
 from app.api.routes import router
+from app.api.teaching import router as teaching_router
 from app.core.config import STATIC_DIR, settings
 from app.core.business_domains import AuthenticationError, AuthorizationError
+from app.core.teaching_migrations import ensure_mvp_schema
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,6 +30,7 @@ logger = logging.getLogger("nl2sql")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    ensure_mvp_schema()
     if settings.prewarm_enabled:
         def _run() -> None:
             try:
@@ -54,8 +58,10 @@ def _authorization_error(_: Request, exc: AuthorizationError) -> JSONResponse:
     return JSONResponse(status_code=403, content={"detail": str(exc)})
 
 app.include_router(router)
+app.include_router(assistant_router)
 app.include_router(governance_router)
 app.include_router(data_access_router)
+app.include_router(teaching_router)
 
 # 前端静态页挂在根路径,index.html 自动作为根。
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

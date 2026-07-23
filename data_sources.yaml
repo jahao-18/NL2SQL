@@ -1,9 +1,6 @@
-# 数据源注册表
-# 每个 source 描述一个可查询的数据库。前端会显示 name，后端按 url 连接。
-# url 用 SQLAlchemy 风格连接串:
-#   SQLite:     sqlite:///data/app.db        (相对路径基于项目根)
-#   PostgreSQL: postgresql+psycopg://user:password@host:5432/dbname
-# glossary 是相对项目根的 markdown 文件路径，可缺省。
+# 教学系统数据源注册表
+# 默认运行时只连接教学业务库。需要接入其他教学业务数据库时，
+# 应通过数据接入页面或在此文件中增加经过审核的 SQLite/PostgreSQL 数据源。
 
 sources:
   - name: teaching
@@ -12,56 +9,8 @@ sources:
     glossary: data/glossaries/teaching.md
     schema_profile: data/schema_profiles/teaching.yaml
 
-  # BIRD dev 基准库(只读)
-  # url 用 mode=ro&immutable=1: 只读 + 当作不可变，跳过加锁/WAL。
-  # glossary 由 scripts/eval_bird.py --gen-sources 从 database_description 生成在 data/bird/。
-  - name: california_schools
-    label: "BIRD: california_schools"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/california_schools/california_schools.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/california_schools.md
-  - name: card_games
-    label: "BIRD: card_games"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/card_games/card_games.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/card_games.md
-  - name: codebase_community
-    label: "BIRD: codebase_community"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/codebase_community/codebase_community.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/codebase_community.md
-  - name: debit_card_specializing
-    label: "BIRD: debit_card_specializing"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/debit_card_specializing/debit_card_specializing.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/debit_card_specializing.md
-  - name: european_football_2
-    label: "BIRD: european_football_2"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/european_football_2/european_football_2.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/european_football_2.md
-  - name: financial
-    label: "BIRD: financial"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/financial/financial.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/financial.md
-  - name: formula_1
-    label: "BIRD: formula_1"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/formula_1/formula_1.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/formula_1.md
-  - name: student_club
-    label: "BIRD: student_club"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/student_club/student_club.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/student_club.md
-  - name: superhero
-    label: "BIRD: superhero"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/superhero/superhero.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/superhero.md
-  - name: thrombosis_prediction
-    label: "BIRD: thrombosis_prediction"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/thrombosis_prediction/thrombosis_prediction.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/thrombosis_prediction.md
-  - name: toxicology
-    label: "BIRD: toxicology"
-    url: sqlite:///file:${BIRD_DATABASE_ROOT}/toxicology/toxicology.sqlite?mode=ro&immutable=1&uri=true
-    glossary: data/bird/glossaries/toxicology.md
-
-  # 示例: 取消注释并填好凭据即可挂载一个 PostgreSQL 源
-  # - name: prod_pg
-  #   label: 生产库 (PostgreSQL)
-  #   url: postgresql+psycopg://readonly_user:password@127.0.0.1:5432/mydb
-  #   glossary: data/glossaries/prod_pg.md
+  # 教学业务 PostgreSQL 接入示例：
+  # - name: teaching_archive
+  #   label: 教学历史库 (PostgreSQL)
+  #   url: postgresql+psycopg://readonly_user:password@127.0.0.1:5432/teaching_archive
+  #   glossary: data/glossaries/teaching_archive.md

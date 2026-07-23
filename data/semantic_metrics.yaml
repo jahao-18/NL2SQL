@@ -1,0 +1,297 @@
+version: 2
+updated_at: "2026-07-19T00:00:00+08:00"
+metrics:
+  - code: assignment_completion_rate
+    name: 作业完成率
+    aliases: [作业完成率, 作业提交率, 完成率]
+    domain: assignment
+    description: 已提交作业任务占应提交任务的比例
+    formula: submitted_count / expected_count * 100
+    source: 作业、选课与提交状态
+    time_semantics: 按作业截止时间及当前有效提交状态
+    roles: [student, teacher]
+    pages: [assistant, dashboard, assignment_workflow, course_space, course_analytics]
+    row_scope: 学生本人或教师本人授课班
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: "%"
+  - code: assignment_late_rate
+    name: 作业迟交率
+    aliases: [作业迟交率, 迟交率]
+    domain: assignment
+    description: 迟交任务占已提交任务的比例
+    formula: late_count / submitted_count * 100
+    source: 作业提交状态
+    time_semantics: 按提交时间与作业截止时间比较
+    roles: [student, teacher]
+    pages: [assistant, dashboard, assignment_workflow, course_analytics]
+    row_scope: 学生本人或教师本人授课班
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: "%"
+  - code: assignment_missing_count
+    name: 作业未交数
+    aliases: [作业未交数, 未交人数, 未交作业, 缺交数]
+    domain: assignment
+    description: 应提交但当前没有有效提交记录的任务数
+    formula: expected_count - submitted_count
+    source: 作业、选课与提交状态
+    time_semantics: 当前状态快照
+    roles: [student, teacher]
+    pages: [assistant, dashboard, assignment_workflow, course_analytics]
+    row_scope: 学生本人或教师本人授课班
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: 个
+  - code: assignment_pending_grading_count
+    name: 待批作业数
+    aliases: [待批作业数, 待批数, 待批阅, 待评分]
+    domain: assignment
+    description: 已提交且尚无评分记录的提交数
+    formula: submitted_without_grading_record
+    source: 作业提交与评分记录
+    time_semantics: 当前状态快照
+    roles: [teacher]
+    pages: [assistant, dashboard, assignment_workflow, course_analytics]
+    row_scope: 教师本人授课班
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: 份
+  - code: attendance_rate
+    name: 出勤率
+    aliases: [出勤率, 到课率]
+    domain: attendance
+    description: 出勤或迟到记录占全部有效考勤记录的比例
+    formula: (present_count + late_count) / attendance_count * 100
+    source: 课程场次与考勤记录
+    time_semantics: 按课程场次日期
+    roles: [student, teacher, counselor]
+    pages: [assistant, dashboard, attendance, course_analytics, support_workbench]
+    row_scope: 学生本人、教师本人授课班或辅导员所带行政班
+    minimum_sample_size: 3
+    supports_drilldown: true
+    unit: "%"
+  - code: attendance_absence_count
+    name: 缺勤次数
+    aliases: [缺勤次数, 缺勤数, 旷课次数]
+    domain: attendance
+    description: 状态为 absent 的有效考勤记录数
+    formula: count(status = absent)
+    source: 课程场次与考勤记录
+    time_semantics: 按课程场次日期
+    roles: [student, teacher, counselor]
+    pages: [assistant, dashboard, attendance, course_analytics, support_workbench]
+    row_scope: 学生本人、教师本人授课班或辅导员所带行政班
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: 次
+  - code: attendance_consecutive_absence
+    name: 最大连续缺勤
+    aliases: [连续缺勤, 最大连续缺勤, 连续旷课]
+    domain: attendance
+    description: 授权范围内单个学生按日期排序的最大连续缺勤次数
+    formula: max(consecutive status = absent per student)
+    source: 课程场次与考勤记录
+    time_semantics: 按课程场次日期连续计算
+    roles: [student, teacher, counselor]
+    pages: [assistant, attendance, course_analytics, support_workbench]
+    row_scope: 学生本人、教师本人授课班或辅导员所带行政班
+    minimum_sample_size: 2
+    supports_drilldown: false
+    unit: 次
+  - code: grade_submission_status
+    name: 成绩提交状态
+    aliases: [成绩提交状态, 成绩状态]
+    domain: grade
+    description: 授权教学班当前成绩提交状态分布
+    formula: count(teaching_class) by latest grade_submission.status
+    source: 教学班与成绩提交单
+    time_semantics: 当前状态快照
+    roles: [teacher, college_manager, academic_office]
+    pages: [assistant, dashboard, teaching_operations, course_analytics]
+    row_scope: 教师本人授课班、学院或教务范围
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: 个教学班
+  - code: grade_publication_progress
+    name: 成绩发布进度
+    aliases: [成绩发布进度, 发布进度]
+    domain: grade
+    description: 已发布成绩的教学班占授权教学班的比例
+    formula: published_class_count / teaching_class_count * 100
+    source: 教学班与成绩提交单
+    time_semantics: 当前状态快照
+    roles: [teacher, college_manager, academic_office]
+    pages: [assistant, dashboard, teaching_operations, course_analytics]
+    row_scope: 教师本人授课班、学院或教务范围
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: "%"
+  - code: grade_distribution
+    name: 成绩分布
+    aliases: [成绩分布, 分数分布]
+    domain: grade
+    description: 已发布成绩按不及格、60-69、70-79、80-89、90及以上分组
+    formula: count(published score) by score band
+    source: 已发布评分记录
+    time_semantics: 按成绩发布时间与当前发布状态
+    roles: [student, teacher, college_manager, academic_office]
+    pages: [assistant, course_analytics, teaching_operations]
+    row_scope: 学生本人、教师本人授课班、学院或教务范围
+    minimum_sample_size: 5
+    supports_drilldown: false
+    unit: 人次
+  - code: grade_pass_rate
+    name: 成绩通过率
+    aliases: [成绩通过率, 及格率, 通过率]
+    domain: grade
+    description: 已发布且分数不低于 60 的成绩占已发布成绩的比例
+    formula: passed_published_count / published_count * 100
+    source: 已发布评分记录
+    time_semantics: 按成绩发布时间与当前发布状态
+    roles: [student, teacher, college_manager, academic_office]
+    pages: [assistant, course_analytics, teaching_operations]
+    row_scope: 学生本人、教师本人授课班、学院或教务范围
+    minimum_sample_size: 5
+    supports_drilldown: false
+    unit: "%"
+  - code: teaching_open_issue_count
+    name: 开放教学异常数
+    aliases: [开放教学异常, 开放异常, 待处理异常]
+    domain: teaching_operations
+    description: 当前未解决的确定性教学异常数
+    formula: count(status != resolved)
+    source: 教学异常台账
+    time_semantics: 当前状态快照
+    roles: [college_manager, academic_office]
+    pages: [assistant, dashboard, teaching_operations]
+    row_scope: 学院或教务范围
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: 个
+  - code: teaching_overdue_issue_count
+    name: 逾期教学异常数
+    aliases: [逾期教学异常, 逾期异常]
+    domain: teaching_operations
+    description: 创建超过 48 小时且仍未解决的教学异常数
+    formula: count(status != resolved and age_hours > 48)
+    source: 教学异常台账
+    time_semantics: 以当前时间减创建时间，阈值 48 小时
+    roles: [college_manager, academic_office]
+    pages: [assistant, dashboard, teaching_operations]
+    row_scope: 学院或教务范围
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: 个
+  - code: teaching_avg_resolution_hours
+    name: 教学异常平均处理时长
+    aliases: [教学异常平均处理时长, 平均处理时长]
+    domain: teaching_operations
+    description: 已解决教学异常从创建到解决的平均小时数
+    formula: avg(resolved_at - created_at)
+    source: 教学异常台账
+    time_semantics: 按解决时间统计
+    roles: [college_manager, academic_office]
+    pages: [assistant, teaching_operations]
+    row_scope: 学院或教务范围
+    minimum_sample_size: 3
+    supports_drilldown: false
+    unit: 小时
+  - code: support_pending_contact_count
+    name: 待联系支持事项
+    aliases: [待联系支持事项, 待联系]
+    domain: student_support
+    description: 当前状态为 open 的学习支持个案数
+    formula: count(status = open)
+    source: 学习支持个案
+    time_semantics: 当前状态快照
+    roles: [counselor]
+    pages: [assistant, dashboard, support_workbench]
+    row_scope: 辅导员本人负责个案及所带行政班
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: 个
+  - code: support_pending_review_count
+    name: 待复查支持事项
+    aliases: [待复查支持事项, 待复查]
+    domain: student_support
+    description: 已联系或跟进中且尚未关闭的学习支持个案数
+    formula: count(status in contacted, tracking)
+    source: 学习支持个案
+    time_semantics: 当前状态快照
+    roles: [counselor]
+    pages: [assistant, dashboard, support_workbench]
+    row_scope: 辅导员本人负责个案及所带行政班
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: 个
+  - code: support_overdue_review_count
+    name: 逾期复查支持事项
+    aliases: [逾期复查支持事项, 逾期复查]
+    domain: student_support
+    description: 复查时间已到且尚未关闭的学习支持个案数
+    formula: count(review_at < now and status != closed)
+    source: 学习支持个案
+    time_semantics: 当前时间与 review_at 比较
+    roles: [counselor]
+    pages: [assistant, dashboard, support_workbench]
+    row_scope: 辅导员本人负责个案及所带行政班
+    minimum_sample_size: 1
+    supports_drilldown: true
+    unit: 个
+  - code: assistant_success_rate
+    name: 问数成功率
+    aliases: [问数成功率, 查询成功率]
+    domain: platform_operations
+    description: 成功或降级完成的助手轮次占全部已完成轮次的比例
+    formula: (success_count + degraded_count) / turn_count * 100
+    source: 助手轮次状态
+    time_semantics: 当前保留期内全部助手轮次
+    roles: [admin]
+    pages: [assistant, dashboard, governance]
+    row_scope: 平台范围
+    minimum_sample_size: 10
+    supports_drilldown: false
+    unit: "%"
+  - code: assistant_low_confidence_rate
+    name: 低置信率
+    aliases: [低置信率, 低置信问题比例]
+    domain: platform_operations
+    description: 低于治理阈值的助手轮次占可评估轮次的比例
+    formula: low_confidence_count / evaluated_turn_count * 100
+    source: 统一助手脱敏执行轨迹
+    time_semantics: 当前保留期
+    roles: [admin]
+    pages: [assistant, dashboard, governance]
+    row_scope: 平台范围
+    minimum_sample_size: 10
+    supports_drilldown: false
+    unit: "%"
+  - code: assistant_degraded_rate
+    name: 问数降级率
+    aliases: [问数降级率, 降级率]
+    domain: platform_operations
+    description: 状态为 degraded 的助手轮次占全部已完成轮次的比例
+    formula: degraded_count / turn_count * 100
+    source: 助手轮次状态
+    time_semantics: 当前保留期内全部助手轮次
+    roles: [admin]
+    pages: [assistant, dashboard, governance]
+    row_scope: 平台范围
+    minimum_sample_size: 10
+    supports_drilldown: false
+    unit: "%"
+  - code: assistant_stage_latency
+    name: 问数阶段耗时
+    aliases: [问数阶段耗时, 阶段耗时]
+    domain: platform_operations
+    description: 路由、检索、模型、校验和执行阶段耗时
+    formula: avg(stage_elapsed_ms) by stage
+    source: 统一助手脱敏执行轨迹
+    time_semantics: 当前保留期
+    roles: [admin]
+    pages: [assistant, dashboard, governance]
+    row_scope: 平台范围
+    minimum_sample_size: 10
+    supports_drilldown: false
+    unit: 毫秒

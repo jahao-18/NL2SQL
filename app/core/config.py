@@ -15,15 +15,16 @@ class Settings(BaseSettings):
 
     dashscope_api_key: str = ""
     auth_secret: str = "nl2sql-course-project-change-me"
-    qwen_model: str = "qwen-max"
+    demo_mode: bool = False
+    qwen_model: str = "qwen-plus"
     # 数据源路由模型:只做"从库目录里选一个库"的分类小任务,无需主生成那么强,
     # 用快模型砍掉路由这一步的延迟(只影响选库速度,不碰库内 schema 召回质量)。
     router_model: str = "qwen-turbo"
     max_rows: int = 200
     query_timeout_seconds: int = 5
     llm_timeout_seconds: int = 45
+    llm_enable_thinking: bool = False
     max_upload_bytes: int = 20 * 1024 * 1024
-    bird_database_root: str = "data/bird/dev_databases"
     enum_discovery_enabled: bool = True
     enum_discovery_max_tables: int = 20
     enum_discovery_max_columns: int = 120
@@ -60,9 +61,9 @@ class Settings(BaseSettings):
     retrieval_top_tables: int = 8           # 融合后保留的相关表数量上限
     retrieval_top_k: int = 30               # 每路检索器返回的列命中数
     retrieval_max_bridge_tables: int = 3    # 关系图谱为连通选中表最多补的桥接表数
-    # 检索触发改按"schema 体量":表多(需选表)或总列数多(需裁列,哪怕表很少)都触发。
-    # 这样像 european_football_2(7 表但 Match 有 115 列)这种宽表库也能走 schema linking。
-    retrieval_min_columns: int = 40         # 总列数 > 此值即触发检索(即便表数 <= top_tables)
+    # 触发条件按角色过滤后的授权 Schema 体量计算，避免小角色视图为整库规模承担检索延迟。
+    retrieval_min_tables: int = 15          # 授权后可见表数 > 此值才需要选表
+    retrieval_min_columns: int = 120        # 授权后可见列数 > 此值才需要裁列
     # 列级裁剪:选中一张表时,宽表只渲染"命中列 + 主键 + 外键列 + 少量补充",封顶此列数,
     # 其余折叠成"还有 N 个字段"。窄表(列数 <= 此值)全列照常渲染。
     retrieval_col_cap: int = 25

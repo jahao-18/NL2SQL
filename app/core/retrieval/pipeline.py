@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import concurrent.futures as cf
 import logging
+import re
 import threading
 from collections import defaultdict
 
 from app.core.config import settings
 from app.core.data_sources import get_source
-from app.core.schema import list_table_names, count_columns, _read_glossary
+from app.core.schema import SchemaInfo, list_table_names, count_columns, _read_glossary
 from app.core.retrieval.atoms import extract_atoms
 from app.core.retrieval.base import Hit, RetrievedContext, Retriever, SchemaAtom
 from app.core.retrieval.glossary_vector import GlossaryEntry, GlossaryRetriever, parse_glossary
@@ -153,10 +154,12 @@ def _select_tables(atoms: list[SchemaAtom], scores: dict[str, float], top_n: int
     return sorted(table_score, key=lambda t: table_score[t], reverse=True)[:top_n]
 
 
-def _fk_columns(graph: RelationGraph) -> set[tuple[str, str]]:
+def _fk_columns(graph: RelationGraph, allowed_tables: set[str] | None = None) -> set[tuple[str, str]]:
     """图里所有外键涉及的 (表, 列),裁剪时这些列必须保留以维持 JOIN 可写。"""
     cols: set[tuple[str, str]] = set()
     for (t1, c1, t2, c2) in graph.fks:
+        if allowed_tables is not None and (t1 not in allowed_tables or t2 not in allowed_tables):
+            continue
         cols.add((t1, c1))
         cols.add((t2, c2))
     return cols
@@ -237,30 +240,84 @@ def _render(
     return text
 
 
-def retrieve_context(question: str, source: str, ddl_text: str) -> RetrievedContext | None:
-    """针对问题召回精简 schema 上下文。返回 None 表示应回退整库 DDL(关闭/库太小/失败/召回为空)。"""
+def _authorized_atoms(atoms: list[SchemaAtom], schema_info: SchemaInfo) -> list[SchemaAtom]:
+    """Limit the cached full-source atoms to the role-filtered schema view."""
+    return [
+        atom for atom in atoms
+        if atom.table in schema_info.tables
+        and (not atom.column or atom.column in schema_info.tables[atom.table])
+    ]
+
+
+def _filter_hits(hits: list[Hit], allowed_ids: set[str]) -> list[Hit]:
+    return [hit for hit in hits if hit.atom_id in allowed_ids]
+
+
+def _conditional_glossary(
+    question: str,
+    source: str,
+    allowed_tables: set[str],
+    selected_tables: set[str],
+) -> list[GlossaryEntry]:
+    """Inject matching local glossary rules without making them a recall route."""
+    try:
+        text = _read_glossary(get_source(source).glossary_path)
+        known_tables = list(list_table_names(source))
+    except Exception:
+        logger.exception("conditional glossary unavailable | source=%s", source)
+        return []
+    if not text:
+        return []
+    question_norm = re.sub(r"\s+", "", question).lower()
+    matched: list[GlossaryEntry] = []
+    # Parse against the full catalog first so references to forbidden tables are
+    # still detected and can be rejected below.
+    for entry in parse_glossary(text, known_tables):
+        refs = set(entry.tables)
+        if not refs.issubset(allowed_tables):
+            continue
+        if refs and not refs.intersection(selected_tables):
+            continue
+        head = re.split(r"[=：:]", entry.content, maxsplit=1)[0]
+        terms = [
+            term.strip().lower()
+            for term in re.split(r"[/、,，;；（）()]", head)
+            if len(term.strip()) >= 2
+        ]
+        if any(re.sub(r"\s+", "", term) in question_norm for term in terms):
+            matched.append(entry)
+        if len(matched) >= settings.glossary_top_k:
+            break
+    return matched
+
+
+def retrieve_context(question: str, source: str, schema_info: SchemaInfo) -> RetrievedContext | None:
+    """召回精简授权 Schema；None 表示直接使用完整授权 Schema。"""
     if not settings.retrieval_enabled:
         return None
-    if len(ddl_text) < settings.retrieval_min_ddl_chars:
+    if len(schema_info.ddl_text) < settings.retrieval_min_ddl_chars:
         return None  # 小库直接全量喂,无需 schema linking
 
-    # 触发条件按"schema 体量":表多(需选表)**或**总列数多(需裁列,哪怕表很少)。
-    # 旧逻辑只看表数,把 european_football_2(7 表但 Match 有 115 列)这类宽表库挡在外面;
-    # 现在列多也触发,配合 _render 的列级裁剪,正是这类库最需要的。两者都小 = 小库,整库 DDL 足矣。
+    # 只看当前角色已经获准使用的表/列；两者都小就直接使用完整授权 Schema。
     try:
-        n_tables = len(list_table_names(source))
-        n_columns = count_columns(source)
+        n_tables = len(schema_info.tables)
+        n_columns = sum(len(columns) for columns in schema_info.tables.values())
     except Exception:
         return None
-    if n_tables <= settings.retrieval_top_tables and n_columns <= settings.retrieval_min_columns:
+    if n_tables <= settings.retrieval_min_tables and n_columns <= settings.retrieval_min_columns:
         return None
 
     try:
-        atoms, retrievers, graph, glossary = _get(source)
+        all_atoms, retrievers, graph, glossary = _get(source)
     except Exception:
         logger.exception("schema 原子/检索器准备失败,回退整库 DDL | source=%s", source)
         return None
     if not retrievers:
+        return None
+    atoms = _authorized_atoms(all_atoms, schema_info)
+    allowed_ids = {atom.id for atom in atoms}
+    allowed_tables = set(schema_info.tables)
+    if not atoms:
         return None
 
     # 派生指标(计算口径)感知:问题命中已定义的指标时,把公式里的操作数概念并入检索 query,
@@ -277,7 +334,13 @@ def retrieve_context(question: str, source: str, ddl_text: str) -> RetrievedCont
     # 用线程池并发,墙钟≈最慢一路而非三路之和。graph 是后置关系层(依赖融合选出的表),
     # 无法与召回并行,留到融合之后。每路结果按提交顺序回收,RRF 与 used 仍确定性。
     specs: list[tuple[str, callable]] = [
-        (r.name, lambda r=r: r.query(eq, settings.retrieval_top_k)) for r in retrievers
+        (
+            r.name,
+            lambda r=r: _filter_hits(r.query(eq, len(all_atoms)), allowed_ids)[
+                :settings.retrieval_top_k
+            ],
+        )
+        for r in retrievers
     ]
     if glossary.available():
         specs.append(("glossary", lambda: glossary.query(eq, settings.glossary_top_k)))
@@ -300,7 +363,10 @@ def retrieve_context(question: str, source: str, ddl_text: str) -> RetrievedCont
             continue
         if name == "glossary":
             # 术语路:命中条目引用的表 -> 表级 Hit 并入 RRF(影响选表);正文稍后注入「业务说明」段。
-            glossary_entries = res
+            glossary_entries = [
+                entry for entry in res
+                if set(entry.tables).issubset(allowed_tables)
+            ]
             g_hits = [Hit(tbl, e.score, "glossary")
                       for e in glossary_entries for tbl in e.tables]
             if g_hits:
@@ -325,7 +391,11 @@ def retrieve_context(question: str, source: str, ddl_text: str) -> RetrievedCont
     # graph 需要种子,故跑在前三路并行召回之后,不与之并行。
     if graph.available():
         seeds = dict(sorted(tscore.items(), key=lambda kv: kv[1], reverse=True)[:settings.retrieval_top_tables])
-        graph_ranked = graph.rank(seeds, settings.retrieval_top_k)
+        graph_ranked = graph.rank(
+            seeds,
+            settings.retrieval_top_k,
+            allowed_tables=allowed_tables,
+        )
         if graph_ranked:
             hit_lists.append([Hit(t, s, "graph") for t, s in graph_ranked])
             used.append("graph")
@@ -339,15 +409,30 @@ def retrieve_context(question: str, source: str, ddl_text: str) -> RetrievedCont
     # JOIN 渲染(保留):FK 最短路径补桥接表 + 输出 JOIN 条件行喂 LLM。这是上下文构建,非检索。
     join_lines: list[str] = []
     if graph.available():
-        tables, join_lines = graph.connect(tables, max_extra=settings.retrieval_max_bridge_tables)
+        tables, join_lines = graph.connect(
+            tables,
+            max_extra=settings.retrieval_max_bridge_tables,
+            allowed_tables=allowed_tables,
+        )
 
     # 业务术语正文注入:无论条目的表是否进了 top-N,召回到的业务规则都附上(可能跨表也相关)。
     matched_ids = {aid for aid, sc in scores.items() if sc > 0}        # 命中的列(裁剪时保留)
-    fk_cols = _fk_columns(graph) if graph.available() else set()       # 外键列(裁剪时保留,保 JOIN)
+    fk_cols = _fk_columns(graph, allowed_tables) if graph.available() else set()
     context_text = _render(tables, atoms, join_lines, matched_ids, fk_cols, settings.retrieval_col_cap)
-    profile_block = profile_context(source, tables)
+    profile_block = profile_context(
+        source,
+        tables,
+        {table: set(columns) for table, columns in schema_info.tables.items()},
+    )
     if profile_block:
         context_text += "\n\n" + profile_block
+    if settings.retrieval_backend == "local":
+        glossary_entries = _conditional_glossary(
+            question,
+            source,
+            allowed_tables,
+            set(tables),
+        )
     if glossary_entries:
         context_text += ("\n\n【相关业务说明 / 术语(按问题召回,写 SQL 时务必遵守)】\n"
                          + "\n".join(f"  - {e.content}" for e in glossary_entries))
@@ -371,8 +456,8 @@ def retrieve_context(question: str, source: str, ddl_text: str) -> RetrievedCont
 def warm(source: str) -> bool:
     """预热一个数据源:提前 _get() 建好原子/检索器/图/术语索引(含嵌入全部原子)并入缓存。
 
-    与 retrieve_context 用同样的"跳过条件"——检索关闭、或表数 <= top_tables(小库走整库 DDL,
-    根本不检索)——直接跳过,避免为不会用检索的库白嵌入。返回是否真的做了预热。
+    预热阶段没有角色上下文，因此按整库规模判断；运行时仍按授权后的 Schema 决定是否使用索引。
+    返回是否真的做了预热。
     """
     if not settings.retrieval_enabled:
         return False
@@ -381,7 +466,7 @@ def warm(source: str) -> bool:
         n_columns = count_columns(source)
     except Exception:
         return False
-    if n_tables <= settings.retrieval_top_tables and n_columns <= settings.retrieval_min_columns:
+    if n_tables <= settings.retrieval_min_tables and n_columns <= settings.retrieval_min_columns:
         return False
     try:
         _get(source)

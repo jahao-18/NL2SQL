@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>教学数据智能问数平台</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:opsz,wght@14..32,200;14..32,300;14..32,400;14..32,500;14..32,600&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css?v=schema-workbench-1" />
+  <link rel="stylesheet" href="/style.css?v=v3-3-5-quality" />
+  <link rel="stylesheet" href="/assistant-panel.css?v=v3-3-2" />
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
@@ -23,10 +24,10 @@
       <div class="login-copy">
         <span>Teaching Data Intelligence</span>
         <h1>按角色进入你的教学数据工作台</h1>
-        <p>账号会自动绑定业务域、可见表和问数范围，用于演示学生、教师、学院和教务处的差异化数据权限。</p>
+        <p>账号会绑定具体学生、开课班或行政班范围，用于演示学生、任课教师、辅导员和管理岗位的差异化业务权限。</p>
       </div>
       <div class="login-metrics">
-        <div><b>5</b><span>演示身份</span></div>
+        <div><b>6</b><span>演示身份</span></div>
         <div><b>17</b><span>教学数据表</span></div>
         <div><b>RBAC</b><span>权限控制</span></div>
       </div>
@@ -34,27 +35,48 @@
     <form class="login-form" id="login-form">
       <div class="login-form-head">
         <b>账号登录</b>
-        <span>默认密码均为 123456</span>
+        <span>使用本人账号进入对应工作台</span>
       </div>
       <label>
-        <span>账号</span>
-        <input id="login-username" type="text" placeholder="请输入账号，例如 admin" autocomplete="username" />
+        <span>账号 / 学号 / 工号</span>
+        <input id="login-username" type="text" placeholder="演示账号或本人学号、工号" autocomplete="username" />
       </label>
       <label>
         <span>密码</span>
         <input id="login-password" type="password" placeholder="请输入密码" autocomplete="current-password" />
       </label>
       <button class="nav-btn login-submit" type="submit">进入平台</button>
+      <button class="auth-mode-link" type="button" id="show-register-btn">还没有账号？创建账号并绑定校内身份</button>
       <div class="login-error" id="login-error"></div>
-      <div class="login-demo-accounts">
-        <b>演示账号</b>
-        <span>管理员 admin / 123456</span>
-        <span>教务处 jwc / 123456</span>
-        <span>学院负责人 college / 123456</span>
-        <span>教师 teacher / 123456</span>
-        <span>学生 student / 123456</span>
-      </div>
+      <div class="login-demo-accounts hidden" id="login-demo-accounts"></div>
     </form>
+    <form class="login-form hidden" id="register-form">
+      <div class="login-form-head">
+        <b>创建账号</b>
+        <span>注册后由所属辅导员或学院负责人确认身份</span>
+      </div>
+      <label><span>密码</span><input id="register-password" type="password" placeholder="至少 8 位" autocomplete="new-password" required /></label>
+      <label><span>真实姓名</span><input id="register-name" type="text" placeholder="须与校内名册一致" autocomplete="name" required /></label>
+      <label><span>身份类别</span><select id="register-identity-type"><option value="student">学生</option><option value="teacher">教职工</option></select></label>
+      <label><span id="register-identifier-label">学号</span><input id="register-identifier" type="text" placeholder="请输入学号" required /></label>
+      <div class="register-scope-note">角色和数据范围不能自行选择。学生申请发给所属辅导员，教职工申请发给所属学院负责人。</div>
+      <button class="nav-btn login-submit" type="submit">提交身份申请</button>
+      <button class="auth-mode-link" type="button" id="show-login-btn">已有账号？返回登录</button>
+      <div class="login-error" id="register-error"></div>
+    </form>
+    <section class="login-form registration-status-panel hidden" id="registration-status-panel">
+      <div class="login-form-head"><b>身份申请进度</b><span id="registration-status-account">账号已创建</span></div>
+      <div class="registration-status-card" id="registration-status-card">正在加载申请状态...</div>
+      <button class="nav-btn login-submit" type="button" id="registration-refresh-btn">刷新审核状态</button>
+      <button class="auth-mode-link" type="button" id="registration-logout-btn">退出并返回登录</button>
+    </section>
+    <section class="login-form role-selection-panel hidden" id="role-selection-panel">
+      <div class="login-form-head"><b>选择工作身份</b><span id="role-selection-account">请选择本次会话使用的岗位</span></div>
+      <p class="role-selection-note">不同身份的菜单和数据范围相互隔离。切换后系统会重新签发会话，原身份会话立即失效。</p>
+      <div class="role-selection-list" id="role-selection-list"></div>
+      <div class="login-error" id="role-selection-error"></div>
+      <button class="auth-mode-link" type="button" id="role-selection-logout-btn">退出当前账号</button>
+    </section>
   </div>
 </section>
 
@@ -67,9 +89,19 @@
         <div class="brand-sub">Teaching Data NL2SQL</div>
       </div>
     </div>
-    <nav class="side-nav">
-      <div class="nav-group-label">业务工作台</div>
-      <button class="side-nav-item active" data-view-target="dashboard-view" type="button"><span>D</span>教学数据总览</button>
+    <nav class="side-nav" id="side-nav">
+      <div class="nav-group-label">教学运行</div>
+      <button class="side-nav-item active" data-view-target="dashboard-view" type="button"><span>D</span><b class="nav-item-label">首页</b></button>
+      <button class="side-nav-item" data-view-target="assignment-workflow-view" type="button"><span>A</span>课程作业</button>
+      <button class="side-nav-item" data-view-target="course-analytics-view" type="button"><span>C</span>课程分析</button>
+      <button class="side-nav-item" data-view-target="course-space-view" type="button"><span>Y</span>我的课程</button>
+      <button class="side-nav-item" data-view-target="attendance-view" type="button"><span>K</span>课程考勤</button>
+      <button class="side-nav-item" data-view-target="course-questions-view" type="button"><span>Q</span>课程答疑</button>
+      <button class="side-nav-item" data-view-target="teaching-operations-view" type="button"><span>J</span>教学运行</button>
+      <button class="side-nav-item" data-view-target="notifications-view" type="button"><span>N</span>通知中心</button>
+      <button class="side-nav-item" data-view-target="support-workbench-view" type="button"><span>H</span>学习支持</button>
+      <button class="side-nav-item" data-view-target="identity-approval-view" type="button"><span>R</span>身份审核</button>
+      <button class="side-nav-item" data-view-target="organization-view" type="button"><span>O</span>组织与岗位</button>
       <button class="side-nav-item" data-view-target="assistant-view" type="button"><span>Q</span>智能问数</button>
       <button class="side-nav-item" data-view-target="data-access-view" type="button"><span>M</span>数据维护</button>
       <div class="nav-group-label">数据与知识</div>
@@ -78,10 +110,9 @@
       <div class="nav-group-label">治理</div>
       <button class="side-nav-item" data-view-target="governance-queue-view" type="button"><span>G</span>质量治理</button>
       <button class="side-nav-item" data-view-target="governance-settings-view" type="button"><span>C</span>治理设置</button>
+      <button class="side-nav-item" data-view-target="assistant-quality-view" type="button"><span>O</span>助手运营</button>
       <div class="nav-group-label">系统</div>
-      <button class="side-nav-item" data-view-target="domain-settings-view" type="button"><span>P</span>权限矩阵</button>
-      <button class="side-nav-item" data-view-target="role-management-view" type="button"><span>U</span>账号管理</button>
-      <button class="side-nav-item" data-view-target="debug-view" type="button"><span>T</span>召回调试</button>
+      <button class="side-nav-item" data-view-target="profile-view" type="button"><span>U</span>个人中心</button>
     </nav>
     <div class="sidebar-foot">
       <div class="user-avatar">本</div>
@@ -106,17 +137,17 @@
     </header>
 
     <main class="content-area">
-      <section class="work-view active" id="dashboard-view" data-page-title="教学数据总览" data-breadcrumb="教学数据 / 数据总览">
+      <section class="work-view active" id="dashboard-view" data-page-title="角色首页" data-breadcrumb="工作台 / 首页">
         <div class="dashboard-shell">
           <section class="dashboard-hero">
             <div>
-              <div class="panel-kicker">Teaching Analytics</div>
-              <h2>教学数据总览</h2>
-              <p>汇总学生、课程、成绩、评价和教师授课工作量，作为智能问数前的业务概览。</p>
+              <div class="panel-kicker" id="workbench-role-label">Role Workbench</div>
+              <h2 id="workbench-title">角色首页</h2>
+              <p id="workbench-description">正在加载与当前岗位相关的课程、待办和快捷操作。</p>
             </div>
-            <button class="nav-btn" type="button" id="dashboard-refresh-btn">刷新数据</button>
+            <div><button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="dashboard" data-view-target="assistant-view">问智能助手</button><button class="nav-btn" type="button" id="dashboard-refresh-btn">刷新数据</button></div>
           </section>
-          <section class="dashboard-filter-panel">
+          <section class="dashboard-filter-panel hidden" aria-hidden="true">
             <label><span>学年学期</span><select id="dashboard-term-filter"><option value="">全部学期</option><option value="2025-spring">2025 春季学期</option></select></label>
             <label><span>学院</span><select id="dashboard-college-filter"><option value="">全部学院</option></select></label>
             <label><span>专业</span><select id="dashboard-major-filter"><option value="">全部专业</option></select></label>
@@ -124,7 +155,9 @@
             <button class="nav-btn secondary" type="button" id="dashboard-filter-reset">重置</button>
           </section>
           <div class="dashboard-card-grid" id="dashboard-card-grid"></div>
-          <div class="dashboard-grid">
+          <div class="workbench-sections" id="workbench-sections"></div>
+          <section class="workbench-actions" id="workbench-actions" aria-label="快捷操作"></section>
+          <div class="dashboard-grid hidden" aria-hidden="true">
             <section class="panel-card dashboard-panel">
               <div class="section-head">
                 <span class="section-icon">S</span>
@@ -223,74 +256,259 @@
         </div>
       </section>
 
-      <section class="work-view" id="domain-settings-view" data-page-title="业务域权限设置" data-breadcrumb="教学数据 / 业务域设置">
-        <div class="dashboard-shell">
-          <section class="dashboard-hero">
+      <section class="work-view" id="course-analytics-view" data-page-title="课程分析" data-breadcrumb="教学运行 / 课程分析">
+        <div class="course-analytics-shell">
+          <header class="course-analytics-header">
+            <div><div class="panel-kicker">Course Analytics</div><h2>课程学习进展</h2><p id="analytics-scope-copy">按当前身份和课程范围汇总作业进展。</p></div>
+            <div class="analytics-context-actions">
+              <label><span>当前课程</span><select id="analytics-course-picker"></select></label>
+              <button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="course_analytics" data-view-target="assistant-view">询问课程分析</button><button class="assignment-icon-btn" type="button" id="analytics-refresh-btn" title="刷新分析" aria-label="刷新分析">↻</button>
+            </div>
+          </header>
+          <div class="analytics-meta" id="analytics-meta"></div>
+          <section class="analytics-metrics" id="analytics-metrics"></section>
+          <div class="analytics-work-grid">
+            <section class="analytics-section">
+              <div class="analytics-section-head"><div><h3 id="analytics-detail-title">作业进展</h3><p>数据来自课程作业、选课、提交和成绩发布记录。</p></div></div>
+              <div class="analytics-table-wrap"><table><thead id="analytics-detail-head"></thead><tbody id="analytics-detail-body"></tbody></table></div>
+            </section>
+            <aside class="analytics-question-panel">
+              <div class="analytics-section-head"><div><h3>按课程问数</h3><p>系统自动带入当前课程和本人权限范围。</p></div></div>
+              <div class="analytics-question-templates" id="analytics-question-templates"></div>
+              <form id="analytics-ask-form">
+                <label for="analytics-question-input">分析问题</label>
+                <div class="analytics-ask-row"><input id="analytics-question-input" maxlength="500" placeholder="例如：哪些作业的完成率低于 80%？" /><button type="submit">查询</button></div>
+              </form>
+              <div class="analytics-answer" id="analytics-answer"><p>选择一个问题模板或输入课程分析问题。</p></div>
+              <div class="analytics-history"><h4>最近查询</h4><div id="analytics-history-list"></div></div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="work-view" id="assignment-workflow-view" data-page-title="课程作业" data-breadcrumb="教学运行 / 课程作业">
+        <div class="assignment-shell">
+          <section class="assignment-hero">
             <div>
-              <div class="panel-kicker">Business Domains</div>
-              <h2>角色与业务域</h2>
-              <p>按身份划分可访问的教学业务域，问数时后端只暴露当前身份允许的数据表。</p>
+              <div class="assignment-context-line"><span class="assignment-context-dot"></span><span id="assignment-role-context">教学任务中心</span></div>
+              <h2 id="assignment-page-heading">课程作业</h2>
+              <p id="assignment-page-lead">查看课程任务、提交记录与教师反馈。</p>
             </div>
-            <button class="nav-btn" type="button" id="domain-refresh-btn">刷新权限</button>
+            <div class="assignment-hero-actions">
+              <label class="assignment-course-picker" id="assignment-course-picker-wrap">
+                <span>当前课程</span>
+                <select id="assignment-course-picker"></select>
+              </label>
+              <button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="assignment_workflow" data-view-target="assistant-view">询问作业情况</button><button class="assignment-icon-btn" type="button" id="assignment-refresh-btn" title="刷新任务" aria-label="刷新任务">↻</button>
+            </div>
           </section>
-          <div class="domain-current" id="domain-current"></div>
-          <div class="domain-grid" id="domain-grid"></div>
-          <section class="panel-card">
-            <div class="section-head">
-              <span class="section-icon">R</span>
-              <div><h2>角色权限矩阵</h2><p>演示账号与业务域、表权限的对应关系。</p></div>
+          <section class="assignment-overview" id="assignment-overview">
+            <div class="assignment-scope-card"><span>当前范围</span><b id="assignment-scope-title">课程作业</b><small id="assignment-scope-desc">按登录身份限定数据范围</small></div>
+            <div><span id="assignment-pending-label">待处理</span><b id="assignment-metric-pending">0</b><small id="assignment-pending-desc">需要继续处理的任务</small></div>
+            <div><span id="assignment-done-label">已完成</span><b id="assignment-metric-done">0</b><small id="assignment-done-desc">本阶段已完成的任务</small></div>
+            <div><span id="assignment-total-label">任务总数</span><b id="assignment-metric-total">0</b><small id="assignment-total-desc">当前范围内全部任务</small></div>
+          </section>
+          <section class="assignment-workspace" id="assignment-student-panel">
+            <div class="assignment-toolbar">
+              <div>
+                <h3>我的任务</h3>
+                <p>仅展示本人选课范围内的作业与反馈</p>
+              </div>
+              <div class="assignment-segments" id="assignment-student-filters">
+                <button class="active" type="button" data-assignment-filter="all">全部</button>
+                <button type="button" data-assignment-filter="pending">待完成</button>
+                <button type="button" data-assignment-filter="submitted">已提交</button>
+                <button type="button" data-assignment-filter="finished">已完成</button>
+              </div>
             </div>
-            <div class="dashboard-table-wrap">
-              <table class="dashboard-table">
-                <thead><tr><th>角色</th><th>业务域</th><th>可访问表</th></tr></thead>
-                <tbody id="domain-role-body"></tbody>
-              </table>
+            <div class="assignment-list" id="assignment-student-list"></div>
+          </section>
+          <section class="assignment-workspace" id="assignment-teacher-panel">
+            <div class="assignment-toolbar assignment-teacher-toolbar">
+              <div>
+                <h3 id="assignment-teacher-title">课程作业</h3>
+                <p id="assignment-teacher-subtitle">选择作业后查看完整学生名单与批阅状态</p>
+              </div>
+              <button class="nav-btn" type="button" id="assignment-create-toggle">＋ 新建作业</button>
+            </div>
+            <form class="assignment-form hidden" id="assignment-create-form">
+              <div class="assignment-form-head">
+                <div>
+                  <b>新建课程作业</b>
+                  <span>先保存草稿核对内容，再向选课学生发布</span>
+                </div>
+                <button type="button" class="assignment-form-close" id="assignment-create-close" aria-label="关闭">×</button>
+              </div>
+              <div class="assignment-form-grid">
+                <label class="wide"><span>作业标题</span><input id="assignment-create-title" placeholder="例如 第 4 次作业：数据库规范化设计" /></label>
+                <label><span>截止时间</span><input id="assignment-create-due" type="datetime-local" /></label>
+                <label><span>满分</span><input id="assignment-create-score" type="number" min="1" max="1000" value="100" /></label>
+                <label class="full"><span>作业要求</span><textarea id="assignment-create-instructions" placeholder="说明提交内容、格式要求和评分重点"></textarea></label>
+              </div>
+              <div class="assignment-form-foot">
+                <label class="assignment-check"><input id="assignment-create-allow-late" type="checkbox" checked /><span>截止后允许补交，并标记为迟交</span></label>
+                <div>
+                  <button class="nav-btn secondary" type="submit" data-create-status="draft">保存草稿</button>
+                  <button class="nav-btn" type="submit" data-create-status="published">立即发布</button>
+                </div>
+              </div>
+            </form>
+            <div class="assignment-teacher-layout">
+              <aside class="assignment-master-pane">
+                <div class="assignment-pane-head"><b>作业列表</b><span id="assignment-list-count">0 项</span></div>
+                <div id="assignment-teacher-list"></div>
+              </aside>
+              <div class="assignment-detail-pane" id="assignment-detail-pane">
+                <div class="assignment-detail-empty">
+                  <b>选择一份作业开始处理</b>
+                  <span>这里会显示提交进度、未交名单、待批记录和成绩发布状态</span>
+                </div>
+              </div>
             </div>
           </section>
         </div>
       </section>
 
-      <section class="work-view" id="role-management-view" data-page-title="角色管理" data-breadcrumb="教学数据 / 角色管理">
-        <div class="dashboard-shell">
-          <section class="dashboard-hero">
+      <section class="work-view" id="support-workbench-view" data-page-title="学习支持" data-breadcrumb="学生工作 / 学习支持">
+        <div class="support-shell">
+          <section class="support-hero">
             <div>
-              <div class="panel-kicker">Role Management</div>
-              <h2>账号、角色与数据权限</h2>
-              <p>演示系统采用账号绑定角色、角色绑定业务域、业务域绑定表权限的三级权限模型。</p>
+              <div class="support-context-line"><span></span><b id="support-role-context">学习支持空间</b></div>
+              <h2 id="support-page-heading">学习支持</h2>
+              <p id="support-page-lead">基于明确事实开展联系、跟进和复查。</p>
             </div>
-            <button class="nav-btn" type="button" id="role-refresh-btn">刷新角色</button>
+            <div><button class="nav-btn secondary role-assistant-entry" type="button" id="support-assistant-btn" data-role-assistant-entry="support_workbench" data-assistant-question="本周有哪些待复查事项？" data-view-target="assistant-view">询问待复查</button><button class="nav-btn" type="button" id="support-refresh-btn">检查最新事项</button></div>
           </section>
-          <section class="panel-card password-panel">
-            <div class="section-head">
-              <span class="section-icon">P</span>
-              <div><h2>修改当前账号密码</h2><p>修改后需要使用新密码重新登录。</p></div>
-            </div>
-            <form class="password-form" id="password-form">
-              <label><span>当前账号</span><input id="password-account" type="text" disabled /></label>
-              <label><span>原密码</span><input id="old-password" type="password" autocomplete="current-password" /></label>
-              <label><span>新密码</span><input id="new-password" type="password" autocomplete="new-password" /></label>
-              <label><span>确认新密码</span><input id="confirm-password" type="password" autocomplete="new-password" /></label>
-              <button class="nav-btn" type="submit">保存新密码</button>
-              <div class="password-message" id="password-message"></div>
-            </form>
+          <section class="support-overview">
+            <div><span>待确认</span><b id="support-metric-open">0</b><small>规则命中，等待人工确认</small></div>
+            <div><span>跟进中</span><b id="support-metric-tracking">0</b><small>已联系或等待复查</small></div>
+            <div><span>需要复查</span><b id="support-metric-review">0</b><small>已设置后续复查时间</small></div>
+            <div><span>沟通请求</span><b id="support-metric-requests">0</b><small>学生主动发起的预约或咨询</small></div>
           </section>
-          <section class="panel-card">
-            <div class="section-head">
-              <span class="section-icon">U</span>
-              <div><h2>账号角色列表</h2><p>展示系统账号与角色、业务域、可访问数据范围。</p></div>
+
+          <section class="support-counselor-panel" id="support-counselor-panel">
+            <div class="support-workbench">
+              <aside class="support-case-pane">
+                <div class="support-pane-head">
+                  <div><b>待办事项</b><span id="support-case-count">0 项</span></div>
+                  <select id="support-status-filter">
+                    <option value="all">全部状态</option><option value="open">待确认</option><option value="contacted">已联系</option>
+                    <option value="tracking">跟进中</option><option value="improved">已改善</option><option value="closed">已关闭</option>
+                  </select>
+                </div>
+                <div id="support-case-list"></div>
+              </aside>
+              <div class="support-case-detail" id="support-case-detail">
+                <div class="support-empty"><b>选择一条事项开始处理</b><span>查看事实依据、联系记录和复查计划</span></div>
+              </div>
             </div>
-            <div class="dashboard-table-wrap">
-              <table class="dashboard-table">
-                <thead><tr><th>账号</th><th>显示名称</th><th>绑定角色</th><th>角色说明</th></tr></thead>
-                <tbody id="role-user-body"></tbody>
-              </table>
-            </div>
+            <section class="support-request-section">
+              <div class="support-section-head"><div><h3>学生沟通请求</h3><p>处理本人所带行政班学生主动提交的预约和咨询</p></div></div>
+              <div id="support-counselor-requests"></div>
+            </section>
           </section>
+
+          <section class="support-student-panel" id="support-student-panel">
+            <div class="support-student-grid">
+              <section class="support-student-main">
+                <div class="support-section-head"><div><h3>我的支持建议</h3><p>这里只显示辅导员已与你共享的事项和建议</p></div></div>
+                <div class="support-student-cases" id="support-student-cases"></div>
+              </section>
+              <aside class="support-request-create">
+                <div class="support-section-head"><div><h3>发起沟通</h3><p>预约辅导员或咨询学习安排</p></div></div>
+                <form id="support-request-form">
+                  <label><span>沟通类型</span><select id="support-request-type"><option value="appointment">预约沟通</option><option value="consultation">问题咨询</option></select></label>
+                  <label><span>希望沟通的时间</span><input id="support-request-time" type="datetime-local" /></label>
+                  <label><span>问题说明</span><textarea id="support-request-message" placeholder="简要说明希望沟通的问题"></textarea></label>
+                  <button class="nav-btn" type="submit">提交沟通请求</button>
+                </form>
+              </aside>
+            </div>
+            <section class="support-request-section">
+              <div class="support-section-head"><div><h3>我的沟通记录</h3><p>查看预约受理状态和辅导员回复</p></div></div>
+              <div id="support-student-requests"></div>
+            </section>
+          </section>
+        </div>
+      </section>
+
+      <section class="work-view" id="organization-view" data-page-title="组织与岗位" data-breadcrumb="组织管理 / 岗位覆盖">
+        <div class="organization-shell">
+          <header class="approval-hero organization-hero">
+            <div><div class="panel-kicker">Organization & Positions</div><h2>组织与岗位</h2><p>查看六学院岗位覆盖，管理具名教职工的岗位任命、行政班范围和组织审核队列。</p></div>
+            <button class="nav-btn" id="organization-refresh-btn" type="button">刷新组织数据</button>
+          </header>
+          <section class="organization-section"><div class="organization-section-head"><div><h3>组织岗位覆盖</h3><p>岗位空缺和未覆盖行政班会形成明确异常。</p></div></div><div class="organization-unit-grid" id="organization-unit-grid"></div></section>
+          <div class="organization-work-grid">
+            <section class="organization-section"><div class="organization-section-head"><div><h3>岗位编制与任职</h3><p>选择组织后查看当前岗位成员。</p></div><select id="organization-unit-filter"></select></div><div class="organization-position-list" id="organization-position-list"></div></section>
+            <section class="organization-section"><div class="organization-section-head"><div><h3>新增岗位任命</h3><p>只能任命授权范围内的已验证教职工。</p></div></div><form class="organization-assignment-form" id="organization-assignment-form">
+              <label><span>岗位编制</span><select id="organization-position-select" required></select></label>
+              <label><span>教职工</span><select id="organization-staff-select" required></select></label>
+              <label><span>任职类型</span><select id="organization-assignment-type"><option value="primary">主要任职</option><option value="deputy">分管/协同</option><option value="reviewer">审核员</option><option value="acting">代理</option><option value="temporary">临时</option></select></label>
+              <label><span>生效日期</span><input id="organization-valid-from" type="date" required /></label>
+              <label><span>到期日期</span><input id="organization-valid-until" type="date" /></label>
+              <label class="wide" id="organization-scope-field"><span>负责行政班（仅辅导员，可多选）</span><select id="organization-scope-ids" multiple size="6"></select><small>按住 Ctrl（macOS 为 Command）可选择多个行政班；范围只能来自所选学院。</small></label>
+              <label class="wide hidden" id="organization-reauth-field"><span>管理员当前密码（二次安全验证）</span><input id="organization-reauth-password" type="password" autocomplete="current-password" placeholder="新增平台管理员前必须验证当前管理员密码" /></label>
+              <label class="wide"><span>任命依据</span><textarea id="organization-assignment-reason" rows="3" required placeholder="填写岗位任命或调整依据"></textarea></label>
+              <button class="nav-btn wide" type="submit">确认任命</button><div class="login-error wide" id="organization-assignment-message"></div>
+            </form></section>
+          </div>
+          <div class="organization-work-grid">
+            <section class="organization-section"><div class="organization-section-head"><div><h3>组织教职工目录</h3><p>仅展示当前岗位授权范围。</p></div><input id="organization-staff-search" type="search" placeholder="姓名或工号" /></div><div class="organization-staff-list" id="organization-staff-list"></div></section>
+            <section class="organization-section"><div class="organization-section-head"><div><h3>审核队列</h3><p>任务属于组织，不会因人员离任丢失。</p></div></div><div class="organization-queue-list" id="organization-queue-list"></div></section>
+          </div>
+        </div>
+      </section>
+
+      <section class="work-view" id="identity-approval-view" data-page-title="身份审核" data-breadcrumb="组织管理 / 身份审核">
+        <div class="approval-shell">
+          <header class="approval-hero">
+            <div><div class="panel-kicker">Identity Review</div><h2>身份申请审核</h2><p>申请已经按行政班或学院自动分配。只能处理当前岗位授权范围内的学生或教职工身份。</p></div>
+            <div class="approval-toolbar"><select id="approval-status-filter"><option value="pending">待审核</option><option value="approved">已通过</option><option value="rejected">未通过</option><option value="all">全部</option></select><button class="nav-btn" id="approval-refresh-btn" type="button">刷新</button></div>
+          </header>
+          <div class="approval-summary" id="approval-summary"></div>
+          <div class="approval-batch-bar" id="approval-batch-bar"><label><input id="approval-select-all" type="checkbox" />全选当前待审核申请</label><span id="approval-selected-count">已选择 0 项</span><button class="nav-btn secondary reject" id="approval-batch-reject" type="button">批量拒绝</button><button class="nav-btn" id="approval-batch-approve" type="button">批量通过</button></div>
+          <div class="approval-list" id="approval-list"><div class="dashboard-loading">正在加载身份申请...</div></div>
+        </div>
+      </section>
+
+      <section class="work-view" id="profile-view" data-page-title="个人中心" data-breadcrumb="我的 / 个人中心">
+        <div class="profile-shell">
+          <header class="profile-header">
+            <div class="profile-identity">
+              <div class="profile-avatar" id="profile-avatar">U</div>
+              <div><div class="profile-kicker">PERSONAL CENTER</div><h2 id="profile-display-name">当前用户</h2><p id="profile-role-summary">当前岗位授权范围</p><div class="profile-tags"><span>已登录</span><span>身份已核验</span></div></div>
+            </div>
+            <div class="profile-status-card"><span class="profile-status-icon">✓</span><div><small>ACCOUNT STATUS</small><b>账号状态正常</b><p>当前会话受岗位权限与数据范围保护</p></div></div>
+          </header>
+          <div class="profile-grid">
+            <section class="profile-section">
+              <div class="profile-section-head"><span class="profile-section-icon">ID</span><div><h2>账号信息</h2><p>当前登录账号及正在使用的岗位授权。</p></div></div>
+              <dl class="profile-facts">
+                <div><dt><i>01</i>登录账号</dt><dd id="profile-username">-</dd></div>
+                <div><dt><i>02</i>显示名称</dt><dd id="profile-name">-</dd></div>
+                <div><dt><i>03</i>岗位身份</dt><dd id="profile-role">-</dd></div>
+                <div class="profile-scope-fact"><dt><i>04</i>数据范围</dt><dd id="profile-scope">-</dd></div>
+              </dl>
+            </section>
+            <section class="profile-section profile-security-section">
+              <div class="profile-section-head"><span class="profile-section-icon secure">PW</span><div><h2>账号安全</h2><p>定期更新密码，保护账号与业务数据。</p></div></div>
+              <form class="password-form" id="password-form">
+                <label class="profile-account-field"><span>当前账号</span><input id="password-account" type="text" disabled /></label>
+                <label class="profile-old-password"><span>原密码</span><input id="old-password" type="password" autocomplete="current-password" placeholder="请输入当前密码" /></label>
+                <label><span>新密码</span><input id="new-password" type="password" autocomplete="new-password" placeholder="请输入新密码" /></label>
+                <label><span>确认新密码</span><input id="confirm-password" type="password" autocomplete="new-password" placeholder="再次输入新密码" /></label>
+                <div class="profile-password-tip"><b>密码修改说明</b><span>保存成功后，系统会撤销当前会话并返回登录页面。</span></div>
+                <div class="profile-password-actions"><div class="password-message" id="password-message" aria-live="polite"></div><button type="submit">保存新密码</button></div>
+              </form>
+            </section>
+          </div>
         </div>
       </section>
 
       <section class="work-view" id="assistant-view" data-page-title="教学数据智能问数" data-breadcrumb="教学数据 / 智能问数">
-        <div class="assistant-grid">
+        <div id="v3-assistant-panel" data-assistant-panel data-page="assistant"></div>
+        <div class="assistant-grid legacy-assistant-shell" hidden aria-hidden="true">
           <section class="assistant-main">
             <div class="query-wrapper" id="query-wrapper">
               <div class="query-label">用自然语言查询教学数据</div>
@@ -681,6 +899,36 @@
         </div>
       </section>
 
+      <section class="work-view" id="assistant-quality-view" data-page-title="助手质量运营" data-breadcrumb="智能问数 / 治理 / 助手运营">
+        <div class="quality-shell">
+          <section class="quality-hero">
+            <div>
+              <div class="panel-kicker">Assistant Operations</div>
+              <h2>助手质量运营</h2>
+              <p>查看问数链路的成功率、响应耗时、失败阶段与治理积压。所有问题仅按安全类别汇总，不展示原始问题、SQL、结果行或反馈原因。</p>
+            </div>
+            <div class="quality-controls">
+              <label><span>统计周期</span><select id="assistant-quality-days"><option value="7">近 7 天</option><option value="30" selected>近 30 天</option><option value="90">近 90 天</option></select></label>
+              <button class="nav-btn" id="assistant-quality-refresh" type="button">刷新数据</button>
+            </div>
+          </section>
+          <div id="assistant-quality-status" class="quality-status">等待加载运营数据…</div>
+          <section id="assistant-quality-summary" class="quality-summary-grid"></section>
+          <div class="quality-main-grid">
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Reliability</span><h3>失败阶段分布</h3></div></div><div id="assistant-quality-failures" class="quality-bar-list"></div></section>
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Retrieval</span><h3>检索使用与降级</h3></div></div><div id="assistant-quality-retrieval" class="quality-retrieval-grid"></div></section>
+          </div>
+          <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Trend</span><h3>每日查询与成功率</h3></div><small>仅展示聚合计数</small></div><div id="assistant-quality-daily" class="quality-daily-chart"></div></section>
+          <div class="quality-category-grid">
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Traffic</span><h3>高频问题类别</h3></div></div><div id="assistant-quality-frequent" class="quality-category-list"></div></section>
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Confidence</span><h3>低置信度类别</h3></div></div><div id="assistant-quality-low-confidence" class="quality-category-list"></div></section>
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Feedback</span><h3>负向反馈类别</h3></div></div><div id="assistant-quality-negative" class="quality-category-list"></div></section>
+            <section class="panel-card quality-panel"><div class="quality-panel-head"><div><span>Governance</span><h3>待治理事项</h3></div></div><div id="assistant-quality-governance" class="quality-category-list"></div></section>
+          </div>
+          <div class="quality-privacy-note"><b>隐私保护已启用</b><span>本页接口不返回原始问题、生成 SQL、查询结果行和反馈原因；类别未知时统一归入“其他”。</span></div>
+        </div>
+      </section>
+
       <section class="work-view" id="data-access-view" data-page-title="数据接入与维护" data-breadcrumb="教学数据 / 数据接入">
         <div class="dashboard-shell data-access-shell">
           <section class="dashboard-hero access-hero">
@@ -786,21 +1034,102 @@
         </div>
       </section>
 
-      <section class="work-view" id="debug-view" data-page-title="召回调试" data-breadcrumb="智能问数 / 调试">
-        <div class="panel-card">
-          <div class="section-head">
-            <span class="section-icon">✦</span>
-            <div><h2>问数链路解释</h2><p>执行一次查询后，这里展示路由、召回、SQL、执行和可信度状态。</p></div>
-          </div>
-          <div class="debug-input-row">
-            <input id="debug-question" class="toolbar-input" placeholder="输入问题，复用问数助手链路调试…" />
-            <button class="nav-btn" id="debug-run-btn" type="button">试问</button>
+      <section class="work-view" id="course-space-view" data-page-title="我的课程" data-breadcrumb="教学业务 / 课程空间">
+        <div class="course-space-shell">
+          <header class="course-space-hero">
+            <div><div class="course-space-kicker"><i></i><span>COURSE SPACE</span></div><h2>我的课程空间</h2><p>围绕一门课程查看公告、学习资料、作业和课程分析。</p></div>
+            <div><button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="course_space" data-view-target="assistant-view">询问本课程</button><label class="course-space-selector"><span>当前课程</span><select id="course-space-picker"></select></label></div>
+          </header>
+          <div class="course-space-layout">
+            <aside class="course-space-aside">
+              <div class="course-space-course-card" id="course-space-summary"><span>当前课程</span><b>正在加载...</b></div>
+              <nav class="course-space-links"><button class="active" type="button" data-course-section="announcements">课程公告</button><button type="button" data-course-section="resources">课程资料</button><button type="button" data-view-target="assignment-workflow-view">作业与任务</button><button type="button" data-view-target="attendance-view">课程考勤</button><button type="button" data-view-target="course-questions-view">课程答疑</button><button type="button" data-view-target="course-analytics-view">课程分析</button></nav>
+            </aside>
+            <main class="course-space-main">
+              <section class="course-space-content" id="course-space-content"><div class="course-space-loading">正在加载课程内容...</div></section>
+              <section class="course-space-publish" id="course-space-teacher-actions" hidden>
+                <div class="course-space-section-head"><div><span>TEACHER TOOLS</span><h3>发布课程内容</h3></div><p>发布后仅本课程学生可见。</p></div>
+                <div class="course-space-composer-grid">
+                  <form id="course-announcement-form" class="course-space-composer"><div class="composer-icon">公</div><div><h4>发布公告</h4><p>适合课程安排、临时提醒与教学说明</p></div><label><span>公告标题</span><input id="course-announcement-title" required placeholder="例如：本周实验课安排调整" /></label><label><span>公告正文</span><textarea id="course-announcement-body" required rows="5" placeholder="清晰说明时间、地点和注意事项"></textarea></label><button class="nav-btn" type="submit">发布到本课程</button></form>
+                  <form id="course-resource-form" class="course-space-composer"><div class="composer-icon resource">资</div><div><h4>添加资料</h4><p>上传课件附件，也可以补充外部资源链接</p></div><label><span>资料标题</span><input id="course-resource-title" required placeholder="例如：第一章课程讲义" /></label><label><span>资料说明（可选）</span><textarea id="course-resource-description" rows="3" placeholder="说明内容范围或学习要求"></textarea></label><label class="course-resource-file-field"><span>课程附件</span><input id="course-resource-file" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip,.png,.jpg,.jpeg,.txt,.csv" /><small id="course-resource-file-hint">支持文档、表格、演示文稿、压缩包、图片和文本，最大 20MB</small></label><label><span>外部链接（无附件时填写）</span><input id="course-resource-url" type="url" placeholder="https://..." /></label><p class="course-resource-message" id="course-resource-message"></p><button class="nav-btn secondary" type="submit">上传并发布资料</button></form>
+                </div>
+              </section>
+            </main>
           </div>
         </div>
-        <div class="debug-steps" id="debug-steps"></div>
       </section>
+      <section class="work-view" id="attendance-view" data-page-title="课程考勤" data-breadcrumb="教学业务 / 课程考勤">
+        <div class="stage-d-shell">
+          <header class="stage-d-hero"><div><div class="panel-kicker">Attendance</div><h2 id="attendance-page-title">课程场次与考勤</h2><p>按真实课次登记、修正并查看考勤事实。</p></div><div><button class="nav-btn secondary role-assistant-entry" type="button" data-role-assistant-entry="attendance" data-view-target="assistant-view">询问考勤情况</button><label><span>当前课程</span><select id="attendance-course-picker"></select></label></div></header>
+          <section class="stage-d-create" id="attendance-teacher-tools" hidden><div><b>新建课程场次</b><span>场次建立后即可按选课名单点名</span></div><form id="course-session-form"><label>日期<input id="session-date" type="date" required /></label><label>开始时间<input id="session-start" type="time" /></label><label>结束时间<input id="session-end" type="time" /></label><label>教室<input id="session-classroom" placeholder="例如 A101" /></label><label class="wide">本次主题<input id="session-topic" placeholder="例如：索引与查询优化" /></label><button class="nav-btn" type="submit">建立场次</button></form></section>
+          <div class="stage-d-layout"><section class="stage-d-panel"><div class="stage-d-panel-head"><div><span>COURSE SESSIONS</span><h3>课程场次</h3></div></div><div id="attendance-session-list" class="stage-d-list"></div></section><section class="stage-d-panel" id="attendance-editor-panel"><div class="stage-d-panel-head"><div><span>ATTENDANCE ROSTER</span><h3>点名记录</h3></div></div><div id="attendance-editor" class="stage-d-empty">请选择一个课程场次</div></section></div>
+        </div>
+      </section>
+      <section class="work-view" id="course-questions-view" data-page-title="课程答疑" data-breadcrumb="教学业务 / 课程答疑">
+        <div class="stage-d-shell">
+          <header class="stage-d-hero questions"><div><div class="panel-kicker">Course Q&amp;A</div><h2>课程答疑</h2><p>公开问题沉淀为课程知识，私密问题只在学生本人和教师之间流转。</p></div><label><span>当前课程</span><select id="questions-course-picker"></select></label></header>
+          <section class="stage-d-create" id="student-question-tools" hidden><div><b>向教师提问</b><span>请选择公开给课程成员或仅教师可见</span></div><form id="course-question-form"><label>问题标题<input id="question-title" required maxlength="160" /></label><label>可见范围<select id="question-visibility"><option value="public">课程公开</option><option value="private">仅教师可见</option></select></label><label class="wide">问题正文<textarea id="question-body" required rows="4"></textarea></label><button class="nav-btn" type="submit">提交问题</button></form></section>
+          <section class="stage-d-panel"><div class="stage-d-panel-head"><div><span>QUESTIONS</span><h3>课程问题</h3></div><div class="stage-d-legend"><i class="open"></i>待回复 <i class="answered"></i>已回复 <i class="closed"></i>已关闭</div></div><div id="course-question-list" class="question-list"></div></section>
+        </div>
+      </section>
+      <section class="work-view" id="teaching-operations-view" data-page-title="教学运行" data-breadcrumb="教学管理 / 教学运行">
+        <div class="stage-e-shell"><header class="stage-d-hero"><div><div class="panel-kicker">Teaching Operations</div><h2 id="stage-e-title">教学运行工作台</h2><p id="stage-e-description">处理课程任务、教学异常和成绩提交状态。</p></div><div><button class="nav-btn secondary role-assistant-entry" id="teaching-operations-assistant-btn" type="button" data-role-assistant-entry="teaching_operations" data-view-target="assistant-view">询问教学异常</button><button class="nav-btn" id="refresh-teaching-issues" type="button" hidden>刷新确定性异常</button></div></header>
+          <div class="stage-e-summary" id="stage-e-summary"></div>
+          <section class="stage-d-panel stage-e-collapsible" id="teaching-task-panel">
+            <div class="stage-d-panel-head"><div><span>TEACHING TASKS</span><h3>教学任务台账</h3></div><div class="stage-e-panel-actions"><small id="teaching-task-result-count"></small><button class="stage-e-collapse-toggle" type="button" data-stage-e-toggle="teaching-task-panel-body" aria-expanded="true">收起</button></div></div>
+            <div class="stage-e-panel-body" id="teaching-task-panel-body">
+              <form class="stage-e-filters" id="teaching-task-filter-form">
+                <label class="stage-e-search-field"><span>快速搜索</span><input id="teaching-task-keyword" maxlength="100" placeholder="输入课程或教师名称" /></label>
+                <label><span>学年</span><select id="teaching-task-year"><option value="">全部学年</option></select></label>
+                <label><span>学院</span><select id="teaching-task-college"><option value="">全部学院</option></select></label>
+                <label><span>学期</span><select id="teaching-task-semester"><option value="">全部学期</option><option value="spring">春季</option><option value="fall">秋季</option></select></label>
+                <label><span>成绩状态</span><select id="teaching-task-grade-status"><option value="">全部状态</option><option value="not_submitted">未提交</option><option value="draft">草稿</option><option value="submitted">待审批</option><option value="returned">已退回</option><option value="approved">已审批</option><option value="published">已发布</option></select></label>
+                <div class="stage-e-filter-actions"><button class="stage-e-filter-submit" type="submit">筛选</button><button class="stage-e-filter-reset" id="teaching-task-filter-reset" type="button">重置</button></div>
+              </form>
+              <div class="stage-e-table stage-e-scroll-list" id="teaching-task-list"></div>
+            </div>
+          </section>
+          <section class="stage-d-panel stage-e-collapsible" id="grade-submission-panel">
+            <div class="stage-d-panel-head"><div><span>GRADE SUBMISSIONS</span><h3>成绩提交</h3></div><div class="stage-e-panel-actions"><small id="grade-submission-result-count"></small><button class="stage-e-collapse-toggle" type="button" data-stage-e-toggle="grade-submission-panel-body" aria-expanded="false">展开</button></div></div>
+            <div class="stage-e-panel-body" id="grade-submission-panel-body" hidden>
+              <form class="stage-e-filters" id="grade-submission-filter-form">
+                <label class="stage-e-search-field"><span>快速搜索</span><input id="grade-submission-keyword" maxlength="100" placeholder="输入课程或教师名称" /></label>
+                <label><span>学年</span><select id="grade-submission-year"><option value="">全部学年</option></select></label>
+                <label><span>学院</span><select id="grade-submission-college"><option value="">全部学院</option></select></label>
+                <label><span>学期</span><select id="grade-submission-semester"><option value="">全部学期</option><option value="spring">春季</option><option value="fall">秋季</option></select></label>
+                <label><span>提交状态</span><select id="grade-submission-status"><option value="">全部状态</option><option value="not_submitted">未提交</option><option value="draft">草稿</option><option value="submitted">待审批</option><option value="returned">已退回</option><option value="approved">已审批</option><option value="published">已发布</option></select></label>
+                <div class="stage-e-filter-actions"><button class="stage-e-filter-submit" type="submit">筛选</button><button class="stage-e-filter-reset" id="grade-submission-filter-reset" type="button">重置</button></div>
+              </form>
+              <div class="stage-e-table stage-e-scroll-list" id="grade-submission-list"></div>
+            </div>
+          </section>
+          <section class="stage-d-panel" id="teaching-issue-panel"><div class="stage-d-panel-head"><div><span>DETERMINISTIC ISSUES</span><h3>教学异常待办</h3></div><label class="stage-e-issue-filter"><span>处理状态</span><select id="teaching-issue-status-filter"><option value="all">全部</option><option value="unresolved">未解决</option><option value="overdue">已逾期（72 小时）</option><option value="open">待处理</option><option value="processing">处理中</option><option value="resolved">已解决</option></select></label></div><div class="stage-e-table" id="teaching-issue-list"></div></section>
+          <div class="stage-e-grid" id="college-aggregate-panels"></div>
+        </div>
+      </section>
+      <section class="work-view" id="notifications-view" data-page-title="通知中心" data-breadcrumb="我的 / 通知中心"><div class="notification-shell"><header class="notification-hero"><div><div class="panel-kicker">Notifications</div><h2>通知中心</h2><p>集中查看课程公告、作业、答疑和业务处理提醒。</p></div><div class="notification-unread"><b id="notifications-unread-count">0</b><span>条未读通知</span></div></header><section class="notification-list" id="notifications-list"></section></div></section>
     </main>
   </div>
+</div>
+
+<div class="modal-backdrop" id="organization-transfer-modal" hidden>
+  <section class="modal-panel organization-transfer-panel" role="dialog" aria-modal="true" aria-labelledby="organization-transfer-title">
+    <div class="modal-head"><div><span>Position Handover</span><h3 id="organization-transfer-title">岗位交接</h3></div><button type="button" id="organization-transfer-close">×</button></div>
+    <p class="organization-transfer-impact" id="organization-transfer-impact">交接会原子地建立继任任职、结束原任职，并让原任职人的旧会话立即失效。</p>
+    <form class="organization-transfer-form" id="organization-transfer-form">
+      <input id="organization-transfer-assignment-id" type="hidden" />
+      <input id="organization-transfer-position-code" type="hidden" />
+      <label><span>继任教职工</span><select id="organization-transfer-successor" required></select></label>
+      <label><span>任职类型</span><select id="organization-transfer-type"><option value="primary">主要任职</option><option value="deputy">分管/协同</option><option value="reviewer">审核员</option><option value="acting">代理</option><option value="temporary">临时</option></select></label>
+      <label><span>生效日期</span><input id="organization-transfer-valid-from" type="date" required /></label>
+      <label><span>到期日期</span><input id="organization-transfer-valid-until" type="date" /></label>
+      <label class="wide hidden" id="organization-transfer-scope-field"><span>移交行政班（可多选）</span><select id="organization-transfer-scopes" multiple size="6"></select></label>
+      <label class="wide"><span>交接依据</span><textarea id="organization-transfer-reason" rows="3" required></textarea></label>
+      <label class="wide hidden" id="organization-transfer-reauth-field"><span>管理员当前密码（二次安全验证）</span><input id="organization-transfer-reauth-password" type="password" autocomplete="current-password" /></label>
+      <div class="login-error wide" id="organization-transfer-message"></div>
+      <div class="modal-actions wide"><button class="nav-btn secondary" id="organization-transfer-cancel" type="button">取消</button><button class="nav-btn" type="submit">确认原子交接</button></div>
+    </form>
+  </section>
 </div>
 
 <div class="modal-backdrop" id="governance-modal" hidden>
@@ -854,10 +1183,11 @@
   </section>
 </div>
 
-<script src="/api.js?v=p0-product-3"></script>
+<script src="/api.js?v=v3-3-5-quality"></script>
+<script src="/assistant-panel.js?v=v3-3-4-operations"></script>
 <script src="/modal.js?v=p0-product-3"></script>
 <script src="/governance-view.js?v=p0-product-3"></script>
 <script src="/data-access-view.js?v=schema-workbench-1"></script>
-<script src="/app.js?v=schema-workbench-1"></script>
+<script src="/app.js?v=v3-3-5-quality"></script>
 </body>
 </html>

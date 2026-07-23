@@ -569,6 +569,10 @@ def main() -> None:
     print(f"  fail_rate: {fail_rate}")
     print(f"  db_size_mb: {DB_PATH.stat().st_size / 1024 / 1024:.1f}")
     conn.close()
+    from app.core.teaching_migrations import ensure_mvp_schema
+
+    ensure_mvp_schema(DB_PATH)
+    print("  mvp_demo_scope: ready")
 
 
 if __name__ == "__main__":

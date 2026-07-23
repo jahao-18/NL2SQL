@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
 
-from app.core.config import ROOT_DIR, settings
+from app.core.config import ROOT_DIR
 
 Dialect = Literal["sqlite", "postgresql", "mysql", "other"]
 
@@ -53,10 +53,6 @@ def _resolve(path_str: str | None) -> Path | None:
     return p if p.is_absolute() else ROOT_DIR / p
 
 
-def _expand_url(url: str) -> str:
-    return url.replace("${BIRD_DATABASE_ROOT}", Path(settings.bird_database_root).as_posix().rstrip("/"))
-
-
 @lru_cache(maxsize=1)
 def load_sources() -> dict[str, DataSource]:
     """读 yaml,返回 name -> DataSource 的有序字典(按 yaml 顺序保留)。"""
@@ -72,7 +68,7 @@ def load_sources() -> dict[str, DataSource]:
     result: dict[str, DataSource] = {}
     for item in items:
         name = item.get("name")
-        url = _expand_url(str(item.get("url") or ""))
+        url = str(item.get("url") or "")
         if not name or not url:
             raise ValueError(f"数据源缺 name 或 url: {item}")
         if name in result:
