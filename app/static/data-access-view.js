@@ -58,7 +58,12 @@
     tableSelect.innerHTML = tables.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
     tableSelect.value = state.selectedTable || tables[0] || "";
     const addButton = $("access-add-row-btn");
-    if (addButton) addButton.disabled = !(selected && selected.writable);
+    if (addButton) {
+      const postgresqlBrowseOnly = Boolean(selected && selected.dialect === "postgresql");
+      addButton.hidden = postgresqlBrowseOnly;
+      addButton.style.display = postgresqlBrowseOnly ? "none" : "";
+      addButton.disabled = !(selected && selected.writable);
+    }
     renderObjectTabs();
   }
 
@@ -92,18 +97,22 @@
     if (!head || !body) return;
     const columns = data && data.columns || [];
     const rows = data && data.rows || [];
+    const selected = currentSource();
+    const postgresqlBrowseOnly = Boolean(selected && selected.dialect === "postgresql");
     const summary = $("access-table-summary");
     if (summary) summary.textContent = `${state.selectedSource} / ${state.selectedTable} · 共 ${data.total || 0} 条记录，本页 ${rows.length} 条`;
-    head.innerHTML = `<tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}<th>操作</th></tr>`;
+    head.innerHTML = `<tr>${columns.map((c) => `<th>${esc(c)}</th>`).join("")}${postgresqlBrowseOnly ? "" : "<th>操作</th>"}</tr>`;
     body.innerHTML = rows.length ? rows.map((row) => `
       <tr data-pk="${esc(row[columns[0]])}">
-        ${columns.map((c) => `<td><input data-col="${esc(c)}" value="${esc(row[c])}" ${c === columns[0] ? "disabled" : ""}></td>`).join("")}
-        <td class="access-row-actions">
+        ${columns.map((c) => postgresqlBrowseOnly
+          ? `<td>${esc(row[c])}</td>`
+          : `<td><input data-col="${esc(c)}" value="${esc(row[c])}" ${c === columns[0] ? "disabled" : ""}></td>`).join("")}
+        ${postgresqlBrowseOnly ? "" : `<td class="access-row-actions">
           <button type="button" data-action="save">保存</button>
           <button type="button" data-action="delete">删除</button>
-        </td>
+        </td>`}
       </tr>
-    `).join("") : `<tr><td class="access-table-empty" colspan="${Math.max(1, columns.length + 1)}">当前表暂无数据</td></tr>`;
+    `).join("") : `<tr><td class="access-table-empty" colspan="${Math.max(1, columns.length + (postgresqlBrowseOnly ? 0 : 1))}">当前表暂无数据</td></tr>`;
     body.querySelectorAll("[data-action='save']").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const tr = btn.closest("tr");
@@ -207,6 +216,7 @@
         document.querySelectorAll(".access-tab").forEach((t) => t.classList.remove("active"));
         tab.classList.add("active");
         $("sqlite-source-form").hidden = tab.dataset.accessTab !== "sqlite";
+        $("postgresql-source-form").hidden = tab.dataset.accessTab !== "postgresql";
         $("csv-source-form").hidden = tab.dataset.accessTab !== "csv";
       });
     });
@@ -227,6 +237,30 @@
           writable: $("sqlite-source-writable").checked,
         });
         msg("SQLite 数据源接入成功", "ok");
+        await loadSources();
+      } catch (err) {
+        msg(err.message, "err");
+      }
+    });
+
+    $("postgresql-source-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.currentTarget;
+      try {
+        await api.registerPostgresqlSource({
+          name: $("postgresql-source-name").value,
+          label: $("postgresql-source-label").value,
+          host: $("postgresql-source-host").value,
+          port: Number($("postgresql-source-port").value || 5432),
+          database: $("postgresql-source-database").value,
+          username: $("postgresql-source-username").value,
+          password_env: $("postgresql-source-password-env").value,
+          sslmode: $("postgresql-source-sslmode").value || "prefer",
+        });
+        msg("PostgreSQL 数据源已按只读模式接入", "ok");
+        form.reset();
+        $("postgresql-source-port").value = "5432";
+        $("postgresql-source-sslmode").value = "prefer";
         await loadSources();
       } catch (err) {
         msg(err.message, "err");

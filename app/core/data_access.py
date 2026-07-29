@@ -9,10 +9,12 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, quote_plus
 from uuid import uuid4
 
 import yaml
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import URL, make_url
 
 from app.core.config import ROOT_DIR
 from app.core import data_sources as ds_cache
@@ -68,6 +70,16 @@ def _append_source_entry(entry: dict[str, Any]) -> None:
         _save_yaml(raw)
 
 
+def _remove_source_entry(name: str) -> None:
+    """Rollback one newly appended source without touching unrelated entries."""
+    with lock_for(DATA_SOURCES_FILE):
+        raw = _load_yaml()
+        original = list(raw["sources"])
+        raw["sources"] = [item for item in original if item.get("name") != name]
+        if len(raw["sources"]) != len(original):
+            _save_yaml(raw)
+
+
 def _source_entry(name: str) -> dict[str, Any]:
     for item in _load_yaml().get("sources") or []:
         if item.get("name") == name:
@@ -105,6 +117,25 @@ def _quote_ident(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
+def _redact_url(url: str) -> str:
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except Exception:
+        return ""
+
+
+def safe_connection_error(exc: Exception, url: str) -> str:
+    message = str(exc)
+    try:
+        secret = make_url(url).password or ""
+    except Exception:
+        secret = ""
+    for value in {secret, quote(secret, safe=""), quote_plus(secret)} if secret else set():
+        if value:
+            message = message.replace(value, "***")
+    return message
+
+
 def list_registered_sources() -> list[dict[str, Any]]:
     out = []
     for item in _load_yaml().get("sources") or []:
@@ -123,7 +154,7 @@ def list_registered_sources() -> list[dict[str, Any]]:
         out.append({
             "name": name,
             "label": item.get("label") or name,
-            "url": item.get("url") or "",
+            "url": _redact_url(str(item.get("url") or "")),
             "dialect": ds_cache._detect_dialect(item.get("url") or ""),
             "glossary": item.get("glossary") or "",
             "schema_profile": item.get("schema_profile") or "",
@@ -143,6 +174,24 @@ def test_connection(url: str) -> dict[str, Any]:
     inspector = inspect(engine)
     tables = inspector.get_table_names()
     return {"ok": True, "table_count": len(tables), "tables": tables[:50]}
+
+
+def _scan_url(url: str) -> dict[str, list[str]]:
+    engine = create_engine(
+        url,
+        future=True,
+        connect_args={"options": "-c default_transaction_read_only=on"},
+    )
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        inspector = inspect(engine)
+        return {
+            table: [column["name"] for column in inspector.get_columns(table)]
+            for table in inspector.get_table_names()
+        }
+    finally:
+        engine.dispose()
 
 
 def scan_source(name: str) -> dict[str, Any]:
@@ -196,6 +245,85 @@ def register_sqlite_source(name: str, label: str, db_path: str, writable: bool =
     return {"item": entry, "scan": scan_source(name)}
 
 
+def register_postgresql_source(
+    name: str,
+    label: str,
+    host: str,
+    port: int,
+    database: str,
+    username: str,
+    password_env: str,
+    sslmode: str = "prefer",
+) -> dict[str, Any]:
+    """Register a read-only PostgreSQL source while keeping its password external."""
+    name = _safe_name(name)
+    host = (host or "").strip()
+    database = (database or "").strip()
+    username = (username or "").strip()
+    password_env = (password_env or "").strip()
+    sslmode = (sslmode or "prefer").strip().lower()
+    if not host or not database or not username:
+        raise ValueError("PostgreSQL 主机、数据库和用户名不能为空")
+    if not 1 <= int(port) <= 65535:
+        raise ValueError("PostgreSQL 端口必须在 1 到 65535 之间")
+    if sslmode not in {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}:
+        raise ValueError("PostgreSQL sslmode 不合法")
+
+    stored_url = URL.create(
+        "postgresql+psycopg",
+        username=username,
+        host=host,
+        port=int(port),
+        database=database,
+        query={"sslmode": sslmode},
+    ).render_as_string(hide_password=False)
+    runtime_url = ds_cache.resolve_source_url(stored_url, password_env)
+    try:
+        tables = _scan_url(runtime_url)
+    except Exception as exc:
+        message = safe_connection_error(exc, runtime_url)
+        raise ValueError(f"PostgreSQL 连接失败: {message}") from exc
+
+    glossary = ROOT_DIR / "data" / "glossaries" / f"{name}.md"
+    profile = ROOT_DIR / "data" / "schema_profiles" / f"{name}.yaml"
+    if glossary.exists() or profile.exists():
+        raise ValueError(f"数据源配套文件已存在: {name}")
+    entry = {
+        "name": name,
+        "label": label.strip() or name,
+        "url": stored_url,
+        "password_env": password_env,
+        "glossary": _relative(glossary),
+        "schema_profile": _relative(profile),
+        "writable": False,
+        "status": "published",
+    }
+    _append_source_entry(entry)
+    try:
+        glossary.parent.mkdir(parents=True, exist_ok=True)
+        glossary.write_text(
+            f"# {label.strip() or name} Business Glossary\n\n"
+            "- 请在 Schema 配置中补充业务术语和指标口径。\n",
+            encoding="utf-8",
+        )
+        _write_starter_profile(name, tables)
+    except Exception:
+        _remove_source_entry(name)
+        glossary.unlink(missing_ok=True)
+        profile.unlink(missing_ok=True)
+        raise
+
+    scan = {
+        "source": name,
+        "tables": tables,
+        "table_count": len(tables),
+        "column_count": sum(len(columns) for columns in tables.values()),
+    }
+    public_item = {key: value for key, value in entry.items() if key != "password_env"}
+    public_item["url"] = _redact_url(stored_url)
+    return {"item": public_item, "scan": scan}
+
+
 def import_csv_as_source(name: str, label: str, table_name: str, csv_path: Path, writable: bool = True) -> dict[str, Any]:
     name = _safe_name(name)
     table_name = _safe_name(table_name)
@@ -226,8 +354,46 @@ def import_csv_as_source(name: str, label: str, table_name: str, csv_path: Path,
     return register_sqlite_source(name, label, _relative(db_path), writable=writable)
 
 
+def _postgresql_table_rows(source: Any, table: str, limit: int, offset: int) -> dict[str, Any]:
+    """Read one PostgreSQL table through the existing read-only SQLAlchemy engine."""
+    engine = ds_cache.get_engine(source)
+    try:
+        inspector = inspect(engine)
+        if table not in inspector.get_table_names():
+            raise KeyError(table)
+        quoted_table = engine.dialect.identifier_preparer.quote(table)
+        with engine.connect() as conn:
+            with conn.begin():
+                total = int(conn.execute(text(f"SELECT COUNT(*) FROM {quoted_table}")).scalar_one())
+                result = conn.execute(
+                    text(f"SELECT * FROM {quoted_table} LIMIT :limit OFFSET :offset"),
+                    {"limit": limit, "offset": offset},
+                )
+                columns = list(result.keys())
+                rows = [dict(row) for row in result.mappings()]
+        return {
+            "columns": columns,
+            "rows": rows,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+    except KeyError:
+        raise
+    except Exception as exc:
+        message = safe_connection_error(exc, source.url)
+        raise ValueError(f"PostgreSQL 表预览失败: {message}") from exc
+
+
 def table_rows(source_name: str, table: str, limit: int = 50, offset: int = 0) -> dict[str, Any]:
     source = ds_cache.get_source(source_name)
+    if source.dialect == "postgresql":
+        return _postgresql_table_rows(
+            source,
+            table,
+            max(1, min(int(limit), 200)),
+            max(0, int(offset)),
+        )
     path = _sqlite_path_from_url(source.url)
     table = _quote_ident(table)
     limit = max(1, min(int(limit), 200))

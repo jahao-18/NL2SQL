@@ -196,6 +196,29 @@ def get_session(
     }
 
 
+def recent_turns(
+    auth: AuthContext,
+    session_id: int,
+    *,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """Return a bounded, chronological history owned by the current work identity."""
+    validate_assistant_identity(auth)
+    if limit < 1 or limit > 20:
+        raise ValueError("历史轮数必须在 1 到 20 之间")
+    with _connect() as conn:
+        _owned_session(conn, auth, session_id)
+        rows = conn.execute(
+            """
+            SELECT * FROM assistant_turn
+            WHERE session_id = ? AND status IN ('success', 'clarify', 'degraded')
+            ORDER BY sequence_no DESC LIMIT ?
+            """,
+            (session_id, limit),
+        ).fetchall()
+    return [_turn_item(row) for row in reversed(rows)]
+
+
 def update_session(
     auth: AuthContext,
     session_id: int,

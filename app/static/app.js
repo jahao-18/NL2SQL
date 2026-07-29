@@ -674,6 +674,12 @@
     }
   }
 
+  function sourceAssistantContext(source) {
+    const context = { page: "assistant" };
+    if (source) context.source = source;
+    return context;
+  }
+
   function installRoleAssistantEntrances() {
     const entries = [
       ["dashboard-view", "dashboard", "问智能助手"],
@@ -1876,7 +1882,7 @@
       askBtn.textContent = "问数";
       askBtn.addEventListener("click", () => {
         setManualSource(row.name || "");
-        openUnifiedAssistant("");
+        openUnifiedAssistant("", sourceAssistantContext(row.name || ""));
       });
       actions.appendChild(openBtn);
       actions.appendChild(askBtn);
@@ -1963,7 +1969,7 @@
       row.innerHTML = `<span>${escapeHtml(item.question || "")}</span><small>${escapeHtml(item.source_label || item.source || "自动识别")} · ${escapeHtml(item.row_count || 0)} 行 · ${escapeHtml(item.elapsed_ms || 0)} ms</small>`;
       row.addEventListener("click", () => {
         setManualSource(item.source || "");
-        openUnifiedAssistant(item.question || "");
+        openUnifiedAssistant(item.question || "", sourceAssistantContext(item.source || ""));
       });
       activityList.appendChild(row);
     });
@@ -2045,8 +2051,12 @@
         writeJsonList(SAVED_QUERY_KEY, next);
       }
       card.querySelector(".saved-example-use").addEventListener("click", () => {
-        setManualSource(item.source || "");
-        openUnifiedAssistant(questionInput.value.trim() || item.question || "");
+        const selected = item.source || source || "";
+        setManualSource(selected);
+        openUnifiedAssistant(
+          questionInput.value.trim() || item.question || "",
+          sourceAssistantContext(selected),
+        );
       });
       card.querySelector(".saved-example-save").addEventListener("click", () => {
         persistExample().then(() => renderSavedExamples(source));

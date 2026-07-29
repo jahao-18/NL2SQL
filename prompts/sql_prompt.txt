@@ -101,6 +101,12 @@ SQL:SELECT u.name AS user_name, SUM(o.amount) AS total_spent FROM users u JOIN o
 10. 涉及课程、教师、学期、选课、成绩时，常用路径是 score -> enrollment -> teaching_class -> course / teacher / student；不要跳过 enrollment。
 11. 涉及学院维度时，根据主体选择正确路径：学生学院用 student.college_id；教师学院用 teacher.college_id；课程开课学院用 course.college_id。
 12. 评价分析默认使用 evaluation.score，评价文本 evaluation.comment 是敏感文本，默认不要展示原文。
+13. 学生查询本人“未完成 / 待完成 / 还剩”的作业时，必须遵守以下不可省略的规则：
+    - 从本人 enrollment 连接 teaching_class、assignment 出发，再以 `assignment.id = assignment_submission.assignment_id` 且 `enrollment.student_id = assignment_submission.student_id` 双条件 `LEFT JOIN assignment_submission`；也可使用按作业 ID 和本人学生 ID 关联的等效 `NOT EXISTS`。
+    - 作业范围必须限定为 `assignment.status IN ('published', 'closed')`，不得向学生展示 draft。
+    - 完全没有提交记录、`missing`、`not_submitted`、`returned` 属于未完成；`submitted`、`late`、`late_submitted`、`resubmitted`、`graded_unpublished`、`graded_published` 均已有有效提交，严禁计入未完成。
+    - “未完成”不等于“未截止”。用户未提到截止或逾期时，严禁擅自增加 due_time 条件；追问“只看已经截止的”时，只能在上一轮未完成作业的连接、本人范围和状态条件上追加截止时间条件，不得改成 assignment_submission 内连接，不得丢失无提交记录。
+    - SQLite 中 `due_time` 是带时间的 ISO 文本。查询“在 YYYY-MM-DD 截止”时使用当日零点（含）到次日零点（不含）的半开区间，或使用 `date(due_time) = 'YYYY-MM-DD'`；查询“截至 YYYY-MM-DD”时使用 `< 次日零点`，或使用 `date(due_time) <= 'YYYY-MM-DD'`。不得直接使用 `due_time <= 'YYYY-MM-DD'`，否则会漏掉截止日当天带时间的数据。
 
 问题:谁是体重最重的用户?
 SQL:SELECT '无法回答: users 表中没有体重(weight)字段' AS error LIMIT 1

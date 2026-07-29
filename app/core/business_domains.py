@@ -93,6 +93,18 @@ PROTECTED_RESOURCES: dict[str, dict[str, Any]] = {
     },
 }
 
+SENSITIVE_IDENTITY_TERMS: tuple[str, ...] = (
+    "身份证号码",
+    "身份证号",
+    "身份证",
+    "证件号码",
+    "证件号",
+    "id card",
+    "identity card",
+    "identity number",
+    "national id",
+)
+
 
 BUSINESS_DOMAINS: dict[str, dict[str, Any]] = {
     "student_affairs": {
@@ -891,6 +903,11 @@ def denied_question_hit(question: str, denied_terms: list[str] | tuple[str, ...]
         if t_raw in raw or (t_norm and t_norm in normalized):
             return term
     return None
+
+
+def sensitive_identity_question_hit(question: str) -> str | None:
+    """Recognize identity-document fields that are never exposed through NL2SQL."""
+    return denied_question_hit(question, SENSITIVE_IDENTITY_TERMS)
 
 
 def filter_schema_info(

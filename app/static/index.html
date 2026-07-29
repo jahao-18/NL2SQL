@@ -6,7 +6,7 @@
   <title>教学数据智能问数平台</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:opsz,wght@14..32,200;14..32,300;14..32,400;14..32,500;14..32,600&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/style.css?v=v3-3-5-quality" />
-  <link rel="stylesheet" href="/assistant-panel.css?v=v3-3-2" />
+  <link rel="stylesheet" href="/assistant-panel.css?v=zjh-011" />
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
@@ -945,7 +945,7 @@
           </section>
 
           <div class="access-flow" aria-label="数据接入流程">
-            <div><i>01</i><span><b>连接数据</b><small>SQLite / CSV</small></span></div>
+            <div><i>01</i><span><b>连接数据</b><small>SQLite / PostgreSQL / CSV</small></span></div>
             <div><i>02</i><span><b>识别结构</b><small>自动扫描 Schema</small></span></div>
             <div><i>03</i><span><b>完善语义</b><small>画像、关系与指标</small></span></div>
             <div><i>04</i><span><b>安全维护</b><small>变更全程留痕</small></span></div>
@@ -978,10 +978,11 @@
             <section class="panel-card access-register-panel">
               <div class="section-head">
                 <span class="section-icon">N</span>
-                <div><h2>新增数据源</h2><p>支持接入现有 SQLite 文件，或把 CSV 转为托管 SQLite。</p></div>
+                <div><h2>新增数据源</h2><p>支持接入现有 SQLite、只读 PostgreSQL，或把 CSV 转为托管 SQLite。</p></div>
               </div>
               <div class="access-tabs">
                 <button class="access-tab active" data-access-tab="sqlite" type="button">SQLite</button>
+                <button class="access-tab" data-access-tab="postgresql" type="button">PostgreSQL</button>
                 <button class="access-tab" data-access-tab="csv" type="button">CSV</button>
               </div>
               <form class="access-form" id="sqlite-source-form">
@@ -990,6 +991,21 @@
                 <label class="wide"><span>SQLite 文件路径</span><input id="sqlite-source-path" placeholder="例如 data/managed/demo.db" /></label>
                 <label class="access-check"><input id="sqlite-source-writable" type="checkbox" />允许维护数据</label>
                 <button class="nav-btn" type="submit">接入 SQLite</button>
+              </form>
+              <form class="access-form" id="postgresql-source-form" hidden>
+                <label><span>数据源标识</span><input id="postgresql-source-name" required placeholder="例如 library_pg" /></label>
+                <label><span>展示名称</span><input id="postgresql-source-label" placeholder="例如 图书业务 PostgreSQL" /></label>
+                <label><span>主机</span><input id="postgresql-source-host" required placeholder="例如 localhost" /></label>
+                <label><span>端口</span><input id="postgresql-source-port" required type="number" min="1" max="65535" value="5432" /></label>
+                <label><span>数据库</span><input id="postgresql-source-database" required placeholder="例如 library" /></label>
+                <label><span>用户名</span><input id="postgresql-source-username" required placeholder="例如 library_reader" /></label>
+                <label class="wide"><span>密码环境变量名</span><input id="postgresql-source-password-env" required pattern="[A-Za-z_][A-Za-z0-9_]*" placeholder="例如 LIBRARY_PG_PASSWORD" /><small>真实密码仅配置在服务器环境变量或本地 .env，本页面不会接收或回显密码。</small></label>
+                <label class="wide"><span>SSL 模式</span><input id="postgresql-source-sslmode" required value="prefer" list="postgresql-sslmode-options" /></label>
+                <datalist id="postgresql-sslmode-options">
+                  <option value="disable"></option><option value="allow"></option><option value="prefer"></option>
+                  <option value="require"></option><option value="verify-ca"></option><option value="verify-full"></option>
+                </datalist>
+                <button class="nav-btn" type="submit">接入只读 PostgreSQL</button>
               </form>
               <form class="access-form" id="csv-source-form" hidden>
                 <label><span>数据源标识</span><input id="csv-source-name" placeholder="例如 survey_data" /></label>
@@ -1183,11 +1199,11 @@
   </section>
 </div>
 
-<script src="/api.js?v=v3-3-5-quality"></script>
-<script src="/assistant-panel.js?v=v3-3-4-operations"></script>
+<script src="/api.js?v=zjh-external-1"></script>
+<script src="/assistant-panel.js?v=zjh-011"></script>
 <script src="/modal.js?v=p0-product-3"></script>
 <script src="/governance-view.js?v=p0-product-3"></script>
-<script src="/data-access-view.js?v=schema-workbench-1"></script>
-<script src="/app.js?v=v3-3-5-quality"></script>
+<script src="/data-access-view.js?v=zjh-021"></script>
+<script src="/app.js?v=zjh-019"></script>
 </body>
 </html>

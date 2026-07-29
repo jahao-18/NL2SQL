@@ -13,6 +13,7 @@ from app.core.assistant_sessions import (
     delete_session,
     get_session,
     list_sessions,
+    recent_turns,
     update_session,
 )
 from app.core.business_domains import switch_role, token_for, user_from_token
@@ -64,21 +65,28 @@ def _create_admin_session(auth, suffix: str, title: str | None = None):
 
 def test_create_list_update_and_duplicate_request_are_stable():
     auth = _auth("admin")
+    baseline_total = list_sessions(auth)["total"]
     first = _create_admin_session(auth, "create-0001")
     duplicate = _create_admin_session(auth, "create-0001", "不会覆盖原会话")
-    _create_admin_session(auth, "create-0002")
-    _create_admin_session(auth, "create-0003")
+    second = _create_admin_session(auth, "create-0002")
+    third = _create_admin_session(auth, "create-0003")
 
     assert duplicate["id"] == first["id"]
     assert duplicate["title"] == first["title"]
     page_one = list_sessions(auth, page=1, page_size=2)
     page_two = list_sessions(auth, page=2, page_size=2)
-    assert page_one["total"] == 3
+    expected_total = baseline_total + 3
+    assert page_one["total"] == expected_total
     assert len(page_one["items"]) == 2
-    assert len(page_two["items"]) == 1
+    assert len(page_two["items"]) == min(2, max(0, expected_total - 2))
     assert {item["id"] for item in page_one["items"]}.isdisjoint(
         {item["id"] for item in page_two["items"]}
     )
+    listed_ids = {
+        item["id"]
+        for item in list_sessions(auth, page=1, page_size=100)["items"]
+    }
+    assert {first["id"], second["id"], third["id"]} <= listed_ids
 
     updated = update_session(
         auth, first["id"], {"title": "  数据库课程追踪  ", "is_favorite": True}
@@ -143,6 +151,50 @@ def test_turns_are_paginated_and_idempotent_without_large_results():
     assert "safe_answer_summary" in columns
 
 
+def test_recent_turns_are_bounded_chronological_and_identity_isolated():
+    auth = _auth("admin")
+    session = _create_admin_session(auth, "recent-0001")
+    for number in range(1, 8):
+        append_turn(
+            auth,
+            session["id"],
+            {
+                "question": f"第 {number} 轮问题",
+                "answer_type": "nl2sql",
+                "status": "success",
+                "safe_answer_summary": f"第 {number} 轮安全摘要",
+                "context": {"page": "assistant"},
+                "client_request_id": f"{REQUEST_PREFIX}recent-turn-{number:04d}",
+            },
+        )
+    append_turn(
+        auth,
+        session["id"],
+        {
+            "question": "失败轮次不进入后续模型历史",
+            "answer_type": "nl2sql",
+            "status": "failed",
+            "safe_answer_summary": "模型暂时不可用",
+            "error_code": "ASSISTANT_NL2SQL_FAILED",
+            "context": {"page": "assistant"},
+            "client_request_id": f"{REQUEST_PREFIX}recent-turn-failed",
+        },
+    )
+
+    items = recent_turns(auth, session["id"], limit=5)
+
+    assert [item["sequence_no"] for item in items] == [3, 4, 5, 6, 7]
+    assert [item["question"] for item in items] == [
+        "第 3 轮问题",
+        "第 4 轮问题",
+        "第 5 轮问题",
+        "第 6 轮问题",
+        "第 7 轮问题",
+    ]
+    with pytest.raises(AssistantSessionNotFoundError):
+        recent_turns(_auth("stu_zhang"), session["id"], limit=5)
+
+
 def test_session_is_invisible_to_another_user_and_work_identity():
     teacher = _auth("tea_li")
     with sqlite3.connect(teaching_migrations.DB_PATH) as conn:
@@ -197,13 +249,14 @@ def test_suspended_account_cannot_read_sessions():
 
 def test_soft_delete_is_repeatable_and_blocks_reads_and_new_turns():
     auth = _auth("admin")
+    baseline_total = list_sessions(auth)["total"]
     session = _create_admin_session(auth, "delete-0001")
 
     first = delete_session(auth, session["id"])
     second = delete_session(auth, session["id"])
     assert first == {"deleted": True, "already_deleted": False, "id": session["id"]}
     assert second == {"deleted": True, "already_deleted": True, "id": session["id"]}
-    assert list_sessions(auth)["total"] == 0
+    assert list_sessions(auth)["total"] == baseline_total
     with pytest.raises(AssistantSessionNotFoundError):
         get_session(auth, session["id"])
     with pytest.raises(AssistantSessionNotFoundError):

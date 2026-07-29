@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core import teaching_migrations
 from app.core.business_domains import AuthContext, AuthorizationError
+from app.core.data_sources import get_source
 
 
 AssistantPage = Literal[
@@ -46,7 +47,7 @@ PAGE_FEATURES: dict[str, str] = {
 
 PAGE_CONTEXT_FIELDS: dict[str, frozenset[str]] = {
     "dashboard": frozenset({"academic_year", "semester", "time_range", "filters"}),
-    "assistant": frozenset({"teaching_class_id", "student_id", "college_id", "academic_year", "semester", "time_range", "filters"}),
+    "assistant": frozenset({"source", "teaching_class_id", "student_id", "college_id", "academic_year", "semester", "time_range", "filters"}),
     "course_space": frozenset({"teaching_class_id", "academic_year", "semester", "filters"}),
     "assignment_workflow": frozenset({"teaching_class_id", "student_id", "academic_year", "semester", "filters"}),
     "attendance": frozenset({"teaching_class_id", "student_id", "academic_year", "semester", "time_range", "filters"}),
@@ -94,6 +95,12 @@ class AssistantTimeRange(BaseModel):
 
 class AssistantPageContext(BaseModel):
     page: AssistantPage
+    source: str | None = Field(
+        None,
+        min_length=2,
+        max_length=49,
+        pattern=r"^[A-Za-z][A-Za-z0-9_]{1,48}$",
+    )
     teaching_class_id: int | None = Field(None, gt=0)
     student_id: int | None = Field(None, gt=0)
     college_id: int | None = Field(None, gt=0)
@@ -106,6 +113,11 @@ class AssistantPageContext(BaseModel):
     @classmethod
     def normalize_semester(cls, value: str | None) -> str | None:
         return value.strip().lower() if value is not None else None
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def normalize_source(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
 
     @field_validator("filters")
     @classmethod
@@ -163,6 +175,15 @@ def resolve_assistant_context(
     for field, value in raw.items():
         if field not in allowed_fields:
             ignored[field] = value
+
+    if context.source is not None and "source" in allowed_fields:
+        if context.source != "teaching" and not auth.is_admin:
+            _reject("source", context.source, "当前工作身份只能查询教学业务数据源")
+        try:
+            selected_source = get_source(context.source)
+        except KeyError:
+            _reject("source", context.source, "数据源不存在或当前身份无权访问")
+        effective["source"] = selected_source.name
 
     filters = raw.get("filters") or {}
     reserved = _reserved_filter_paths(filters)

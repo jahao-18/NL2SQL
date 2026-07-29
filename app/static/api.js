@@ -182,6 +182,7 @@
     accessSources: () => request("/api/data-access/sources"),
     testAccessConnection: (payload) => json("POST", "/api/data-access/test", payload),
     registerSqliteSource: (payload) => json("POST", "/api/data-access/sources/sqlite", payload),
+    registerPostgresqlSource: (payload) => json("POST", "/api/data-access/sources/postgresql", payload),
     importCsvSource: (payload) => json("POST", "/api/data-access/sources/csv", payload),
     scanAccessSource: (source) => json("POST", `/api/data-access/sources/${encodeURIComponent(source)}/scan`, {}),
     tableRows: (source, table, params) => request(`/api/data-access/sources/${encodeURIComponent(source)}/tables/${encodeURIComponent(table)}/rows${qs(params)}`),

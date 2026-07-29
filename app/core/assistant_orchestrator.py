@@ -22,6 +22,7 @@ from app.core.assistant_sessions import (
     append_turn,
     create_session,
     get_session,
+    recent_turns,
 )
 from app.core.business_domains import AuthContext, navigation_for, row_scope_context
 from app.core.config import settings
@@ -33,11 +34,13 @@ from app.core.semantic_metrics import (
 from app.core.support_workflow import counselor_appointment_queue, counselor_review_queue
 from app.core.stage_e import assistant_issue_queue
 from app.core.workbench import build_workbench
+from app.models.schemas import Turn
 from app.service import ask as ask_service
 
 
 logger = logging.getLogger("nl2sql.assistant")
 _NL2SQL_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="assistant-nl2sql")
+_SESSION_HISTORY_TURNS = 5
 
 PreferredAnswerType = Literal[
     "metric", "business_state", "nl2sql", "navigation", "unsupported"
@@ -111,17 +114,27 @@ def query_assistant(
             ),
         )
         session_id = int(session["id"])
+        history: list[Turn] = []
     else:
         detail = get_session(auth, request.session_id, turn_page=1, turn_page_size=1)
         if detail["item"]["page"] != resolution.effective_context["page"]:
             from app.core.assistant_sessions import AssistantSessionConflictError
 
             raise AssistantSessionConflictError("请求页面与会话页面不一致")
+        saved_source = (detail["item"].get("context") or {}).get("source") or "teaching"
+        current_source = resolution.effective_context.get("source") or "teaching"
+        if saved_source != current_source:
+            from app.core.assistant_sessions import AssistantSessionConflictError
+
+            raise AssistantSessionConflictError("请求数据源与会话数据源不一致")
         session_id = request.session_id
+        history = _legacy_history(
+            recent_turns(auth, session_id, limit=_SESSION_HISTORY_TURNS)
+        )
 
     started = time.perf_counter()
     try:
-        result = _dispatch(auth, request, resolution.effective_context)
+        result = _dispatch(auth, request, resolution.effective_context, history)
     except Exception as exc:
         logger.exception("统一助手编排失败")
         result = _failure("ASSISTANT_INTERNAL_ERROR", "智能助手暂时不可用，请稍后重试。")
@@ -180,9 +193,14 @@ def query_assistant(
 
 
 def _dispatch(
-    auth: AuthContext, request: AssistantQueryRequest, context: dict[str, Any]
+    auth: AuthContext,
+    request: AssistantQueryRequest,
+    context: dict[str, Any],
+    history: list[Turn],
 ) -> dict[str, Any]:
     question = request.question
+    if context.get("source") not in {None, "teaching"}:
+        return _nl2sql(auth, question, context, history)
     missing_roster = _teacher_missing_assignment_roster_request(auth, question, context)
     if missing_roster is not None:
         return missing_roster
@@ -200,14 +218,35 @@ def _dispatch(
         return metric_answer_payload(
             evaluate_semantic_metric(auth, semantic_metric, context)
         )
-    route = _classify(question, request.options.preferred_answer_type, context)
+    route = _classify(
+        question,
+        request.options.preferred_answer_type,
+        context,
+        history,
+    )
     if route == "navigation":
         return _navigation(auth, question)
     if route in {"metric", "business_state"}:
         return _workbench_answer(auth, question, route)
     if route == "unsupported":
         return _unsupported()
-    return _nl2sql(auth, question, context)
+    return _nl2sql(auth, question, context, history)
+
+
+def _legacy_history(items: list[dict[str, Any]]) -> list[Turn]:
+    history: list[Turn] = []
+    for item in items:
+        summary = str(item.get("answer_summary") or "").strip()
+        if not summary:
+            summary = f"上一轮回答类型：{item.get('answer_type') or 'unknown'}"
+        history.append(
+            Turn(
+                question=str(item["question"])[:500],
+                sql=summary[:2000],
+                kind="clarify" if item.get("status") == "clarify" else "sql",
+            )
+        )
+    return history
 
 
 def _teaching_issue_queue_request(
@@ -384,8 +423,12 @@ def _classify(
     question: str,
     preferred: PreferredAnswerType | None,
     context: dict[str, Any],
+    history: list[Turn] | None = None,
 ) -> PreferredAnswerType:
     text = question.lower()
+    contextual_text = "\n".join(
+        [*(turn.question for turn in (history or [])), question]
+    )
     has_object_scope = any(
         key in context for key in ("teaching_class_id", "student_id", "college_id")
     )
@@ -399,8 +442,11 @@ def _classify(
         word in text for word in ("待办", "待处理", "需要处理", "什么状态", "进度")
     ):
         return "business_state"
+    # Explicit workbench counters keep the deterministic route. Generic quantity
+    # words are evaluated after concrete data subjects so “教师数量”等业务查询
+    # do not accidentally return the current role's workbench summary.
     if not has_object_scope and any(
-        word in text for word in ("多少", "几个", "数量", "总数", "未读", "待批阅")
+        word in text for word in ("未读", "待批阅")
     ):
         return "metric"
     data_terms = (
@@ -411,6 +457,8 @@ def _classify(
         "考勤",
         "学院",
         "教师",
+        "专业",
+        "班级",
         "选课",
         "评教",
         "异常",
@@ -418,8 +466,12 @@ def _classify(
         "数据",
         "统计",
     )
-    if any(term in question for term in data_terms):
+    if any(term in contextual_text for term in data_terms):
         return "nl2sql"
+    if not has_object_scope and any(
+        word in text for word in ("多少", "几个", "数量", "总数")
+    ):
+        return "metric"
     return "unsupported"
 
 
@@ -518,28 +570,36 @@ def _workbench_answer(
 
 
 def _nl2sql(
-    auth: AuthContext, question: str, context: dict[str, Any]
+    auth: AuthContext,
+    question: str,
+    context: dict[str, Any],
+    history: list[Turn] | None = None,
 ) -> dict[str, Any]:
+    selected_source = str(context.get("source") or "teaching")
+    teaching_source = selected_source == "teaching"
     glossary: list[str] = []
-    scope_hint = row_scope_context(auth)
-    if scope_hint:
-        glossary.append(scope_hint)
-    glossary.append(
-        "“本学期”默认指 teaching_class.year = 2025 AND teaching_class.semester = 'spring'。"
-    )
-    row_scope = dict(auth.row_scope)
-    for key in ("teaching_class_id", "student_id", "college_id"):
-        if key in context:
-            row_scope[key] = context[key]
+    row_scope: dict[str, Any] = {}
+    if teaching_source:
+        scope_hint = row_scope_context(auth)
+        if scope_hint:
+            glossary.append(scope_hint)
+        glossary.append(
+            "“本学期”默认指 teaching_class.year = 2025 AND teaching_class.semester = 'spring'。"
+        )
+        row_scope = dict(auth.row_scope)
+        for key in ("teaching_class_id", "student_id", "college_id"):
+            if key in context:
+                row_scope[key] = context[key]
     future = _NL2SQL_EXECUTOR.submit(
         ask_service,
         question,
-        source="teaching",
-        current_source="teaching",
+        history=history or [],
+        source=selected_source,
+        current_source=selected_source,
         user_glossary=glossary,
-        allowed_tables=auth.allowed_tables,
-        denied_columns=auth.denied_columns,
-        denied_terms=auth.denied_terms,
+        allowed_tables=auth.allowed_tables if teaching_source else None,
+        denied_columns=auth.denied_columns if teaching_source else None,
+        denied_terms=auth.denied_terms if teaching_source else None,
         role_label=auth.role_label,
         row_scope=row_scope,
     )
@@ -565,6 +625,14 @@ def _nl2sql(
             "trace_summary": {"route": "nl2sql", **(legacy.get("trace") or {})},
         }
     if legacy.get("error"):
+        legacy_trace = legacy.get("trace") or {}
+        if legacy_trace.get("result_kind") == "unsupported":
+            return {
+                **_base("success", "unsupported"),
+                "answer": str(legacy["error"]),
+                "suggested_questions": ["换一个现有字段继续查询", "查看当前可查询的数据范围"],
+                "trace_summary": {"route": "nl2sql", **legacy_trace},
+            }
         rejected = any(
             marker in str(legacy["error"])
             for marker in ("无权", "未授权", "不可用于问数", "没有可用于")
@@ -574,7 +642,7 @@ def _nl2sql(
         result = _failure(code, str(legacy["error"]), status=status)
         result["answer_type"] = "nl2sql"
         result["sql"] = legacy.get("sql")
-        trace = {"route": "nl2sql", **(legacy.get("trace") or {})}
+        trace = {"route": "nl2sql", **legacy_trace}
         if not trace.get("failed_stage"):
             message = str(legacy["error"])
             trace["failed_stage"] = (

@@ -630,7 +630,10 @@ def list_sources(ctx=Header(None, alias="X-Demo-Token")) -> SourcesResponse:
 def get_schema(source: str | None = Query(None), ctx=Header(None, alias="X-Demo-Token")) -> SchemaResponse:
     auth = require_admin(ctx)
     try:
-        info = filter_schema_info(load_schema(source), auth.allowed_tables, auth.denied_columns)
+        selected_source = get_source(source)
+        loaded = load_schema(selected_source.name)
+        allowed_tables = auth.allowed_tables if selected_source.name == "teaching" else set(loaded.tables)
+        info = filter_schema_info(loaded, allowed_tables, auth.denied_columns)
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     # 只返回纯表结构(CREATE TABLE);取值发现/业务词表/派生指标是喂 LLM 的,不展示给用户
