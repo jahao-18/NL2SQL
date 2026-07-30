@@ -86,6 +86,35 @@ def test_fixed_api_and_natural_language_use_identical_certified_result():
         _delete_session(asked_body["session_id"])
 
 
+def test_demo_role_recommendations_return_direct_certified_metric_answers():
+    cases = (
+        ("tea_li", "我负责课程的作业未交数是多少？", "assignment_missing_count"),
+        ("tea_li", "我负责课程的待批作业数是多少？", "assignment_pending_grading_count"),
+        ("tea_li", "我负责课程的出勤率是多少？", "attendance_rate"),
+        ("stu_zhang", "我当前的作业未交数是多少？", "assignment_missing_count"),
+        ("stu_zhang", "我的作业完成率是多少？", "assignment_completion_rate"),
+        ("stu_zhang", "我的缺勤次数是多少？", "attendance_absence_count"),
+    )
+    with TestClient(app) as client:
+        for username, question, metric_code in cases:
+            response = client.post(
+                "/api/assistant/query",
+                headers=_headers(username),
+                json={"question": question, "context": {"page": "assistant"}},
+            )
+            assert response.status_code == 200
+            body = response.json()
+            try:
+                assert body["status"] == "success"
+                assert body["answer_type"] == "metric"
+                assert body["answer"]
+                assert body["trace_summary"]["route"] == "semantic_metric"
+                assert body["trace_summary"]["metric_code"] == metric_code
+                assert body["sql"] is None
+            finally:
+                _delete_session(body["session_id"])
+
+
 def test_metric_context_cannot_escape_teacher_row_scope():
     auth = user_from_token(token_for("tea_li"))
     with sqlite3.connect(teaching_migrations.DB_PATH) as conn:

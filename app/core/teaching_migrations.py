@@ -697,6 +697,18 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             version_no INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'draft', returned_reason TEXT NOT NULL DEFAULT '',
             submitted_at TEXT, reviewed_by_user_id INTEGER, reviewed_at TEXT, published_at TEXT, updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS grade_submission_detail (
+            id INTEGER PRIMARY KEY,
+            grade_submission_id INTEGER NOT NULL,
+            version_no INTEGER NOT NULL,
+            enrollment_id INTEGER NOT NULL,
+            student_no_snapshot TEXT NOT NULL,
+            student_name_snapshot TEXT NOT NULL,
+            final_score REAL NOT NULL CHECK(final_score >= 0 AND final_score <= 100),
+            import_row_no INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(grade_submission_id, version_no, enrollment_id)
+        );
         CREATE TABLE IF NOT EXISTS academic_teaching_operations_summary (
             teaching_class_id INTEGER PRIMARY KEY, college_id INTEGER NOT NULL, college_name TEXT NOT NULL,
             course_name TEXT NOT NULL, teacher_name TEXT NOT NULL, year INTEGER NOT NULL, semester TEXT NOT NULL,
@@ -805,6 +817,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_course_question_reply ON course_question_reply(question_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_teaching_issue_scope ON teaching_issue(college_id, status, issue_type);
         CREATE INDEX IF NOT EXISTS idx_grade_submission_status ON grade_submission(status, teaching_class_id);
+        CREATE INDEX IF NOT EXISTS idx_grade_submission_detail_version ON grade_submission_detail(grade_submission_id, version_no);
         CREATE INDEX IF NOT EXISTS idx_course_analytics_class ON course_assignment_analytics(teaching_class_id, teacher_id);
         CREATE INDEX IF NOT EXISTS idx_student_analytics_scope ON student_task_analytics(teaching_class_id, student_id);
         CREATE INDEX IF NOT EXISTS idx_analytics_log_user ON analytics_query_log(username, teaching_class_id, created_at);
@@ -812,6 +825,19 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE UNIQUE INDEX IF NOT EXISTS uq_submission_assignment_student ON assignment_submission(assignment_id, student_id);
         CREATE UNIQUE INDEX IF NOT EXISTS uq_submission_version_no ON submission_version(submission_id, version_no);
         """
+    )
+    # Legacy Stage E records only changed workflow status and did not contain
+    # any student scores. They are not valid submissions under the current
+    # snapshot workflow, so reopen them as drafts for an explicit CSV import.
+    conn.execute(
+        """UPDATE grade_submission
+           SET status='draft',returned_reason='',submitted_at=NULL,
+               reviewed_by_user_id=NULL,reviewed_at=NULL,published_at=NULL
+           WHERE NOT EXISTS (
+               SELECT 1 FROM grade_submission_detail gd
+               WHERE gd.grade_submission_id=grade_submission.id
+                 AND gd.version_no=grade_submission.version_no
+           )"""
     )
     _ensure_column(conn, "assignment", "status", "TEXT NOT NULL DEFAULT 'published'")
     _ensure_column(conn, "assignment", "instructions", "TEXT NOT NULL DEFAULT ''")

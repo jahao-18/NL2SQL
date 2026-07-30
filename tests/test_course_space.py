@@ -22,6 +22,9 @@ def test_course_space_frontend_has_structured_responsive_workspace():
     assert "data-delete-announcement" in script
     assert "data-publish-announcement" in script
     assert "publishAnnouncementDraft" in script
+    assert "const previousId = Number(picker.value);" in script
+    assert "items.some((x) => Number(x.id) === previousId)" in script
+    assert "if (!picker.options.length)" not in script
     assert "course-space-composer-grid" in style
     assert "@media(max-width:900px)" in style
 
