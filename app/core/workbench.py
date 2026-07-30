@@ -66,7 +66,7 @@ def _student(conn: sqlite3.Connection, ctx: AuthContext) -> tuple[list[dict[str,
           AND (s.id IS NULL OR s.status IN ('missing', 'not_submitted', 'returned'))
         ORDER BY a.due_time, a.id LIMIT 6
     """, (student_id,))
-    grades = _rows(conn, """
+    assignment_grades = _rows(conn, """
         SELECT a.id, c.name AS title, a.title AS subtitle,
                printf('%.1f / %.1f', gr.score, a.max_score) AS meta,
                '已发布' AS badge, 'assignment-workflow-view' AS target
@@ -77,6 +77,19 @@ def _student(conn: sqlite3.Connection, ctx: AuthContext) -> tuple[list[dict[str,
         JOIN course c ON c.id = tc.course_id
         WHERE s.student_id = ? AND gr.published = 1
         ORDER BY COALESCE(gr.published_at, gr.created_at) DESC, gr.id DESC LIMIT 4
+    """, (student_id,))
+    final_grades = _rows(conn, """
+        SELECT tc.id, c.name AS title, '课程总评成绩' AS subtitle,
+               printf('%.1f / 100.0', gd.final_score) AS meta,
+               '教务已发布' AS badge, 'course-space-view' AS target
+        FROM grade_submission gs
+        JOIN grade_submission_detail gd
+          ON gd.grade_submission_id = gs.id AND gd.version_no = gs.version_no
+        JOIN enrollment e ON e.id = gd.enrollment_id
+        JOIN teaching_class tc ON tc.id = gs.teaching_class_id
+        JOIN course c ON c.id = tc.course_id
+        WHERE e.student_id = ? AND gs.status = 'published'
+        ORDER BY COALESCE(gs.published_at, gs.updated_at) DESC, gs.id DESC LIMIT 6
     """, (student_id,))
     support = _rows(conn, """
         SELECT sc.id, sc.title, sc.suggested_action AS subtitle,
@@ -90,7 +103,8 @@ def _student(conn: sqlite3.Connection, ctx: AuthContext) -> tuple[list[dict[str,
     unread = _one(conn, "SELECT count(*) FROM notification WHERE recipient_username = ? AND read_at IS NULL", (ctx.username,))
     sections = [
         _section("pending_assignments", "近期任务", tasks, "只显示本人课程中仍需处理的作业。"),
-        _section("published_grades", "最新成绩", grades, "只显示已经向本人发布的成绩。"),
+        _section("published_final_grades", "课程总评成绩", final_grades, "只显示教务处已经发布的本人课程总评成绩。"),
+        _section("published_grades", "作业成绩", assignment_grades, "只显示教师已经向本人发布的作业成绩。"),
         _section("learning_support", "学习支持", support, "辅导员向本人公开的建议与跟进。"),
         _section("my_courses", "我的课程", courses, "仅显示本人已选课程。"),
     ]

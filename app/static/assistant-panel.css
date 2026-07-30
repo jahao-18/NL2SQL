@@ -115,10 +115,10 @@
   background:#fff;
   box-shadow:var(--shadow-soft);
 }
-.v3ap-answer.is-clarify,.v3ap-answer.is-low-confidence,.v3ap-answer.is-degraded,.v3ap-answer.is-empty{border-left-color:var(--v3ap-amber)}
+.v3ap-answer.is-clarify,.v3ap-answer.is-unsupported,.v3ap-answer.is-low-confidence,.v3ap-answer.is-degraded,.v3ap-answer.is-empty{border-left-color:var(--v3ap-amber)}
 .v3ap-answer.is-unauthorized,.v3ap-answer.is-error{border-left-color:var(--v3ap-red)}
 .v3ap-answer.is-unauthorized .v3ap-state-label,.v3ap-answer.is-error .v3ap-state-label{color:var(--v3ap-red)}
-.v3ap-answer.is-clarify .v3ap-state-label,.v3ap-answer.is-low-confidence .v3ap-state-label,.v3ap-answer.is-degraded .v3ap-state-label,.v3ap-answer.is-empty .v3ap-state-label{color:var(--v3ap-amber)}
+.v3ap-answer.is-clarify .v3ap-state-label,.v3ap-answer.is-unsupported .v3ap-state-label,.v3ap-answer.is-low-confidence .v3ap-state-label,.v3ap-answer.is-degraded .v3ap-state-label,.v3ap-answer.is-empty .v3ap-state-label{color:var(--v3ap-amber)}
 .v3ap-answer-text{margin:0;color:var(--text-soft);font-size:13px;line-height:1.8;white-space:pre-wrap}
 .v3ap-warnings{display:grid;gap:7px}
 .v3ap-warning{display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:10px;padding:10px 12px;border-radius:7px;background:var(--v3ap-amber-soft);color:#6f501e;font-size:10px;line-height:1.5}

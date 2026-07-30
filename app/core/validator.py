@@ -170,8 +170,6 @@ def _enforce_row_scope(stmt: Statement, sql: str, row_scope: dict[str, object]) 
         tok.normalized.upper() for tok in stmt.flatten()
         if tok.ttype in Keyword
     }
-    if "OR" in flat_keywords:
-        raise SQLValidationError("带数据范围的问数暂不允许使用 OR 条件")
     if flat_keywords & {"UNION", "UNION ALL", "INTERSECT", "EXCEPT"}:
         raise SQLValidationError("带数据范围的问数不允许使用集合查询")
     for scope_key, scope_value in row_scope.items():
@@ -187,29 +185,107 @@ def _enforce_row_scope(stmt: Statement, sql: str, row_scope: dict[str, object]) 
                 continue
             aliases = _direct_table_aliases(block)
             value = str(scope_value)
-            candidates: list[tuple[str, str]] = []
+            scope_nodes: set[tuple[str, str]] = set()
             for table, column in dict(rule["columns"]).items():
                 if table not in refs:
                     continue
-                qualifiers = {table, *(alias for alias, real in aliases.items() if real == table)}
-                candidates.extend((qualifier, column) for qualifier in qualifiers)
-                if len(refs) == 1:
-                    candidates.append(("", column))
-            where = next((tok for tok in block.tokens if isinstance(tok, Where)), None)
-            where_text = _security_text(where, remove_subqueries=True) if where is not None else ""
-            if candidates and any(_scope_predicate_present(where_text, qualifier, column, value) for qualifier, column in candidates):
+                table_aliases = {
+                    alias for alias, real in aliases.items()
+                    if real == table and alias != table
+                }
+                qualifiers = table_aliases or {table}
+                scope_nodes.update((qualifier, column) for qualifier in qualifiers)
+            predicates = _direct_predicate_conjuncts(block)
+            directly_scoped = {
+                node for node in scope_nodes
+                if any(_scope_predicate_matches(part, *node, value) for part in predicates)
+            }
+            if len(refs) == 1 and len(scope_nodes) == 1:
+                only_node = next(iter(scope_nodes))
+                if any(_scope_predicate_matches(part, "", only_node[1], value) for part in predicates):
+                    directly_scoped.add(only_node)
+            linked: dict[tuple[str, str], set[tuple[str, str]]] = {
+                node: set() for node in scope_nodes
+            }
+            for left in scope_nodes:
+                for right in scope_nodes:
+                    if left >= right:
+                        continue
+                    if any(_scope_columns_equal(part, left, right) for part in predicates):
+                        linked[left].add(right)
+                        linked[right].add(left)
+            reachable = set(directly_scoped)
+            pending = list(directly_scoped)
+            while pending:
+                node = pending.pop()
+                for neighbor in linked[node] - reachable:
+                    reachable.add(neighbor)
+                    pending.append(neighbor)
+            if scope_nodes and reachable == scope_nodes:
                 continue
             raise SQLValidationError(f"当前身份查询这些数据时必须限定 {rule['label']} = {value}（每个查询块均需落实）")
 
 
-def _scope_predicate_present(sql: str, qualifier: str, column: str, value: str) -> bool:
+def _scope_predicate_matches(part: str, qualifier: str, column: str, value: str) -> bool:
     quoted_column = rf"[`\"\[]?{re.escape(column)}[`\"\]]?"
     quoted_qualifier = rf"[`\"\[]?{re.escape(qualifier)}[`\"\]]?"
     col = rf"{quoted_qualifier}\s*\.\s*{quoted_column}" if qualifier else rf"(?<!\.){quoted_column}"
     literal = re.escape(value)
     direct = re.compile(rf"^\s*{col}\s*=\s*{literal}\s*$", re.IGNORECASE)
     reverse = re.compile(rf"^\s*{literal}\s*=\s*{col}\s*$", re.IGNORECASE)
-    return any(direct.match(part) or reverse.match(part) for part in _top_level_conjuncts(sql))
+    return bool(direct.match(part) or reverse.match(part))
+
+
+def _scope_columns_equal(
+    part: str,
+    left: tuple[str, str],
+    right: tuple[str, str],
+) -> bool:
+    def column_pattern(node: tuple[str, str]) -> str:
+        qualifier, column = node
+        quoted_qualifier = rf"[`\"\[]?{re.escape(qualifier)}[`\"\]]?"
+        quoted_column = rf"[`\"\[]?{re.escape(column)}[`\"\]]?"
+        return rf"{quoted_qualifier}\s*\.\s*{quoted_column}"
+
+    left_col = column_pattern(left)
+    right_col = column_pattern(right)
+    direct = re.compile(rf"^\s*{left_col}\s*=\s*{right_col}\s*$", re.IGNORECASE)
+    reverse = re.compile(rf"^\s*{right_col}\s*=\s*{left_col}\s*$", re.IGNORECASE)
+    return bool(direct.match(part) or reverse.match(part))
+
+
+def _direct_predicate_conjuncts(block: TokenList) -> list[str]:
+    predicates: list[str] = []
+    tokens = _meaningful(block)
+    index = 0
+    while index < len(tokens):
+        tok = tokens[index]
+        if isinstance(tok, Where):
+            predicates.extend(_top_level_conjuncts(_security_text(tok, remove_subqueries=True)))
+            index += 1
+            continue
+        norm = tok.normalized.upper() if hasattr(tok, "normalized") else ""
+        if norm != "ON":
+            index += 1
+            continue
+        index += 1
+        on_parts: list[str] = []
+        while index < len(tokens):
+            next_tok = tokens[index]
+            if isinstance(next_tok, Where):
+                break
+            next_norm = next_tok.normalized.upper() if hasattr(next_tok, "normalized") else ""
+            if next_norm == "JOIN" or next_norm.endswith(" JOIN"):
+                break
+            if isinstance(next_tok, TokenList):
+                on_parts.append(_security_text(next_tok, remove_subqueries=True))
+            elif next_tok.ttype in Comment or next_tok.ttype in Literal.String:
+                on_parts.append(" ")
+            else:
+                on_parts.append(str(next_tok.value))
+            index += 1
+        predicates.extend(_top_level_conjuncts(" ".join(on_parts)))
+    return predicates
 
 
 def _top_level_conjuncts(where_text: str) -> list[str]:
@@ -231,8 +307,24 @@ def _top_level_conjuncts(where_text: str) -> list[str]:
             value = value[1:-1].strip()
         return value
 
+    def has_top_level_or(value: str) -> bool:
+        depth = 0
+        for match in re.finditer(r"[()]|\bOR\b", value, flags=re.IGNORECASE):
+            token = match.group(0).upper()
+            if token == "(":
+                depth += 1
+            elif token == ")":
+                depth = max(0, depth - 1)
+            elif depth == 0:
+                return True
+        return False
+
     def split(value: str) -> list[str]:
         value = strip_outer(value)
+        # 身份范围只能作为顶层 AND 中的独立证明。顶层 OR 会改变
+        # AND 的结合范围，不能从其中抽取看似正确的 scope 条件。
+        if has_top_level_or(value):
+            return [value] if value else []
         depth = 0
         start = 0
         parts: list[str] = []

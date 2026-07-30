@@ -6,12 +6,14 @@ yaml 路径默认是项目根的 data_sources.yaml,可通过环境变量 DATA_SO
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 import yaml
+from dotenv import dotenv_values
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import make_url
@@ -19,6 +21,7 @@ from sqlalchemy.engine.url import make_url
 from app.core.config import ROOT_DIR
 
 Dialect = Literal["sqlite", "postgresql", "mysql", "other"]
+ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,23 @@ def _resolve(path_str: str | None) -> Path | None:
     return p if p.is_absolute() else ROOT_DIR / p
 
 
+def resolve_source_url(url: str, password_env: str | None = None) -> str:
+    """Resolve an optional password environment reference without persisting it."""
+    parsed = make_url(url)
+    env_name = (password_env or "").strip()
+    if not env_name:
+        return parsed.render_as_string(hide_password=False)
+    if not ENV_NAME_RE.fullmatch(env_name):
+        raise ValueError("密码环境变量名不合法")
+    password = os.getenv(env_name)
+    if password is None:
+        local_env = dotenv_values(ROOT_DIR / ".env")
+        password = local_env.get(env_name)
+    if password is None or str(password) == "":
+        raise ValueError(f"未配置 PostgreSQL 密码环境变量: {env_name}")
+    return parsed.set(password=str(password)).render_as_string(hide_password=False)
+
+
 @lru_cache(maxsize=1)
 def load_sources() -> dict[str, DataSource]:
     """读 yaml,返回 name -> DataSource 的有序字典(按 yaml 顺序保留)。"""
@@ -68,11 +88,12 @@ def load_sources() -> dict[str, DataSource]:
     result: dict[str, DataSource] = {}
     for item in items:
         name = item.get("name")
-        url = str(item.get("url") or "")
-        if not name or not url:
+        stored_url = str(item.get("url") or "")
+        if not name or not stored_url:
             raise ValueError(f"数据源缺 name 或 url: {item}")
         if name in result:
             raise ValueError(f"数据源 name 重复: {name}")
+        url = resolve_source_url(stored_url, item.get("password_env"))
         result[name] = DataSource(
             name=name,
             label=item.get("label") or name,

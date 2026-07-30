@@ -16,7 +16,9 @@ from app.core.data_access import (
     import_csv_as_source,
     insert_row,
     list_registered_sources,
+    register_postgresql_source,
     register_sqlite_source,
+    safe_connection_error,
     save_upload,
     scan_source,
     table_rows,
@@ -38,6 +40,25 @@ class RegisterSqliteRequest(BaseModel):
     label: str = Field("", max_length=120)
     db_path: str = Field(..., min_length=1, max_length=1000)
     writable: bool = False
+
+
+class RegisterPostgresqlRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=49)
+    label: str = Field("", max_length=120)
+    host: str = Field(..., min_length=1, max_length=255)
+    port: int = Field(5432, ge=1, le=65535)
+    database: str = Field(..., min_length=1, max_length=128)
+    username: str = Field(..., min_length=1, max_length=128)
+    password_env: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z_][A-Za-z0-9_]*$",
+    )
+    sslmode: str = Field(
+        "prefer",
+        pattern=r"^(disable|allow|prefer|require|verify-ca|verify-full)$",
+    )
 
 
 class CsvImportRequest(BaseModel):
@@ -72,7 +93,7 @@ def test(req: TestConnectionRequest, ctx=Header(None, alias="X-Demo-Token")) -> 
     try:
         return test_connection(req.url)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=safe_connection_error(e, req.url))
 
 
 @router.post("/sources/sqlite")
@@ -80,6 +101,24 @@ def register_sqlite(req: RegisterSqliteRequest, ctx=Header(None, alias="X-Demo-T
     _require_admin(ctx)
     try:
         return register_sqlite_source(req.name, req.label, req.db_path, req.writable)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/sources/postgresql")
+def register_postgresql(req: RegisterPostgresqlRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    _require_admin(ctx)
+    try:
+        return register_postgresql_source(
+            req.name,
+            req.label,
+            req.host,
+            req.port,
+            req.database,
+            req.username,
+            req.password_env,
+            req.sslmode,
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

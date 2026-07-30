@@ -5,13 +5,18 @@
 """
 from __future__ import annotations
 
+from datetime import date, timedelta
 import logging
 import re
 import time
 from typing import Any
 
 from app.core.chain import generate_sql, repair_sql
-from app.core.business_domains import denied_question_hit, filter_schema_info
+from app.core.business_domains import (
+    denied_question_hit,
+    filter_schema_info,
+    sensitive_identity_question_hit,
+)
 from app.core.config import settings
 from app.core.data_sources import get_source
 from app.core.explain import explain_query
@@ -29,6 +34,43 @@ logger = logging.getLogger("nl2sql")
 
 MAX_REPAIR_ROUNDS = 2
 MAX_HISTORY_TURNS = 5  # 后端兜底截断,防止前端发太多
+
+_UNFINISHED_ASSIGNMENT_TERMS = ("未完成", "待完成", "还剩", "未交")
+_ASSIGNMENT_CUTOFF_TERMS = ("截止", "截至", "逾期", "过期", "到期")
+_ASSIGNMENT_FOLLOWUP_TERMS = (*_ASSIGNMENT_CUTOFF_TERMS, "按课程", "分组", "只看", "只要", "其中", "这些")
+_UNFINISHED_SUBMISSION_STATES = {"missing", "not_submitted", "returned"}
+_COMPLETED_SUBMISSION_STATES = {
+    "submitted",
+    "late",
+    "late_submitted",
+    "resubmitted",
+    "graded_unpublished",
+    "graded_published",
+}
+_UNANSWERABLE_RESULT_MARKERS = (
+    "无法回答",
+    "不能回答",
+    "无法查询",
+    "不能查询",
+    "cannot answer",
+    "unable to answer",
+)
+
+
+def _unanswerable_placeholder_message(
+    columns: list[str], rows: list[list[Any]]
+) -> str | None:
+    """Extract the model's synthetic one-cell refusal instead of treating it as data."""
+    if [str(column).strip().lower() for column in columns] != ["error"]:
+        return None
+    if len(rows) != 1 or len(rows[0]) != 1 or not isinstance(rows[0][0], str):
+        return None
+    message = rows[0][0].strip()
+    lowered = message.lower()
+    missing_field = bool(re.search(r"(?:没有|不存在).{0,80}字段", message))
+    if not any(marker in lowered for marker in _UNANSWERABLE_RESULT_MARKERS) and not missing_field:
+        return None
+    return message[:1000]
 
 
 def _retrieval_context_is_authorized(
@@ -70,6 +112,172 @@ def _route_reason(question: str, source: str, auto_routed: bool, current_source:
             parts.append("问题中命中表名: " + ", ".join(matched))
         return "；".join(parts)
     return "用户手动选择并锁定该数据源"
+
+
+def _is_student_unfinished_assignment_query(question: str, history: list[Turn]) -> bool:
+    """Recognize the student unfinished-assignment topic, including short follow-ups."""
+    def _explicit_topic(text: str) -> bool:
+        return "作业" in text and any(term in text for term in _UNFINISHED_ASSIGNMENT_TERMS)
+
+    if _explicit_topic(question):
+        return True
+    if not history or not any(term in question for term in _ASSIGNMENT_FOLLOWUP_TERMS):
+        return False
+    previous = history[-1]
+    previous_sql = previous.sql.lower()
+    return _explicit_topic(previous.question) or (
+        "assignment" in previous_sql and "assignment_submission" in previous_sql
+    )
+
+
+def _unfinished_assignment_date_boundary_error(sql: str, question: str) -> str | None:
+    """Reject date-only comparisons that lose the end date of ISO datetime text."""
+    date_match = re.search(r"(?<!\d)(\d{4})年(\d{1,2})月(\d{1,2})日?", question)
+    if date_match is None:
+        date_match = re.search(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)", question)
+    if date_match is None:
+        return None
+
+    try:
+        target = date(*(int(part) for part in date_match.groups()))
+    except ValueError:
+        return None
+
+    before = question[: date_match.start()]
+    after = question[date_match.end() :]
+    is_through_day = any(term in question for term in ("截至", "截止到", "截止至"))
+    is_exact_day = bool(
+        re.search(r"(?:在|于)\s*$", before)
+        and re.match(r"\s*(?:截止|到期)", after)
+    )
+    if not is_through_day and not is_exact_day:
+        return None
+
+    target_text = target.isoformat()
+    next_day_text = (target + timedelta(days=1)).isoformat()
+    normalized = re.sub(r"\s+", " ", sql.strip().lower())
+    due_time = r"(?:\b[a-z_][a-z0-9_]*\s*\.\s*)?due_time"
+    target_literal = re.escape(target_text)
+    next_day_literal = re.escape(next_day_text)
+    normalized_due_date = rf"date\s*\(\s*{due_time}\s*\)"
+
+    if is_through_day:
+        uses_next_day_exclusive = bool(
+            re.search(rf"{due_time}\s*<\s*'{next_day_literal}'", normalized)
+        )
+        uses_normalized_date = bool(
+            re.search(
+                rf"{normalized_due_date}\s*<=\s*'{target_literal}'",
+                normalized,
+            )
+        )
+        if uses_next_day_exclusive or uses_normalized_date:
+            return None
+        return (
+            "教学未完成作业日期边界校验失败：截至 "
+            f"{target_text} 必须使用 due_time < '{next_day_text}' "
+            f"或 date(due_time) <= '{target_text}'，不得直接用日期文本作为原始时间上界。"
+        )
+
+    uses_half_open_range = bool(
+        re.search(rf"{due_time}\s*>=\s*'{target_literal}'", normalized)
+        and re.search(rf"{due_time}\s*<\s*'{next_day_literal}'", normalized)
+    )
+    uses_normalized_date = bool(
+        re.search(
+            rf"{normalized_due_date}\s*=\s*'{target_literal}'",
+            normalized,
+        )
+    )
+    uses_date_prefix = bool(
+        re.search(
+            rf"{due_time}\s+like\s+'{target_literal}%'",
+            normalized,
+        )
+    )
+    if uses_half_open_range or uses_normalized_date or uses_date_prefix:
+        return None
+    return (
+        "教学未完成作业日期边界校验失败：查询明确截止日 "
+        f"{target_text} 必须使用 due_time >= '{target_text}' AND due_time < '{next_day_text}' "
+        f"或 date(due_time) = '{target_text}'，不得使用 due_time <= '{target_text}'。"
+    )
+
+
+def _unfinished_assignment_semantic_error(
+    sql: str,
+    question: str,
+    history: list[Turn],
+) -> str | None:
+    """Return a repair instruction when student unfinished-assignment SQL loses its business grain."""
+    if not _is_student_unfinished_assignment_query(question, history):
+        return None
+
+    normalized = re.sub(r"\s+", " ", sql.strip().lower())
+    quoted_values = set(re.findall(r"'([^']+)'", normalized))
+    where_match = re.search(
+        r"\bwhere\b(.*?)(?=\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)",
+        normalized,
+        re.IGNORECASE | re.DOTALL,
+    )
+    where_clause = where_match.group(1) if where_match else ""
+    requires_cutoff = any(term in question for term in _ASSIGNMENT_CUTOFF_TERMS)
+
+    if "assignment" not in normalized or "enrollment" not in normalized:
+        return "教学未完成作业业务语义校验失败：必须从本人 enrollment 与 assignment 出发。"
+    if not {"published", "closed"}.issubset(quoted_values):
+        return (
+            "教学未完成作业业务语义校验失败：必须限定 "
+            "assignment.status IN ('published', 'closed')，不得包含 draft。"
+        )
+    if requires_cutoff and "due_time" not in where_clause:
+        return "教学未完成作业业务语义校验失败：截止追问必须在 WHERE 中追加 assignment.due_time 截止条件。"
+    if not requires_cutoff and "due_time" in where_clause:
+        return "教学未完成作业业务语义校验失败：用户未要求截止范围，不得在 WHERE 中增加 due_time 条件。"
+    date_boundary_error = _unfinished_assignment_date_boundary_error(normalized, question)
+    if date_boundary_error:
+        return date_boundary_error
+
+    left_join_match = re.search(
+        r"\bleft\s+(?:outer\s+)?join\s+assignment_submission"
+        r"(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?\s+on\b",
+        normalized,
+        re.IGNORECASE,
+    )
+    has_not_exists = bool(
+        re.search(
+            r"\bnot\s+exists\s*\([^)]*\bassignment_submission\b",
+            normalized,
+            re.IGNORECASE | re.DOTALL,
+        )
+    )
+    if not left_join_match and not has_not_exists:
+        return (
+            "教学未完成作业业务语义校验失败：完全无提交记录必须通过按作业 ID 和本人学生 ID "
+            "关联的 LEFT JOIN assignment_submission 或等效 NOT EXISTS 保留，不能使用提交表内连接。"
+        )
+
+    if left_join_match:
+        alias = left_join_match.group(1)
+        if not alias or alias.lower() == "on":
+            alias = "assignment_submission"
+        null_pattern = rf"\b{re.escape(alias)}\s*\.\s*(?:id|status)\s+is\s+null\b"
+        if not re.search(null_pattern, normalized, re.IGNORECASE):
+            return "教学未完成作业业务语义校验失败：LEFT JOIN 后必须用提交记录 IS NULL 保留完全无提交作业。"
+        if not _UNFINISHED_SUBMISSION_STATES.issubset(quoted_values):
+            return (
+                "教学未完成作业业务语义校验失败：未完成条件必须同时保留无提交记录、"
+                "missing、not_submitted、returned。"
+            )
+        if "late" in quoted_values:
+            return "教学未完成作业业务语义校验失败：late 已有有效提交，严禁计入未完成。"
+    elif not _COMPLETED_SUBMISSION_STATES.issubset(quoted_values):
+        return (
+            "教学未完成作业业务语义校验失败：NOT EXISTS 必须排除全部已有有效提交状态："
+            "submitted、late、late_submitted、resubmitted、graded_unpublished、graded_published。"
+        )
+
+    return None
 
 
 def ask(
@@ -134,6 +342,15 @@ def ask(
         "route_reason": _route_reason(question, ds.name, auto_routed, current_source),
     }
     enforce_teaching_policy = ds.name == "teaching"
+
+    sensitive_hit = (
+        sensitive_identity_question_hit(question) if enforce_teaching_policy else None
+    )
+    if sensitive_hit:
+        return format_error(
+            f"当前数据源不提供“{sensitive_hit}”等敏感身份标识字段，该类数据不可用于问数。",
+            **src_kw,
+        )
 
     denied_hit = denied_question_hit(question, denied_terms or []) if enforce_teaching_policy else None
     if denied_hit:
@@ -271,6 +488,14 @@ def ask(
                 raw_sql, schema_info.tables, schema_info.blocked_columns,
                 row_scope=row_scope if enforce_teaching_policy else None,
             )
+            if enforce_teaching_policy and row_scope and "student_id" in row_scope:
+                semantic_error = _unfinished_assignment_semantic_error(
+                    safe_sql,
+                    question,
+                    trimmed_history,
+                )
+                if semantic_error:
+                    raise SQLValidationError(semantic_error)
         except SQLValidationError as e:
             validation_elapsed_ms += max(0, round((time.perf_counter() - validation_started) * 1000))
             retrieval_trace["stage_timings"]["validation_ms"] = validation_elapsed_ms
@@ -299,6 +524,24 @@ def ask(
         if len(column_sources) != len(columns):
             column_sources = []
 
+        placeholder_message = _unanswerable_placeholder_message(columns, rows)
+        if placeholder_message:
+            retrieval_trace["result_kind"] = "unsupported"
+            retrieval_trace["failed_stage"] = "model"
+            logger.info(
+                "ask unsupported | source=%s | q=%s | history=%d | sql=%s",
+                ds.name,
+                question,
+                len(trimmed_history),
+                safe_sql,
+            )
+            return format_error(
+                placeholder_message,
+                sql=safe_sql,
+                trace=retrieval_trace,
+                **src_kw,
+            )
+
         logger.info(
             "ask ok | source=%s | q=%s | history=%d | sql=%s | rows=%d | %dms | truncated=%s",
             ds.name, question, len(trimmed_history), safe_sql, len(rows), elapsed_ms, truncated,
@@ -306,9 +549,7 @@ def ask(
 
         # 答案准确率评估(另一个 LLM 当裁判)异步化:此处只把输入暂存,返回 judge_id,
         # 让结果先返回;前端拿到结果后再用 judge_id 请求 /api/judge 补上勋章(省一次往返的等待)。
-        # 「无法回答」占位结果(单列名为 error)是模型主动声明答不了,不评分。
-        is_placeholder = columns == ["error"]
-        judge_id = None if is_placeholder else stash_judge(
+        judge_id = stash_judge(
             question, schema_text, safe_sql, columns, rows, len(rows), ds.dialect, retrieval_used)
         explanation = explain_query(
             question, ds.name, ds.label, safe_sql, auto_routed,

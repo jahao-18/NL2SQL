@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>教学数据智能问数平台</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Inter:opsz,wght@14..32,200;14..32,300;14..32,400;14..32,500;14..32,600&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css?v=v3-3-5-quality" />
-  <link rel="stylesheet" href="/assistant-panel.css?v=v3-3-2" />
+  <link rel="stylesheet" href="/style.css?v=login-delivery-1" />
+  <link rel="stylesheet" href="/assistant-panel.css?v=zjh-011" />
 </head>
 <body>
 <canvas id="bg-canvas"></canvas>
@@ -23,12 +23,12 @@
       </div>
       <div class="login-copy">
         <span>Teaching Data Intelligence</span>
-        <h1>按角色进入你的教学数据工作台</h1>
-        <p>账号会绑定具体学生、开课班或行政班范围，用于演示学生、任课教师、辅导员和管理岗位的差异化业务权限。</p>
+        <h1>统一身份认证，安全进入教学数据工作台</h1>
+        <p>系统根据已核验的校内身份、岗位职责与授权范围，提供相应的教学业务功能和数据访问权限。</p>
       </div>
       <div class="login-metrics">
-        <div><b>6</b><span>演示身份</span></div>
-        <div><b>17</b><span>教学数据表</span></div>
+        <div><b>6</b><span>业务角色</span></div>
+        <div><b>17</b><span>核心数据表</span></div>
         <div><b>RBAC</b><span>权限控制</span></div>
       </div>
     </section>
@@ -39,21 +39,21 @@
       </div>
       <label>
         <span>账号 / 学号 / 工号</span>
-        <input id="login-username" type="text" placeholder="演示账号或本人学号、工号" autocomplete="username" />
+        <input id="login-username" type="text" placeholder="请输入账号、学号或工号" autocomplete="username" />
       </label>
       <label>
         <span>密码</span>
         <input id="login-password" type="password" placeholder="请输入密码" autocomplete="current-password" />
       </label>
       <button class="nav-btn login-submit" type="submit">进入平台</button>
-      <button class="auth-mode-link" type="button" id="show-register-btn">还没有账号？创建账号并绑定校内身份</button>
+      <button class="auth-mode-link" type="button" id="show-register-btn">还没有账号？创建账户</button>
       <div class="login-error" id="login-error"></div>
       <div class="login-demo-accounts hidden" id="login-demo-accounts"></div>
     </form>
     <form class="login-form hidden" id="register-form">
       <div class="login-form-head">
-        <b>创建账号</b>
-        <span>注册后由所属辅导员或学院负责人确认身份</span>
+        <b>创建账户</b>
+        <span>提交后将进入校内身份审核流程</span>
       </div>
       <label><span>密码</span><input id="register-password" type="password" placeholder="至少 8 位" autocomplete="new-password" required /></label>
       <label><span>真实姓名</span><input id="register-name" type="text" placeholder="须与校内名册一致" autocomplete="name" required /></label>
@@ -945,7 +945,7 @@
           </section>
 
           <div class="access-flow" aria-label="数据接入流程">
-            <div><i>01</i><span><b>连接数据</b><small>SQLite / CSV</small></span></div>
+            <div><i>01</i><span><b>连接数据</b><small>SQLite / PostgreSQL / CSV</small></span></div>
             <div><i>02</i><span><b>识别结构</b><small>自动扫描 Schema</small></span></div>
             <div><i>03</i><span><b>完善语义</b><small>画像、关系与指标</small></span></div>
             <div><i>04</i><span><b>安全维护</b><small>变更全程留痕</small></span></div>
@@ -978,10 +978,11 @@
             <section class="panel-card access-register-panel">
               <div class="section-head">
                 <span class="section-icon">N</span>
-                <div><h2>新增数据源</h2><p>支持接入现有 SQLite 文件，或把 CSV 转为托管 SQLite。</p></div>
+                <div><h2>新增数据源</h2><p>支持接入现有 SQLite、只读 PostgreSQL，或把 CSV 转为托管 SQLite。</p></div>
               </div>
               <div class="access-tabs">
                 <button class="access-tab active" data-access-tab="sqlite" type="button">SQLite</button>
+                <button class="access-tab" data-access-tab="postgresql" type="button">PostgreSQL</button>
                 <button class="access-tab" data-access-tab="csv" type="button">CSV</button>
               </div>
               <form class="access-form" id="sqlite-source-form">
@@ -990,6 +991,21 @@
                 <label class="wide"><span>SQLite 文件路径</span><input id="sqlite-source-path" placeholder="例如 data/managed/demo.db" /></label>
                 <label class="access-check"><input id="sqlite-source-writable" type="checkbox" />允许维护数据</label>
                 <button class="nav-btn" type="submit">接入 SQLite</button>
+              </form>
+              <form class="access-form" id="postgresql-source-form" hidden>
+                <label><span>数据源标识</span><input id="postgresql-source-name" required placeholder="例如 library_pg" /></label>
+                <label><span>展示名称</span><input id="postgresql-source-label" placeholder="例如 图书业务 PostgreSQL" /></label>
+                <label><span>主机</span><input id="postgresql-source-host" required placeholder="例如 localhost" /></label>
+                <label><span>端口</span><input id="postgresql-source-port" required type="number" min="1" max="65535" value="5432" /></label>
+                <label><span>数据库</span><input id="postgresql-source-database" required placeholder="例如 library" /></label>
+                <label><span>用户名</span><input id="postgresql-source-username" required placeholder="例如 library_reader" /></label>
+                <label class="wide"><span>密码环境变量名</span><input id="postgresql-source-password-env" required pattern="[A-Za-z_][A-Za-z0-9_]*" placeholder="例如 LIBRARY_PG_PASSWORD" /><small>真实密码仅配置在服务器环境变量或本地 .env，本页面不会接收或回显密码。</small></label>
+                <label class="wide"><span>SSL 模式</span><input id="postgresql-source-sslmode" required value="prefer" list="postgresql-sslmode-options" /></label>
+                <datalist id="postgresql-sslmode-options">
+                  <option value="disable"></option><option value="allow"></option><option value="prefer"></option>
+                  <option value="require"></option><option value="verify-ca"></option><option value="verify-full"></option>
+                </datalist>
+                <button class="nav-btn" type="submit">接入只读 PostgreSQL</button>
               </form>
               <form class="access-form" id="csv-source-form" hidden>
                 <label><span>数据源标识</span><input id="csv-source-name" placeholder="例如 survey_data" /></label>
@@ -1112,6 +1128,24 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="grade-import-modal" hidden>
+  <section class="grade-import-dialog" role="dialog" aria-modal="true" aria-labelledby="grade-import-title">
+    <header>
+      <div><span>COURSE FINAL GRADES</span><h2 id="grade-import-title">总评成绩</h2><p id="grade-import-subtitle"></p></div>
+      <button type="button" id="grade-import-close" aria-label="关闭">×</button>
+    </header>
+    <div class="grade-import-metrics" id="grade-import-metrics"></div>
+    <div class="grade-import-toolbar" id="grade-import-toolbar">
+      <button type="button" id="grade-template-download">下载 CSV 模板</button>
+      <label class="grade-file-picker">选择 CSV 文件<input type="file" id="grade-import-file" accept=".csv,text/csv" /></label>
+      <button class="is-primary" type="button" id="grade-import-confirm" disabled>导入并校验</button>
+      <button class="is-primary" type="button" id="grade-submit-confirm" hidden>提交审批</button>
+    </div>
+    <p class="grade-import-message" id="grade-import-message">请使用模板填写“总评成绩”，系统将按学号校验完整名单。</p>
+    <div class="grade-roster-table" id="grade-roster-table"></div>
+  </section>
+</div>
+
 <div class="modal-backdrop" id="organization-transfer-modal" hidden>
   <section class="modal-panel organization-transfer-panel" role="dialog" aria-modal="true" aria-labelledby="organization-transfer-title">
     <div class="modal-head"><div><span>Position Handover</span><h3 id="organization-transfer-title">岗位交接</h3></div><button type="button" id="organization-transfer-close">×</button></div>
@@ -1183,11 +1217,11 @@
   </section>
 </div>
 
-<script src="/api.js?v=v3-3-5-quality"></script>
-<script src="/assistant-panel.js?v=v3-3-4-operations"></script>
+<script src="/api.js?v=zjh-external-1"></script>
+<script src="/assistant-panel.js?v=zjh-022"></script>
 <script src="/modal.js?v=p0-product-3"></script>
 <script src="/governance-view.js?v=p0-product-3"></script>
-<script src="/data-access-view.js?v=schema-workbench-1"></script>
-<script src="/app.js?v=v3-3-5-quality"></script>
+<script src="/data-access-view.js?v=zjh-021"></script>
+<script src="/app.js?v=zjh-022"></script>
 </body>
 </html>

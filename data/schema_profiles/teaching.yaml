@@ -40,10 +40,21 @@ tables:
     business_name: 作业
     grain: 一行代表开课班发布的一次作业、测验、项目或实验。
     default_time_column: publish_time
+    notes: >-
+      学生查询本人“未完成/待完成/还剩”的作业时，作业范围包括 published 和 closed；
+      “未完成”不等于“未截止”，用户没有明确要求“已截止/逾期/未截止”时，不得擅自按 due_time 增加时间过滤。
+      只有用户明确追问“只看已经截止的”时，才在原未完成口径上追加 due_time 已早于当前时间的条件。
   assignment_submission:
     business_name: 作业提交
     grain: 一行代表一名学生对一次作业的提交结果。
     default_time_column: submit_time
+    notes: >-
+      学生查询本人“未完成/待完成/还剩”的作业时，必须从本人 enrollment 连接 assignment 出发，
+      再按 assignment_submission.assignment_id = assignment.id 且
+      assignment_submission.student_id = enrollment.student_id 使用 LEFT JOIN 关联本人提交；
+      完全没有提交记录、missing、not_submitted、returned 都属于未完成。
+      submitted、late、late_submitted、resubmitted、graded_unpublished、graded_published 均已有有效提交，不属于未完成；
+      其中 late 是旧数据迟交状态，不能按未提交处理。
   attendance:
     business_name: 考勤记录
     grain: 一行代表一名学生在某开课班某次课的考勤状态。
@@ -149,10 +160,19 @@ columns:
     status:
       business_name: 提交状态
       semantic_type: dimension
+      description: >-
+        无提交行以及 missing、not_submitted、returned 表示学生仍需处理；
+        late 和 late_submitted 表示已经迟交，不能计入未完成。
       enum_values:
         - submitted=已提交
-        - late=迟交
-        - missing=未提交
+        - late=历史迟交（已有提交）
+        - missing=历史未提交
+        - not_submitted=未提交
+        - late_submitted=迟交（已有提交）
+        - returned=已退回待重交
+        - resubmitted=已重交
+        - graded_unpublished=已评分未发布
+        - graded_published=已评分已发布
   attendance:
     status:
       business_name: 考勤状态
