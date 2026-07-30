@@ -17,9 +17,9 @@ def test_v3_assistant_panel_is_loaded_before_app_and_replaces_visible_legacy_she
     assert '<div id="v3-assistant-panel" data-assistant-panel data-page="assistant"></div>' in html
     assert 'class="assistant-grid legacy-assistant-shell" hidden aria-hidden="true"' in html
     assert '/api.js?v=zjh-external-1' in html
-    assert '/app.js?v=zjh-019' in html
-    assert html.index('/api.js?v=zjh-external-1') < html.index('/assistant-panel.js?v=zjh-011')
-    assert html.index('/assistant-panel.js?v=zjh-011') < html.index('/app.js?v=zjh-019')
+    assert '/app.js?v=zjh-022' in html
+    assert html.index('/api.js?v=zjh-external-1') < html.index('/assistant-panel.js?v=zjh-022')
+    assert html.index('/assistant-panel.js?v=zjh-022') < html.index('/app.js?v=zjh-022')
 
 
 def test_api_client_exposes_unified_assistant_and_action_draft_calls():
@@ -45,6 +45,7 @@ def test_panel_covers_every_v3_3_1_state_and_initial_recommendations():
     ):
         assert state in script
     assert "DEFAULT_QUESTIONS" in script
+    assert "setRecommendations(questions)" in script
     assert "appendLoading" in script
     assert "renderActions" in script
     assert "confirmAction" in script
@@ -56,6 +57,23 @@ def test_panel_covers_every_v3_3_1_state_and_initial_recommendations():
     assert "RETRIEVAL_DEGRADED" in script
     assert 'if (result.answer_type === "unsupported") return "unsupported";' in script
     assert 'unsupported: { label: "NOT SUPPORTED"' in script
+
+
+def test_teacher_and_student_receive_concrete_role_specific_recommendations():
+    app_script = _text("app.js")
+    expected = (
+        "我负责课程的作业未交数是多少？",
+        "我负责课程的待批作业数是多少？",
+        "我负责课程的出勤率是多少？",
+        "我当前的作业未交数是多少？",
+        "我的作业完成率是多少？",
+        "我的缺勤次数是多少？",
+    )
+    assert "ASSISTANT_ROLE_RECOMMENDATIONS" in app_script
+    assert 'typeof assistantPanel.setRecommendations === "function"' in app_script
+    assert "assistantPanel.setRecommendations(ASSISTANT_ROLE_RECOMMENDATIONS[currentUser.role])" in app_script
+    for question in expected:
+        assert question in app_script
 
 
 def test_panel_does_not_read_or_infer_client_permissions_and_uses_safe_dom_text():

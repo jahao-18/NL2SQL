@@ -159,6 +159,14 @@
       this.renderInitial();
     }
 
+    setRecommendations(questions) {
+      const next = Array.isArray(questions)
+        ? questions.map((question) => String(question || "").trim()).filter(Boolean)
+        : [];
+      this.questions = next.length ? next : DEFAULT_QUESTIONS;
+      this.reset();
+    }
+
     setContext(context) {
       const next = { ...(context || {}) };
       if (!next.page) next.page = "assistant";

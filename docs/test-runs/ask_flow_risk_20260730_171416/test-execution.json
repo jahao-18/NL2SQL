@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "run_id": "ask_flow_risk_20260730_171416",
+  "scope_label": "当前问数流程及课程总评改动关联风险回归",
+  "baseline": {
+    "frontend_commit": "d7caae7a5d61dd78cb0f22ab20ea043b8734a606+dirty",
+    "backend_commit": "d7caae7a5d61dd78cb0f22ab20ea043b8734a606+dirty",
+    "environment_url": "http://127.0.0.1:8000/",
+    "environment_build": "local-pid-61228",
+    "started_at": "2026-07-30T17:14:16+08:00",
+    "last_verified_at": "2026-07-30T17:25:37+08:00",
+    "changed_during_run": false
+  },
+  "authorities": [
+    "docs/project_feature_catalog.md",
+    "app/static/assistant-panel.js",
+    "app/api/assistant.py",
+    "app/core/assistant_orchestrator.py",
+    "app/service.py",
+    "app/core/business_domains.py",
+    "app/core/validator.py",
+    "当前本地服务与教学演示数据库"
+  ],
+  "constraints": [
+    "本轮为诊断与回归检查，未授权修改产品代码",
+    "不提交 BUG，不创建或发布业务数据",
+    "真实模型用例受外部模型服务可用性与单次超时约束"
+  ],
+  "functions": [
+    {
+      "id": "F-001",
+      "module": "统一助手前端与 API",
+      "name": "共享问数面板加载并调用统一查询接口",
+      "priority": "P1",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "真实浏览器从共享面板提交“我选了哪些课程？”，页面展示 1 行数据库系统、范围、证据与 SQL 折叠区；控制台无 error/warning。",
+      "evidence": ["evidence/pytest.xml", "evidence/live-summary.md#ui-统一助手"]
+    },
+    {
+      "id": "F-002",
+      "module": "问题路由",
+      "name": "导航、指标、业务状态、NL2SQL 与不支持问题正确分类",
+      "priority": "P1",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "自动化覆盖五类路由；真实服务分别得到 nl2sql、metric 和 rejected，教务成绩状态走 semantic_metric。",
+      "evidence": ["evidence/pytest.xml", "evidence/live-summary.md#路由与状态"]
+    },
+    {
+      "id": "F-003",
+      "module": "NL2SQL 主链",
+      "name": "Schema 检索、SQL 生成、校验、执行和结构化结果",
+      "priority": "P1",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "学生与教师真实 NL2SQL 均完成生成、行级校验、执行和证据返回；课程查询返回数据库基准。",
+      "evidence": ["evidence/pytest.xml", "evidence/live-summary.md#nl2sql-主链"]
+    },
+    {
+      "id": "F-004",
+      "module": "权限",
+      "name": "角色表权限、行级范围、伪造上下文与敏感字段拒绝",
+      "priority": "P0",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "安全与上下文自动化覆盖通过；真实敏感身份证号问题在模型和执行前被拒绝。",
+      "evidence": ["evidence/pytest.xml", "evidence/live-summary.md#权限与安全"]
+    },
+    {
+      "id": "F-005",
+      "module": "会话",
+      "name": "服务端会话历史、追问和身份隔离",
+      "priority": "P1",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "同一服务端会话先返回本人课程，再由短追问“那有几项作业？”生成带 student_id=900001 的查询并返回 17。",
+      "evidence": ["evidence/pytest.xml", "evidence/live-summary.md#会话追问"]
+    },
+    {
+      "id": "F-006",
+      "module": "失败降级",
+      "name": "模型/检索失败和总超时返回结构化错误且不拖垮业务 API",
+      "priority": "P1",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "模型/检索失败、总超时及业务接口隔离用例执行通过。",
+      "evidence": ["evidence/pytest.xml"]
+    },
+    {
+      "id": "F-007",
+      "module": "兼容链路",
+      "name": "旧版 /api/ask 兼容接口仍可用",
+      "priority": "P2",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "旧版 /api/ask 兼容回归通过。",
+      "evidence": ["evidence/pytest.xml"]
+    },
+    {
+      "id": "F-008",
+      "module": "总评关联",
+      "name": "学生问数对教务已发布课程总评使用与首页一致的数据口径",
+      "priority": "P1",
+      "status": "FAIL",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "教务已发布总评为 91.0，但学生问数域不包含 grade_submission/grade_submission_detail；两次真实提问都查询旧 score 表并返回 0 行。",
+      "evidence": ["evidence/live-summary.md#缺陷-d-001"]
+    }
+  ],
+  "associations": [
+    {
+      "id": "A-001",
+      "from": "共享问数面板",
+      "to": "POST /api/assistant/query",
+      "mandatory": true,
+      "priority": "P1",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "真实 UI 提交后统一 API 返回并渲染结构化回答。",
+      "evidence": ["evidence/pytest.xml", "evidence/live-summary.md#ui-统一助手"]
+    },
+    {
+      "id": "A-002",
+      "from": "登录身份与页面上下文",
+      "to": "Schema 过滤、SQL 行级校验与结果范围",
+      "mandatory": true,
+      "priority": "P0",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "自动化绕过矩阵与真实敏感问题拒绝均符合预期。",
+      "evidence": ["evidence/pytest.xml", "evidence/live-summary.md#权限与安全"]
+    },
+    {
+      "id": "A-003",
+      "from": "自然语言问题",
+      "to": "SQL、执行结果、证据与最终回答",
+      "mandatory": true,
+      "priority": "P1",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "真实学生与教师问题均返回受范围约束 SQL、结果和数据证据。",
+      "evidence": ["evidence/live-summary.md#nl2sql-主链"]
+    },
+    {
+      "id": "A-004",
+      "from": "前一轮有效会话",
+      "to": "服务端历史驱动的追问",
+      "mandatory": true,
+      "priority": "P1",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "服务端历史驱动短追问成功，自动化同时验证客户端历史不能覆盖。",
+      "evidence": ["evidence/pytest.xml", "evidence/live-summary.md#会话追问"]
+    },
+    {
+      "id": "A-005",
+      "from": "模型或检索依赖失败",
+      "to": "结构化失败且业务 API 继续可用",
+      "mandatory": true,
+      "priority": "P1",
+      "status": "PASS",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "失败与超时注入用例证明结构化失败且业务 API 保持可用。",
+      "evidence": ["evidence/pytest.xml"]
+    },
+    {
+      "id": "A-006",
+      "from": "教务发布 grade_submission_detail",
+      "to": "学生首页与学生问数返回同一总评",
+      "mandatory": true,
+      "priority": "P1",
+      "status": "FAIL",
+      "baseline": "d7caae7+dirty/local-pid-61228",
+      "observation": "首页读取 grade_submission_detail=91.0；问数只允许 score，两个同义问题均返回 0 行。",
+      "evidence": ["evidence/live-summary.md#缺陷-d-001"]
+    }
+  ],
+  "defects": [
+    {
+      "id": "D-001",
+      "priority": "P1",
+      "classification": "产品关联缺陷",
+      "title": "已发布课程总评未接入学生问数数据口径",
+      "status": "OPEN",
+      "reproduced": 2,
+      "observation": "学生首页显示数据库系统 91.0/100.0，但两个真实总评问题都查询旧 score 表并返回 0 行。",
+      "evidence": ["evidence/live-summary.md#缺陷-d-001"]
+    },
+    {
+      "id": "D-002",
+      "priority": "P2",
+      "classification": "权限规则过宽/需求一致性问题",
+      "title": "学生无法询问本人课程的任课教师",
+      "status": "OPEN",
+      "reproduced": 2,
+      "observation": "课程页显示李老师，但包含“老师/教师”的本人课程问题被 teacher_identity 别名规则整体拒绝。",
+      "evidence": ["evidence/live-summary.md#缺陷-d-002"]
+    }
+  ],
+  "blockers": [],
+  "temporary_data": [
+    {
+      "id": "TD-001",
+      "name": "测试隔离数据库与 pytest 临时目录",
+      "disposition": "CLEANED",
+      "reason": "项目内 pytest 临时目录已清理；真实测试会话 28-37 均通过本人 API 标记删除"
+    }
+  ],
+  "excluded_scope": [
+    "外部 PostgreSQL 数据源的完整回归",
+    "真实并发压测与长时间稳定性",
+    "本轮未修改产品代码、未提交 BUG"
+  ],
+  "report": {
+    "coverage_claim": "风险范围覆盖门禁通过；不是全量回归",
+    "release_claim": "发布门禁失败：存在未解决 P1 关联缺陷 D-001"
+  }
+}

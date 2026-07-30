@@ -1,8 +1,10 @@
 """Teaching workflow APIs with service-layer authorization."""
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Header, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from app.core.assignment_workflow import (
@@ -58,7 +60,7 @@ from app.core.stage_d import (
     session_attendance,
     student_attendance_facts,
 )
-from app.core.stage_e import list_grade_submissions, list_issues, operation_filter_options, operations_summary, refresh_issues, review_grades, submit_grades, task_ledger, update_issue
+from app.core.stage_e import grade_roster, grade_template_csv, import_grade_csv, list_grade_submissions, list_issues, operation_filter_options, operations_summary, refresh_issues, review_grades, submit_grades, task_ledger, update_issue
 
 
 router = APIRouter(prefix="/api/teaching", tags=["teaching"])
@@ -163,6 +165,11 @@ class TeachingIssueUpdateRequest(BaseModel):
 class GradeReviewRequest(BaseModel):
     action: str = Field(..., pattern="^(approve|return|publish)$")
     reason: str = Field("", max_length=2000)
+
+
+class GradeImportRequest(BaseModel):
+    file_name: str = Field("", max_length=255)
+    csv_content: str = Field(..., min_length=1, max_length=2_000_000)
 
 
 def _auth(token: str | None):
@@ -298,6 +305,26 @@ def teaching_issue_update(issue_id: int, req: TeachingIssueUpdateRequest, ctx=He
 @router.get("/grade-submissions")
 def grade_submissions(keyword: str = Query("", max_length=100), year: int | None = None, semester: str = "", grade_status: str = "", college_id: int | None = None, ctx=Header(None, alias="X-Demo-Token")) -> dict:
     return {"items": _handle(lambda: list_grade_submissions(_auth(ctx), keyword, year, semester, grade_status, college_id))}
+
+
+@router.get("/classes/{teaching_class_id}/grade-roster")
+def course_grade_roster(teaching_class_id: int, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: grade_roster(_auth(ctx), teaching_class_id))}
+
+
+@router.get("/classes/{teaching_class_id}/grade-template.csv")
+def course_grade_template(teaching_class_id: int, ctx=Header(None, alias="X-Demo-Token")) -> Response:
+    content, file_name = _handle(lambda: grade_template_csv(_auth(ctx), teaching_class_id))
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(file_name)}"},
+    )
+
+
+@router.post("/classes/{teaching_class_id}/grade-imports")
+def course_grade_import(teaching_class_id: int, req: GradeImportRequest, ctx=Header(None, alias="X-Demo-Token")) -> dict:
+    return {"item": _handle(lambda: import_grade_csv(_auth(ctx), teaching_class_id, req.csv_content, req.file_name))}
 
 
 @router.post("/classes/{teaching_class_id}/grade-submissions")

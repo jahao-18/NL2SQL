@@ -126,3 +126,17 @@ def test_removed_pages_are_absent_and_personal_center_exists():
     assert 'class="profile-password-actions"' in html
     assert 'aria-live="polite"' in html
     assert 'id="login-demo-accounts"' in html
+
+
+def test_login_page_uses_delivery_copy_and_keeps_registration_title_on_one_line():
+    html = Path(STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    css = Path(STATIC_DIR / "style.css").read_text(encoding="utf-8")
+
+    assert "统一身份认证，安全进入教学数据工作台" in html
+    assert "系统根据已核验的校内身份、岗位职责与授权范围" in html
+    assert "还没有账号？创建账户" in html
+    assert "<b>创建账户</b>" in html
+    assert "用于演示学生" not in html
+    assert "演示身份" not in html
+    assert 'placeholder="演示账号或本人学号、工号"' not in html
+    assert ".login-form-head b{font-size:20px;white-space:nowrap}" in css

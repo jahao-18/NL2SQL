@@ -468,6 +468,10 @@
     if (currentUserName) currentUserName.textContent = currentUser.display_name || currentUser.username || "演示用户";
     if (currentUserRole) currentUserRole.textContent = `${currentUser.role_label || "角色"} · ${currentUser.scope_label || "当前岗位授权范围"}`;
     if (logoutBtn) logoutBtn.textContent = (currentUser.available_roles || []).length > 1 ? "切换工作身份" : "退出登录";
+    const assistantPanel = window.NL2SQLAssistantPanelInstance;
+    if (assistantPanel && typeof assistantPanel.setRecommendations === "function") {
+      assistantPanel.setRecommendations(ASSISTANT_ROLE_RECOMMENDATIONS[currentUser.role]);
+    }
     const featureMap = {
       "dashboard-view": "dashboard",
       "assignment-workflow-view": "assignments",
@@ -826,6 +830,7 @@
   const workbenchPresentations = {
     pending_assignments: "task",
     published_grades: "task",
+    published_final_grades: "task",
     learning_support: "task",
     my_courses: "task",
     pending_grading: "metric",
@@ -2794,6 +2799,19 @@
     ],
   };
 
+  const ASSISTANT_ROLE_RECOMMENDATIONS = {
+    teacher: [
+      "我负责课程的作业未交数是多少？",
+      "我负责课程的待批作业数是多少？",
+      "我负责课程的出勤率是多少？",
+    ],
+    student: [
+      "我当前的作业未交数是多少？",
+      "我的作业完成率是多少？",
+      "我的缺勤次数是多少？",
+    ],
+  };
+
 
   function suggestionSource() {
     return manualSource() || conversationSource || "auto";
@@ -3872,8 +3890,11 @@
     box.innerHTML = '<div class="course-space-loading">正在加载课程内容...</div>';
     try {
       const classes = await api.myTeachingClasses(); const items = classes.items || [];
-      if (!picker.options.length) picker.innerHTML = items.map((x) => `<option value="${x.id}">${escapeHtml(x.course_name)} · ${escapeHtml(x.course_code || "")}</option>`).join("");
-      const id = Number(picker.value || items[0]?.id); if (!id) { box.innerHTML='<div class="course-space-empty"><b>暂无可用课程</b><span>当前身份还没有关联的授课或选课记录。</span></div>'; $("course-space-teacher-actions").hidden=true; return; }
+      const previousId = Number(picker.value);
+      picker.innerHTML = items.map((x) => `<option value="${x.id}">${escapeHtml(x.course_name)} · ${escapeHtml(x.course_code || "")}</option>`).join("");
+      const id = items.some((x) => Number(x.id) === previousId) ? previousId : Number(items[0]?.id);
+      if (id) picker.value = String(id);
+      if (!id) { box.innerHTML='<div class="course-space-empty"><b>暂无可用课程</b><span>当前身份还没有关联的授课或选课记录。</span></div>'; $("course-space-teacher-actions").hidden=true; return; }
       const data = await api.courseSpace(id); const item=data.item, course=item.course;
       const drafts=item.announcement_drafts||[];
       const summary=$("course-space-summary"); if(summary) summary.innerHTML=`<span>${escapeHtml(course.course_code || "COURSE")}</span><b>${escapeHtml(course.course_name)}</b><small>${escapeHtml(String(course.year || ""))} ${escapeHtml(course.semester || "")} · ${escapeHtml(course.classroom || "教室待定")}</small><em>${item.announcements.length} 条公告 · ${drafts.length} 条待发布草稿 · ${item.resources.length} 份资料</em>`;
@@ -3973,6 +3994,50 @@
     if(target)setTimeout(()=>target.scrollIntoView({behavior:"smooth",block:"center"}),0);
     return filtered;
   }
+  let activeGradeClassId=0;
+  function renderGradeRoster(item){
+    const metrics=$("grade-import-metrics"),table=$("grade-roster-table"),message=$("grade-import-message");
+    $("grade-import-title").textContent=`${item.course_name} · 总评成绩`;
+    $("grade-import-subtitle").textContent=`${item.course_code} · ${item.teacher_name} · ${item.year} ${item.semester} · 版本 ${item.version_no||"--"} · ${gradeStatusText[item.status]||item.status}`;
+    metrics.innerHTML=`<article><b>${item.enrolled_count}</b><span>应交人数</span></article><article><b>${item.detail_count}</b><span>已录入</span></article><article><b>${item.missing_count}</b><span>缺失人数</span></article><article><b>${item.average_score==null?"--":item.average_score}</b><span>平均分</span></article><article><b>${item.passed_count}</b><span>及格人数</span></article>`;
+    table.innerHTML=`<table><thead><tr><th>学号</th><th>姓名</th><th>总评成绩</th></tr></thead><tbody>${(item.items||[]).map(row=>`<tr><td>${escapeHtml(row.student_no)}</td><td>${escapeHtml(row.student_name)}</td><td class="${row.final_score==null?"is-missing":""}">${row.final_score==null?"待导入":escapeHtml(String(row.final_score))}</td></tr>`).join("")}</tbody></table>`;
+    const editable=currentUser?.role==="teacher"&&["not_submitted","draft","returned"].includes(item.status);
+    $("grade-template-download").hidden=!editable;
+    document.querySelector(".grade-file-picker").hidden=!editable;
+    $("grade-import-confirm").hidden=!editable;
+    $("grade-submit-confirm").hidden=!(editable&&item.status==="draft"&&item.missing_count===0&&item.detail_count===item.enrolled_count);
+    if(item.returned_reason)message.textContent=`退回原因：${item.returned_reason}。请修正后重新导入。`;
+    else if(item.status==="draft"&&item.missing_count===0)message.textContent="名单校验通过。确认预览无误后可提交审批。";
+    else if(item.status==="draft")message.textContent="当前草稿还没有完整成绩，请重新下载模板并导入全部学生总评成绩。";
+    else if(item.status==="not_submitted")message.textContent="请下载模板、填写总评成绩后上传 CSV。";
+    else message.textContent="当前展示的是审批流程冻结的成绩版本。";
+    message.classList.remove("is-error");
+  }
+  async function openGradeRoster(teachingClassId){
+    activeGradeClassId=Number(teachingClassId);
+    $("grade-import-modal").hidden=false;
+    $("grade-roster-table").innerHTML='<div class="stage-d-empty">正在加载成绩名单...</div>';
+    $("grade-import-file").value="";
+    $("grade-import-confirm").disabled=true;
+    try{
+      const data=await api.gradeRoster(activeGradeClassId);
+      renderGradeRoster(data.item);
+    }catch(err){
+      $("grade-roster-table").innerHTML=`<div class="stage-d-empty is-error">${escapeHtml(err.message||"成绩名单加载失败")}</div>`;
+    }
+  }
+  function closeGradeRoster(){
+    $("grade-import-modal").hidden=true;
+    activeGradeClassId=0;
+  }
+  function readGradeCsvFile(file){
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>resolve(String(reader.result||""));
+      reader.onerror=()=>reject(new Error("无法读取所选 CSV 文件"));
+      reader.readAsText(file,"utf-8");
+    });
+  }
   async function loadTeachingOperations(){
     const tasksBox=$("teaching-task-list"),gradesBox=$("grade-submission-list"),issuesBox=$("teaching-issue-list"),aggregateBox=$("college-aggregate-panels");if(!tasksBox)return;
     [tasksBox,gradesBox,issuesBox].forEach(box=>box.innerHTML='<div class="stage-d-empty">正在加载...</div>');
@@ -3993,7 +4058,7 @@
       if($("teaching-task-result-count")) $("teaching-task-result-count").textContent=`共 ${tasks.items?.length||0} 条`;
       if($("grade-submission-result-count")) $("grade-submission-result-count").textContent=`共 ${grades.items?.length||0} 条`;
       tasksBox.innerHTML=(tasks.items||[]).map(x=>`<div class="stage-e-row"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.college_name)} · ${escapeHtml(x.teacher_name)} · ${escapeHtml(String(x.year))} ${escapeHtml(x.semester)}</small></div><span>${x.enrolled_count}/${x.capacity} 人</span><em>${escapeHtml(x.classroom||"未排教室")}</em></div>`).join("")||'<div class="stage-d-empty">当前筛选条件下暂无教学任务</div>';
-      gradesBox.innerHTML=(grades.items||[]).map(x=>{let actions="";if(role==="teacher"&&["not_submitted","returned","draft"].includes(x.status))actions=`<button data-submit-grades="${x.teaching_class_id}">提交成绩</button>`;if(["college_manager","academic_office"].includes(role)&&x.status==="submitted")actions=`<button data-grade-action="approve" data-grade-id="${x.id}">通过</button><button data-grade-action="return" data-grade-id="${x.id}">退回</button>`;if(role==="academic_office"&&x.status==="approved")actions=`<button data-grade-action="publish" data-grade-id="${x.id}">发布</button>`;return `<div class="stage-e-row"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.college_name)} · ${escapeHtml(x.teacher_name)} · ${escapeHtml(String(x.year))} ${escapeHtml(x.semester)}${x.returned_reason?` · 退回：${escapeHtml(x.returned_reason)}`:""}</small></div><span class="grade-${x.status}">${gradeStatusText[x.status]||x.status}</span><div>${actions}</div></div>`;}).join("")||'<div class="stage-d-empty">当前筛选条件下暂无成绩记录</div>';
+      gradesBox.innerHTML=(grades.items||[]).map(x=>{let actions=`<button data-view-grades="${x.teaching_class_id}">${role==="teacher"&&["not_submitted","returned","draft"].includes(x.status)?"录入/导入成绩":"查看成绩"}</button>`;if(role==="teacher"&&x.status==="draft"&&x.detail_count===x.enrolled_count&&x.enrolled_count>0)actions+=`<button data-submit-grades="${x.teaching_class_id}">提交审批</button>`;if(["college_manager","academic_office"].includes(role)&&x.status==="submitted")actions+=`<button data-grade-action="approve" data-grade-id="${x.id}">通过</button><button data-grade-action="return" data-grade-id="${x.id}">退回</button>`;if(role==="academic_office"&&x.status==="approved")actions+=`<button data-grade-action="publish" data-grade-id="${x.id}">发布</button>`;const gradeMeta=x.detail_count?` · 已录入 ${x.detail_count}/${x.enrolled_count} · 均分 ${x.average_score} · 及格 ${x.passed_count} 人`:"";return `<div class="stage-e-row"><div><b>${escapeHtml(x.course_name)}</b><small>${escapeHtml(x.college_name)} · ${escapeHtml(x.teacher_name)} · ${escapeHtml(String(x.year))} ${escapeHtml(x.semester)}${gradeMeta}${x.returned_reason?` · 退回：${escapeHtml(x.returned_reason)}`:""}</small></div><span class="grade-${x.status}">${gradeStatusText[x.status]||x.status}</span><div>${actions}</div></div>`;}).join("")||'<div class="stage-d-empty">当前筛选条件下暂无成绩记录</div>';
       if(role!=="teacher"){const [issues,summary]=await Promise.all([api.teachingIssues(),api.teachingOperationsSummary()]);renderTeachingIssues(issues.items||[],issuesBox);const item=summary.item;$("stage-e-summary").innerHTML=`<article><b>${item.operations.length}</b><span>开课班</span></article><article><b>${issues.items.length}</b><span>异常事项</span></article>${role==="college_manager"?`<article><b>${item.workload.length}</b><span>授课教师</span></article>`:""}`;aggregateBox.innerHTML=role==="college_manager"?`<section class="stage-d-panel"><div class="stage-d-panel-head"><h3>教师工作量</h3></div>${item.workload.map(x=>`<div class="stage-e-row"><b>${escapeHtml(x.teacher_name)}</b><span>${x.class_count} 个班 · ${x.student_count} 人次</span></div>`).join("")}</section><section class="stage-d-panel"><div class="stage-d-panel-head"><h3>教学质量聚合</h3></div>${item.quality.map(x=>`<div class="stage-e-row"><b>${escapeHtml(x.course_name)}</b><span>${x.sample_size<5?"样本不足，不展示":`均分 ${x.average_score} · 通过率 ${x.pass_rate}%`}</span></div>`).join("")}</section>`:"";}
     }catch(err){const message=`<div class="stage-d-empty is-error">${escapeHtml(err.message||"教学运行加载失败")}</div>`;tasksBox.innerHTML=message;gradesBox.innerHTML=message;}
   }
@@ -4537,9 +4602,38 @@
   });
   document.addEventListener("click", async (event) => { const targetButton=event.target.closest("[data-notification-target]");if(targetButton){try{await api.readNotification(targetButton.dataset.notificationId);}catch(_err){}showView(targetButton.dataset.notificationTarget);return;}const button=event.target.closest("[data-notification-read]"); if(button){await api.readNotification(button.dataset.notificationRead); loadNotifications();} });
   document.addEventListener("click",async(event)=>{
+    const viewGrades=event.target.closest("[data-view-grades]");if(viewGrades){openGradeRoster(viewGrades.dataset.viewGrades);return;}
     const submit=event.target.closest("[data-submit-grades]");if(submit){try{await api.submitCourseGrades(submit.dataset.submitGrades);loadTeachingOperations();}catch(err){window.alert(err.message||"提交失败");}return;}
     const grade=event.target.closest("[data-grade-action]");if(grade){let reason="";if(grade.dataset.gradeAction==="return"){reason=window.prompt("请输入退回原因","")||"";if(!reason)return;}try{await api.reviewGradeSubmission(grade.dataset.gradeId,{action:grade.dataset.gradeAction,reason});loadTeachingOperations();}catch(err){window.alert(err.message||"处理失败");}return;}
     const issue=event.target.closest("[data-issue-status]");if(issue){let resolution="";if(issue.dataset.issueStatus==="resolved"){resolution=window.prompt("请输入异常处理说明","")||"";if(!resolution)return;}await api.updateTeachingIssue(issue.dataset.issueId,{status:issue.dataset.issueStatus,resolution});loadTeachingOperations();}
+  });
+  if($("grade-import-close"))$("grade-import-close").addEventListener("click",closeGradeRoster);
+  if($("grade-import-modal"))$("grade-import-modal").addEventListener("click",event=>{if(event.target===$("grade-import-modal"))closeGradeRoster();});
+  if($("grade-template-download"))$("grade-template-download").addEventListener("click",async()=>{if(!activeGradeClassId)return;try{await api.downloadGradeTemplate(activeGradeClassId);}catch(err){window.alert(err.message||"模板下载失败");}});
+  if($("grade-import-file"))$("grade-import-file").addEventListener("change",event=>{
+    const file=event.target.files?.[0],button=$("grade-import-confirm"),message=$("grade-import-message");
+    button.disabled=!file;
+    message.classList.remove("is-error");
+    message.textContent=file?`已选择 ${file.name}，点击“导入并校验”后才会保存草稿。`:"请选择 CSV 文件。";
+  });
+  if($("grade-import-confirm"))$("grade-import-confirm").addEventListener("click",async()=>{
+    const file=$("grade-import-file").files?.[0],button=$("grade-import-confirm"),message=$("grade-import-message");
+    if(!file||!activeGradeClassId)return;
+    if(file.size>2_000_000){message.textContent="CSV 文件不能超过 2MB。";message.classList.add("is-error");return;}
+    try{
+      button.disabled=true;button.textContent="正在校验...";
+      const data=await api.importGradeCsv(activeGradeClassId,{file_name:file.name,csv_content:await readGradeCsvFile(file)});
+      renderGradeRoster(data.item);
+      await loadTeachingOperations();
+    }catch(err){message.textContent=err.message||"成绩导入失败";message.classList.add("is-error");}
+    finally{button.textContent="导入并校验";button.disabled=!$("grade-import-file").files?.length;}
+  });
+  if($("grade-submit-confirm"))$("grade-submit-confirm").addEventListener("click",async()=>{
+    if(!activeGradeClassId||!window.confirm("确认提交当前总评成绩版本进入学院审批吗？"))return;
+    const button=$("grade-submit-confirm");
+    try{button.disabled=true;await api.submitCourseGrades(activeGradeClassId);await openGradeRoster(activeGradeClassId);await loadTeachingOperations();}
+    catch(err){window.alert(err.message||"提交失败");}
+    finally{button.disabled=false;}
   });
   if($("refresh-teaching-issues")) $("refresh-teaching-issues").addEventListener("click",async()=>{await api.refreshTeachingIssues();loadTeachingOperations();});
   if($("teaching-issue-status-filter")) $("teaching-issue-status-filter").addEventListener("change",()=>loadTeachingOperations());

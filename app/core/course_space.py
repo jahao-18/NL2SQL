@@ -25,6 +25,7 @@ NOTIFICATION_TARGETS = {
     "support_case": "support-workbench-view",
     "support_request": "support-workbench-view",
     "grade_submission": "teaching-operations-view",
+    "grade_result": "dashboard-view",
 }
 
 
