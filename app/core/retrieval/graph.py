@@ -33,8 +33,80 @@ class RelationGraph:
 
     def build(self) -> None:
         insp = inspect(get_engine(get_source(self.source)))
-        for table in insp.get_table_names():
-            self.g.add_node(table)
+        tables = list(insp.get_table_names())
+        self.g.add_nodes_from(tables)
+
+        def canonical_name(name: object, candidates: list[str]) -> str | None:
+            """Return the real inspector name, accepting one unambiguous case-only variant."""
+            if not isinstance(name, str) or not name:
+                return None
+            if name in candidates:
+                return name
+            folded = [candidate for candidate in candidates if candidate.casefold() == name.casefold()]
+            return folded[0] if len(folded) == 1 else None
+
+        columns: dict[str, list[str]] = {}
+
+        def table_columns(table: str) -> list[str]:
+            if table not in columns:
+                try:
+                    columns[table] = [
+                        column["name"]
+                        for column in insp.get_columns(table)
+                        if isinstance(column.get("name"), str) and column["name"]
+                    ]
+                except Exception:
+                    logger.warning(
+                        "读取关系图字段失败，跳过该表关系 | source=%s | table=%s",
+                        self.source,
+                        table,
+                        exc_info=True,
+                    )
+                    columns[table] = []
+            return columns[table]
+
+        def add_relation(
+            table: object,
+            column: object,
+            ref_table: object,
+            ref_column: object,
+            *,
+            relation_type: str,
+        ) -> None:
+            real_table = canonical_name(table, tables)
+            real_ref_table = canonical_name(ref_table, tables)
+            if real_table is None or real_ref_table is None:
+                logger.warning(
+                    "跳过目标表不存在或名称不唯一的关系 | source=%s | type=%s | table=%s | ref_table=%s",
+                    self.source,
+                    relation_type,
+                    table,
+                    ref_table,
+                )
+                return
+
+            real_column = canonical_name(column, table_columns(real_table))
+            real_ref_column = canonical_name(ref_column, table_columns(real_ref_table))
+            if real_column is None or real_ref_column is None:
+                logger.warning(
+                    "跳过字段缺失的关系 | source=%s | type=%s | table=%s | column=%s | "
+                    "ref_table=%s | ref_column=%s",
+                    self.source,
+                    relation_type,
+                    real_table,
+                    column,
+                    real_ref_table,
+                    ref_column,
+                )
+                return
+
+            edge = (real_table, real_column, real_ref_table, real_ref_column)
+            reverse_edge = (real_ref_table, real_ref_column, real_table, real_column)
+            if edge not in self.fks and reverse_edge not in self.fks:
+                self.fks.append(edge)
+            self.g.add_edge(real_table, real_ref_table)
+
+        for table in tables:
             try:
                 fks = insp.get_foreign_keys(table)
             except Exception:
@@ -43,19 +115,24 @@ class RelationGraph:
                 rt = fk.get("referred_table")
                 cc = fk.get("constrained_columns") or []
                 rc = fk.get("referred_columns") or []
-                if not rt:
+                if not rt or not cc or not rc:
+                    logger.warning(
+                        "跳过不完整外键 | source=%s | table=%s | ref_table=%s",
+                        self.source,
+                        table,
+                        rt,
+                    )
                     continue
                 for c1, c2 in zip(cc, rc):
-                    self.fks.append((table, c1, rt, c2))
-                    self.g.add_edge(table, rt)
+                    add_relation(table, c1, rt, c2, relation_type="foreign_key")
         for table, column, ref_table, ref_column in manual_relations(self.source):
-            self.g.add_node(table)
-            self.g.add_node(ref_table)
-            edge = (table, column, ref_table, ref_column)
-            reverse_edge = (ref_table, ref_column, table, column)
-            if edge not in self.fks and reverse_edge not in self.fks:
-                self.fks.append(edge)
-            self.g.add_edge(table, ref_table)
+            add_relation(
+                table,
+                column,
+                ref_table,
+                ref_column,
+                relation_type="manual",
+            )
         logger.info("关系图已建 | source=%s | %d 表 %d 外键边",
                     self.source, self.g.number_of_nodes(), len(self.fks))
 

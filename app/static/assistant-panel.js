@@ -49,6 +49,7 @@
     if (result.status === "clarify" || result.clarify) return "clarify";
     if (result.status === "failed") return "error";
     if (result.status === "rejected") return "unauthorized";
+    if (result.answer_type === "unsupported") return "unsupported";
     const codes = new Set((result.warnings || []).map((item) => item.code));
     if (codes.has("EMPTY_RESULT")) return "empty";
     if (codes.has("RETRIEVAL_DEGRADED") || result.status === "degraded") return "degraded";
@@ -272,6 +273,7 @@
       const items = {
         clarify: { label: "NEEDS CLARIFICATION", title: "还需要一点信息", fallback: "请补充范围或口径后继续提问。" },
         success: { label: "ANSWER READY", title: "回答已生成", fallback: "查询已完成。" },
+        unsupported: { label: "NOT SUPPORTED", title: "当前问题暂无法处理", fallback: "请换一个现有字段或业务问题后重试。" },
         empty: { label: "NO RESULT", title: "当前范围没有匹配数据", fallback: "可以调整时间或筛选条件后重试。" },
         "low-confidence": { label: "REVIEW ADVISED", title: "回答已生成，建议复核", fallback: "当前可信度较低。" },
         degraded: { label: "DEGRADED", title: "回答已生成，但部分检索降级", fallback: "请结合证据与提示复核。" },

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
-from app.core import teaching_migrations
+from app.core import assistant_context, teaching_migrations
 from app.core.assistant_context import (
     AssistantContextAuthorizationError,
     AssistantPageContext,
@@ -153,3 +154,31 @@ def test_page_context_validates_time_range_and_filter_size():
         )
     with pytest.raises(ValidationError, match="4 KB"):
         AssistantPageContext(page="assistant", filters={"query": "x" * 5000})
+
+
+def test_external_source_context_is_admin_only_and_registry_validated(monkeypatch):
+    def fake_get_source(name: str):
+        if name == "library_pg":
+            return SimpleNamespace(name=name)
+        raise KeyError(name)
+
+    monkeypatch.setattr(assistant_context, "get_source", fake_get_source)
+    resolved = resolve_assistant_context(
+        _auth("admin"), {"page": "assistant", "source": "library_pg"}
+    )
+    assert resolved.effective_context == {
+        "page": "assistant",
+        "source": "library_pg",
+    }
+
+    with pytest.raises(AssistantContextAuthorizationError) as student_denied:
+        resolve_assistant_context(
+            _auth("stu_zhang"), {"page": "assistant", "source": "library_pg"}
+        )
+    assert student_denied.value.rejected_fields == {"source": "library_pg"}
+
+    with pytest.raises(AssistantContextAuthorizationError) as unknown_denied:
+        resolve_assistant_context(
+            _auth("admin"), {"page": "assistant", "source": "unknown_pg"}
+        )
+    assert unknown_denied.value.rejected_fields == {"source": "unknown_pg"}

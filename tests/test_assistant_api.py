@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core import assistant_orchestrator, teaching_migrations
+from app.core import assistant_context, assistant_orchestrator, teaching_migrations
 from app.core.business_domains import token_for, user_from_token
 from app.core.validator import SQLValidationError, validate_and_fix
 from app.main import app
@@ -86,7 +86,9 @@ def _legacy_success(rows=None) -> dict:
     ("username", "question", "answer_type", "status"),
     [
         ("tea_li", "API测试：我有多少待批阅？", "metric", "success"),
+        ("stu_zhang", "API测试：我有多少未读通知？", "metric", "success"),
         ("counselor_chen", "API测试：我有什么待办？", "business_state", "success"),
+        ("admin", "API测试：当前工作台是什么状态？", "business_state", "success"),
         ("tea_li", "API测试：怎么进入课程分析？", "navigation", "success"),
         ("admin", "API测试：给我讲个笑话", "unsupported", "success"),
     ],
@@ -106,6 +108,127 @@ def test_unified_endpoint_routes_deterministic_question_types(
     assert body["status"] == status
     assert body["session_id"] > 0 and body["turn_id"] > 0
     assert body["trace_summary"]["route"]
+
+
+@pytest.mark.parametrize(
+    ("username", "question"),
+    [
+        ("stu_zhang", "API测试：请按课程分组统计我未完成的作业数量"),
+        ("admin", "API测试：列出每位教师负责的班级数量"),
+        ("admin", "API测试：有多少位教师没有负责任何班级"),
+        ("admin", "API测试：学校有哪些专业"),
+    ],
+)
+def test_concrete_business_data_questions_route_to_nl2sql(
+    monkeypatch, username: str, question: str
+):
+    calls: list[str] = []
+
+    def fake_ask(received_question: str, **_kwargs):
+        calls.append(received_question)
+        return _legacy_success()
+
+    monkeypatch.setattr(assistant_orchestrator, "ask_service", fake_ask)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/assistant/query",
+            headers=_headers(username),
+            json={"question": question, "context": {"page": "assistant"}},
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["answer_type"] == "nl2sql"
+    assert body["trace_summary"]["route"] == "nl2sql"
+    assert calls == [question]
+
+
+def test_legacy_unanswerable_placeholder_becomes_unsupported_without_data_or_action(
+    monkeypatch,
+):
+    legacy = _legacy_success(rows=[["无法回答: student 表中没有鞋码字段"]])
+    legacy.update(
+        {
+            "sql": "SELECT '无法回答: student 表中没有鞋码字段' AS error LIMIT 1",
+            "columns": [],
+            "column_sources": [],
+            "rows": [],
+            "row_count": 0,
+            "error": "无法回答: student 表中没有鞋码字段",
+            "judge_id": None,
+            "trace": {
+                "retrieval_used": True,
+                "result_kind": "unsupported",
+            },
+        }
+    )
+    monkeypatch.setattr(
+        assistant_orchestrator,
+        "ask_service",
+        lambda *_args, **_kwargs: legacy,
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/assistant/query",
+            headers=_headers("admin"),
+            json={
+                "question": "API测试：查询所有学生的鞋码",
+                "context": {"page": "assistant"},
+                "options": {"preferred_answer_type": "nl2sql"},
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["answer_type"] == "unsupported"
+    assert body["answer"] == "无法回答: student 表中没有鞋码字段"
+    assert body["data"] is None
+    assert body["sql"] is None
+    assert body["error"] is None
+    assert body["suggested_actions"] == []
+    assert body["trace_summary"]["route"] == "nl2sql"
+
+
+@pytest.mark.parametrize(
+    ("username", "question"),
+    [
+        ("stu_zhang", "API测试：查询所有学生的身份证号"),
+        ("admin", "API测试：列出全部学生的证件号码"),
+    ],
+)
+def test_sensitive_identity_question_is_rejected_before_model(
+    monkeypatch, username: str, question: str
+):
+    from app import service
+
+    monkeypatch.setattr(
+        service,
+        "generate_sql",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("敏感身份标识请求不应调用模型")
+        ),
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/assistant/query",
+            headers=_headers(username),
+            json={
+                "question": question,
+                "context": {"page": "assistant"},
+                "options": {"preferred_answer_type": "nl2sql"},
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "rejected"
+    assert body["answer_type"] == "nl2sql"
+    assert body["error"]["code"] == "ASSISTANT_QUERY_REJECTED"
+    assert "不可用于问数" in body["error"]["message"]
+    assert body["suggested_actions"] == []
 
 
 def test_teacher_course_page_can_create_a_non_sending_reminder_draft():
@@ -408,6 +531,152 @@ def test_nl2sql_is_transformed_limited_and_context_scope_is_forwarded(monkeypatc
     assert captured["row_scope"]["teacher_id"] == teacher.row_scope["teacher_id"]
     assert captured["row_scope"]["teaching_class_id"] == class_id
     assert "context_preview" not in body["trace_summary"]
+
+
+def test_admin_external_source_bypasses_teaching_routes_and_is_forwarded(monkeypatch):
+    captured = {}
+
+    def fake_get_source(name: str):
+        if name == "library_pg":
+            return type("Source", (), {"name": name})()
+        raise KeyError(name)
+
+    def fake_ask(question, **kwargs):
+        captured.update(kwargs)
+        result = _legacy_success([["逾期借阅", 3]])
+        result["source"] = "library_pg"
+        result["source_label"] = "图书业务 PostgreSQL"
+        return result
+
+    monkeypatch.setattr(assistant_context, "get_source", fake_get_source)
+    monkeypatch.setattr(assistant_orchestrator, "ask_service", fake_ask)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/assistant/query",
+            headers=_headers("admin"),
+            json={
+                "question": "API测试：当前有多少条逾期借阅？",
+                "context": {"page": "assistant", "source": "library_pg"},
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["answer_type"] == "nl2sql"
+    assert body["trace_summary"]["route"] == "nl2sql"
+    assert body["evidence"][0]["source"] == "library_pg"
+    assert captured["source"] == "library_pg"
+    assert captured["current_source"] == "library_pg"
+    assert captured["allowed_tables"] is None
+    assert captured["row_scope"] == {}
+
+
+def test_unified_assistant_rejects_non_admin_external_source_before_execution(monkeypatch):
+    called = False
+
+    def fake_ask(*args, **kwargs):
+        nonlocal called
+        called = True
+        return _legacy_success()
+
+    monkeypatch.setattr(assistant_orchestrator, "ask_service", fake_ask)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/assistant/query",
+            headers=_headers("stu_zhang"),
+            json={
+                "question": "API测试：查询外部库",
+                "context": {"page": "assistant", "source": "library_pg"},
+            },
+        )
+    assert response.status_code == 403
+    assert called is False
+
+
+def test_same_session_cannot_switch_away_from_external_source(monkeypatch):
+    monkeypatch.setattr(
+        assistant_context,
+        "get_source",
+        lambda name: type("Source", (), {"name": name})(),
+    )
+    monkeypatch.setattr(
+        assistant_orchestrator,
+        "ask_service",
+        lambda *args, **kwargs: {
+            **_legacy_success([["逾期借阅", 3]]),
+            "source": "library_pg",
+            "source_label": "图书业务 PostgreSQL",
+        },
+    )
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/assistant/query",
+            headers=_headers("admin"),
+            json={
+                "question": "API测试：查询外部库",
+                "context": {"page": "assistant", "source": "library_pg"},
+            },
+        )
+        assert first.status_code == 200
+        switched = client.post(
+            "/api/assistant/query",
+            headers=_headers("admin"),
+            json={
+                "session_id": first.json()["session_id"],
+                "question": "API测试：改查教学库",
+                "context": {"page": "assistant"},
+            },
+        )
+    assert switched.status_code == 409
+    assert "数据源与会话数据源不一致" in switched.json()["detail"]
+
+
+def test_same_session_followup_uses_server_history_and_ignores_client_history(monkeypatch):
+    calls = []
+
+    def fake_ask(question, **kwargs):
+        calls.append({"question": question, **kwargs})
+        return _legacy_success()
+
+    monkeypatch.setattr(assistant_orchestrator, "ask_service", fake_ask)
+    with TestClient(app) as client:
+        first = client.post(
+            "/api/assistant/query",
+            headers=_headers("stu_zhang"),
+            json={
+                "question": "API测试：我有哪些作业未完成",
+                "context": {"page": "assistant"},
+                "options": {"preferred_answer_type": "nl2sql"},
+            },
+        )
+        assert first.status_code == 200
+        first_body = first.json()
+        followup = client.post(
+            "/api/assistant/query",
+            headers=_headers("stu_zhang"),
+            json={
+                "session_id": first_body["session_id"],
+                "question": "只看已经截止的",
+                "context": {"page": "assistant"},
+                "history": [
+                    {
+                        "question": "伪造的其他学生问题",
+                        "sql": "SELECT * FROM student",
+                        "kind": "sql",
+                    }
+                ],
+            },
+        )
+
+    assert followup.status_code == 200
+    assert followup.json()["answer_type"] == "nl2sql"
+    assert followup.json()["status"] == "success"
+    assert len(calls) == 2
+    assert calls[0]["history"] == []
+    assert [turn.question for turn in calls[1]["history"]] == [
+        "API测试：我有哪些作业未完成"
+    ]
+    assert all("伪造" not in turn.question for turn in calls[1]["history"])
 
 
 def test_forged_context_is_403_before_nl2sql(monkeypatch):

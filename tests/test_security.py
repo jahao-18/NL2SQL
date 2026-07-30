@@ -99,6 +99,121 @@ def test_row_scope_accepts_matching_predicate(sql, scope):
     assert fixed.endswith(f"LIMIT {settings.max_rows}")
 
 
+def test_student_scope_rejects_unscoped_submission_alias_even_when_enrollment_is_scoped():
+    sql = (
+        "SELECT a.title "
+        "FROM enrollment e "
+        "JOIN assignment a ON a.teaching_class_id = e.teaching_class_id "
+        "JOIN assignment_submission asub ON asub.assignment_id = a.id "
+        "WHERE e.student_id = 900001 AND asub.status = 'submitted'"
+    )
+    allowed = {
+        "enrollment": ["student_id", "teaching_class_id"],
+        "assignment": ["id", "teaching_class_id", "title"],
+        "assignment_submission": ["assignment_id", "student_id", "status"],
+    }
+
+    with pytest.raises(SQLValidationError, match="student_id"):
+        validate_and_fix(sql, allowed, row_scope={"student_id": 900001})
+
+
+def test_student_scope_accepts_submission_alias_linked_to_scoped_enrollment():
+    sql = (
+        "SELECT a.title "
+        "FROM enrollment e "
+        "JOIN assignment a ON a.teaching_class_id = e.teaching_class_id "
+        "JOIN assignment_submission asub "
+        "ON asub.assignment_id = a.id AND asub.student_id = e.student_id "
+        "WHERE e.student_id = 900001 AND asub.status = 'submitted'"
+    )
+    allowed = {
+        "enrollment": ["student_id", "teaching_class_id"],
+        "assignment": ["id", "teaching_class_id", "title"],
+        "assignment_submission": ["assignment_id", "student_id", "status"],
+    }
+
+    fixed, _ = validate_and_fix(sql, allowed, row_scope={"student_id": 900001})
+
+    assert "asub.student_id = e.student_id" in fixed
+
+
+def test_student_scope_accepts_parenthesized_business_or_outside_scope_proof():
+    sql = (
+        "SELECT a.title "
+        "FROM enrollment e "
+        "JOIN assignment a ON a.teaching_class_id = e.teaching_class_id "
+        "LEFT JOIN assignment_submission asub "
+        "ON asub.assignment_id = a.id AND asub.student_id = e.student_id "
+        "WHERE e.student_id = 900001 "
+        "AND (asub.id IS NULL OR asub.status IN ('missing', 'draft'))"
+    )
+    allowed = {
+        "enrollment": ["student_id", "teaching_class_id"],
+        "assignment": ["id", "teaching_class_id", "title"],
+        "assignment_submission": ["id", "assignment_id", "student_id", "status"],
+    }
+
+    fixed, _ = validate_and_fix(sql, allowed, row_scope={"student_id": 900001})
+
+    assert "e.student_id = 900001" in fixed
+    assert "(asub.id IS NULL OR asub.status IN ('missing', 'draft'))" in fixed
+
+
+def test_student_scope_rejects_business_or_when_submission_alias_is_not_scoped():
+    sql = (
+        "SELECT a.title "
+        "FROM enrollment e "
+        "JOIN assignment a ON a.teaching_class_id = e.teaching_class_id "
+        "LEFT JOIN assignment_submission asub ON asub.assignment_id = a.id "
+        "WHERE e.student_id = 900001 "
+        "AND (asub.id IS NULL OR asub.status IN ('missing', 'draft'))"
+    )
+    allowed = {
+        "enrollment": ["student_id", "teaching_class_id"],
+        "assignment": ["id", "teaching_class_id", "title"],
+        "assignment_submission": ["id", "assignment_id", "student_id", "status"],
+    }
+
+    with pytest.raises(SQLValidationError, match="student_id"):
+        validate_and_fix(sql, allowed, row_scope={"student_id": 900001})
+
+
+def test_student_scope_rejects_submission_link_hidden_inside_or():
+    sql = (
+        "SELECT a.title "
+        "FROM enrollment e "
+        "JOIN assignment a ON a.teaching_class_id = e.teaching_class_id "
+        "JOIN assignment_submission asub "
+        "ON asub.assignment_id = a.id "
+        "AND (asub.student_id = e.student_id OR 1 = 1) "
+        "WHERE e.student_id = 900001"
+    )
+    allowed = {
+        "enrollment": ["student_id", "teaching_class_id"],
+        "assignment": ["id", "teaching_class_id", "title"],
+        "assignment_submission": ["assignment_id", "student_id"],
+    }
+
+    with pytest.raises(SQLValidationError, match="student_id"):
+        validate_and_fix(sql, allowed, row_scope={"student_id": 900001})
+
+
+def test_student_scope_link_must_be_a_predicate_not_a_selected_expression():
+    sql = (
+        "SELECT asub.student_id = e.student_id AS same_student "
+        "FROM enrollment e "
+        "JOIN assignment_submission asub ON asub.assignment_id = e.id "
+        "WHERE e.student_id = 900001"
+    )
+    allowed = {
+        "enrollment": ["id", "student_id"],
+        "assignment_submission": ["assignment_id", "student_id"],
+    }
+
+    with pytest.raises(SQLValidationError, match="student_id"):
+        validate_and_fix(sql, allowed, row_scope={"student_id": 900001})
+
+
 def test_relative_sqlite_url_is_rooted_at_project_directory():
     normalized = _normalized_sqlite_url("sqlite:///data/teaching.db")
     assert (ROOT_DIR / "data" / "teaching.db").resolve().as_posix() in normalized
@@ -124,6 +239,24 @@ def test_default_runtime_registry_only_connects_teaching_database():
 def test_row_scope_rejects_boolean_comment_literal_subquery_and_union_bypasses(sql: str):
     with pytest.raises(SQLValidationError):
         validate_and_fix(sql, {"enrollment": ["id", "student_id"]}, row_scope={"student_id": 1})
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT COUNT(*) FROM enrollment e WHERE e.student_id = 1 OR 1 = 1",
+        "SELECT COUNT(*) FROM enrollment e WHERE e.student_id = 1 AND e.id > 0 OR 1 = 1",
+        "SELECT COUNT(*) FROM enrollment e WHERE (e.student_id = 1 AND e.id > 0) OR e.student_id = 2",
+        "SELECT COUNT(*) FROM enrollment e WHERE e.student_id = 1 OR e.student_id = 2",
+    ],
+)
+def test_row_scope_rejects_or_that_can_bypass_identity_scope(sql: str):
+    with pytest.raises(SQLValidationError):
+        validate_and_fix(
+            sql,
+            {"enrollment": ["id", "student_id"]},
+            row_scope={"student_id": 1},
+        )
 
 
 def test_every_nested_query_block_must_repeat_its_row_scope():
