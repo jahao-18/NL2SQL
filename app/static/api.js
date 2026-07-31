@@ -155,6 +155,8 @@
     updateSupportRequest: (id, payload) => json("PATCH", `/api/teaching/support/requests/${encodeURIComponent(id)}`, payload),
     ask: (payload) => json("POST", "/api/ask", payload),
     queryAssistant: (payload) => json("POST", "/api/assistant/query", payload, 50000),
+    feedbackAssistantTurn: (id, payload) => json("POST", `/api/assistant/turns/${encodeURIComponent(id)}/feedback`, payload),
+    cancelAssistantTurnFeedback: (id) => request(`/api/assistant/turns/${encodeURIComponent(id)}/feedback`, { method: "DELETE" }),
     createAssistantAction: (payload) => json("POST", "/api/assistant/action-drafts", payload),
     assistantAction: (id) => request(`/api/assistant/action-drafts/${encodeURIComponent(id)}`),
     confirmAssistantAction: (id) => json("POST", `/api/assistant/action-drafts/${encodeURIComponent(id)}/confirm`, {}),

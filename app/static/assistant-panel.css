@@ -141,6 +141,18 @@
 .v3ap-sql,.v3ap-trace{border:1px solid var(--line-soft);border-radius:7px;background:#fafcfd;overflow:hidden}
 .v3ap-sql summary,.v3ap-trace summary{padding:10px 12px;color:var(--v3ap-blue);font-size:10px;font-weight:650;cursor:pointer}
 .v3ap-sql pre{max-height:260px;margin:0;padding:13px;overflow:auto;border-top:1px solid var(--line-soft);background:#142433;color:#dcecf7;font:10px/1.7 var(--font-mono);white-space:pre-wrap}
+.v3ap-feedback-actions{display:flex;gap:8px;flex-wrap:wrap}
+.v3ap-feedback-button,.v3ap-feedback-submit{min-height:34px;padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--text-soft);font-size:11px;font-weight:650;cursor:pointer}
+.v3ap-feedback-button:hover,.v3ap-feedback-button.is-active{border-color:var(--v3ap-blue);background:#edf5fb;color:var(--v3ap-blue)}
+.v3ap-feedback-button:disabled,.v3ap-feedback-submit:disabled{opacity:.55;cursor:wait}
+.v3ap-feedback-form{display:grid;grid-template-columns:minmax(160px,.6fr) minmax(260px,1.4fr) auto;gap:8px;margin-top:10px;align-items:start}
+.v3ap-feedback-form[hidden]{display:none}
+.v3ap-feedback-category,.v3ap-feedback-reason{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--text-main);font:11px/1.5 inherit}
+.v3ap-feedback-reason{resize:vertical}
+.v3ap-feedback-submit{border-color:var(--v3ap-blue);background:var(--v3ap-blue);color:#fff}
+.v3ap-feedback-status{min-height:18px;margin:8px 0 0;color:var(--text-muted);font-size:10px}
+.v3ap-feedback-status.is-success{color:#177865}
+.v3ap-feedback-status.is-error{color:var(--v3ap-red)}
 .v3ap-trace-grid{display:grid;grid-template-columns:minmax(120px,auto) 1fr;gap:6px 12px;margin:0;padding:12px;border-top:1px solid var(--line-soft);font-size:9px}
 .v3ap-trace-grid dt{color:var(--text-muted)}
 .v3ap-trace-grid dd{margin:0;color:var(--text-soft)}
@@ -175,6 +187,7 @@
   .v3ap-message{max-width:94%}
   .v3ap-section-head,.v3ap-action-head{align-items:stretch;flex-direction:column}
   .v3ap-action-confirm{width:100%}
+  .v3ap-feedback-form{grid-template-columns:1fr}
   .v3ap-composer{grid-template-columns:1fr;padding:12px}
   .v3ap-submit{grid-row:auto;grid-column:auto;min-height:42px}
 }

@@ -19,6 +19,11 @@ from app.core.assistant_orchestrator import (
     AssistantQueryResponse,
     query_assistant,
 )
+from app.core.assistant_feedback import (
+    AssistantTurnFeedbackRequest,
+    cancel_turn_feedback,
+    submit_turn_feedback,
+)
 from app.core.semantic_metrics import SemanticMetricNotFoundError, metric_results
 from app.core.assistant_quality import quality_operations
 from app.core.assistant_sessions import (
@@ -53,6 +58,31 @@ def assistant_query(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except AssistantSessionConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/turns/{turn_id}/feedback")
+def assistant_turn_feedback(
+    turn_id: int,
+    request: AssistantTurnFeedbackRequest,
+    token: str | None = Header(None, alias="X-Demo-Token"),
+) -> dict:
+    try:
+        return submit_turn_feedback(_auth(token), turn_id, request)
+    except AssistantSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/turns/{turn_id}/feedback")
+def assistant_turn_feedback_cancel(
+    turn_id: int,
+    token: str | None = Header(None, alias="X-Demo-Token"),
+) -> dict:
+    try:
+        return cancel_turn_feedback(_auth(token), turn_id)
+    except (AssistantSessionNotFoundError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail="回答反馈不存在") from exc
 
 
 @router.get("/metrics")

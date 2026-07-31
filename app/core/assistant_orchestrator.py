@@ -26,6 +26,8 @@ from app.core.assistant_sessions import (
 )
 from app.core.business_domains import AuthContext, navigation_for, row_scope_context
 from app.core.config import settings
+from app.core.examples import select_few_shot_examples
+from app.core.schema import list_table_names
 from app.core.semantic_metrics import (
     evaluate_semantic_metric,
     match_semantic_metric,
@@ -34,7 +36,7 @@ from app.core.semantic_metrics import (
 from app.core.support_workflow import counselor_appointment_queue, counselor_review_queue
 from app.core.stage_e import assistant_issue_queue
 from app.core.workbench import build_workbench
-from app.models.schemas import Turn
+from app.models.schemas import FewShotExample, Turn
 from app.service import ask as ask_service
 
 
@@ -590,6 +592,29 @@ def _nl2sql(
         for key in ("teaching_class_id", "student_id", "college_id"):
             if key in context:
                 row_scope[key] = context[key]
+    try:
+        allowed_example_tables = (
+            auth.allowed_tables
+            if teaching_source
+            else frozenset(list_table_names(selected_source))
+        )
+        few_shots = [
+            FewShotExample(
+                question=str(item["question"]),
+                sql=str(item["sql"]),
+                source=selected_source,
+                source_label=str(item.get("source_label") or selected_source),
+            )
+            for item in select_few_shot_examples(
+                selected_source,
+                question,
+                allowed_tables=allowed_example_tables,
+                blocked_columns=auth.denied_columns if teaching_source else None,
+            )
+        ]
+    except Exception:
+        logger.exception("统一助手 Few-shot 选择失败，继续不带样例执行")
+        few_shots = []
     future = _NL2SQL_EXECUTOR.submit(
         ask_service,
         question,
@@ -597,6 +622,7 @@ def _nl2sql(
         source=selected_source,
         current_source=selected_source,
         user_glossary=glossary,
+        few_shots=few_shots,
         allowed_tables=auth.allowed_tables if teaching_source else None,
         denied_columns=auth.denied_columns if teaching_source else None,
         denied_terms=auth.denied_terms if teaching_source else None,

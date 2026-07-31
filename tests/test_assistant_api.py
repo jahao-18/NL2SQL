@@ -508,6 +508,17 @@ def test_nl2sql_is_transformed_limited_and_context_scope_is_forwarded(monkeypatc
         return _legacy_success()
 
     monkeypatch.setattr(assistant_orchestrator, "ask_service", fake_ask)
+    monkeypatch.setattr(
+        assistant_orchestrator,
+        "select_few_shot_examples",
+        lambda *args, **kwargs: [
+            {
+                "question": "这门课程有多少人选课？",
+                "sql": "SELECT COUNT(*) FROM enrollment",
+                "source_label": "教学业务库",
+            }
+        ],
+    )
     with TestClient(app) as client:
         response = client.post(
             "/api/assistant/query",
@@ -530,6 +541,8 @@ def test_nl2sql_is_transformed_limited_and_context_scope_is_forwarded(monkeypatc
     assert body["data"]["row_count"] == 1 and body["data"]["truncated"] is True
     assert captured["row_scope"]["teacher_id"] == teacher.row_scope["teacher_id"]
     assert captured["row_scope"]["teaching_class_id"] == class_id
+    assert len(captured["few_shots"]) == 1
+    assert captured["few_shots"][0].question == "这门课程有多少人选课？"
     assert "context_preview" not in body["trace_summary"]
 
 

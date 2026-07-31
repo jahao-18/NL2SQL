@@ -45,6 +45,94 @@ def add_feedback(payload: dict[str, Any]) -> dict[str, Any]:
     return item
 
 
+def upsert_turn_feedback(payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Keep one feedback item per assistant turn and work identity."""
+    source = str(payload.get("source") or "unknown")
+    turn_id = int(payload["turn_id"])
+    submitted_user_id = int(payload["submitted_user_id"])
+    role_binding_id = int(payload["role_binding_id"])
+    now = datetime.now(timezone.utc).isoformat()
+    path = _path(source)
+    FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
+
+    with lock_for(path):
+        items = _read_path(path)
+        existing = next(
+            (
+                item
+                for item in items
+                if int(item.get("turn_id") or 0) == turn_id
+                and int(item.get("submitted_user_id") or 0) == submitted_user_id
+                and int(item.get("role_binding_id") or 0) == role_binding_id
+            ),
+            None,
+        )
+        created = existing is None
+        if existing is None:
+            existing = {
+                "id": uuid4().hex,
+                "created_at": now,
+            }
+            items.append(existing)
+        existing.update(
+            {
+                "source": source,
+                "source_label": payload.get("source_label") or source,
+                "kind": payload.get("kind") or "incorrect",
+                "reason": payload.get("reason") or "",
+                "category": payload.get("category") or "",
+                "question": payload.get("question") or "",
+                "sql": payload.get("sql") or "",
+                "explanation": payload.get("explanation") or {},
+                "turn_id": turn_id,
+                "submitted_user_id": submitted_user_id,
+                "role_binding_id": role_binding_id,
+                "updated_at": now,
+                "status": "open",
+            }
+        )
+        atomic_write_text(
+            path,
+            ("\n".join(json.dumps(item, ensure_ascii=False) for item in items) + "\n")
+            if items
+            else "",
+        )
+    return existing, created
+
+
+def delete_turn_feedback(
+    source: str,
+    *,
+    turn_id: int,
+    submitted_user_id: int,
+    role_binding_id: int,
+) -> dict[str, Any]:
+    """Delete feedback only when it belongs to the given assistant identity."""
+    path = _path(source)
+    with lock_for(path):
+        items = _read_path(path)
+        deleted = next(
+            (
+                item
+                for item in items
+                if int(item.get("turn_id") or 0) == turn_id
+                and int(item.get("submitted_user_id") or 0) == submitted_user_id
+                and int(item.get("role_binding_id") or 0) == role_binding_id
+            ),
+            None,
+        )
+        if deleted is None:
+            raise FileNotFoundError(turn_id)
+        kept = [item for item in items if item is not deleted]
+        atomic_write_text(
+            path,
+            ("\n".join(json.dumps(item, ensure_ascii=False) for item in kept) + "\n")
+            if kept
+            else "",
+        )
+    return deleted
+
+
 def list_feedback(source: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
     paths = [_path(source)] if source else sorted(FEEDBACK_DIR.glob("*.jsonl")) if FEEDBACK_DIR.exists() else []
     items: list[dict[str, Any]] = []
@@ -62,6 +150,22 @@ def list_feedback(source: str | None = None, limit: int = 100) -> list[dict[str,
                 items.append(obj)
     items.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
     return items[: max(1, min(limit, 500))]
+
+
+def _read_path(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    items: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            items.append(obj)
+    return items
 
 
 def update_feedback(item_id: str, patch: dict[str, Any]) -> dict[str, Any]:

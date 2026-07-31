@@ -219,6 +219,27 @@ def recent_turns(
     return [_turn_item(row) for row in reversed(rows)]
 
 
+def get_turn(auth: AuthContext, turn_id: int) -> dict[str, Any]:
+    """Return one assistant turn owned by the current work identity."""
+    validate_assistant_identity(auth)
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT t.*
+            FROM assistant_turn t
+            JOIN assistant_session s ON s.id = t.session_id
+            WHERE t.id = ?
+              AND s.user_id = ?
+              AND s.role_binding_id = ?
+              AND s.deleted_at IS NULL
+            """,
+            (turn_id, auth.user_id, auth.role_binding_id),
+        ).fetchone()
+    if row is None:
+        raise AssistantSessionNotFoundError("助手回答不存在")
+    return _turn_item(row)
+
+
 def update_session(
     auth: AuthContext,
     session_id: int,
