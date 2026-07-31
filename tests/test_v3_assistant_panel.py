@@ -13,18 +13,20 @@ def _text(name: str) -> str:
 
 def test_v3_assistant_panel_is_loaded_before_app_and_replaces_visible_legacy_shell():
     html = _text("index.html")
-    assert '<link rel="stylesheet" href="/assistant-panel.css?v=zjh-011"' in html
+    assert '<link rel="stylesheet" href="/assistant-panel.css?v=zjh-feedback-1"' in html
     assert '<div id="v3-assistant-panel" data-assistant-panel data-page="assistant"></div>' in html
     assert 'class="assistant-grid legacy-assistant-shell" hidden aria-hidden="true"' in html
-    assert '/api.js?v=zjh-external-1' in html
+    assert '/api.js?v=zjh-feedback-1' in html
     assert '/app.js?v=zjh-022' in html
-    assert html.index('/api.js?v=zjh-external-1') < html.index('/assistant-panel.js?v=zjh-022')
-    assert html.index('/assistant-panel.js?v=zjh-022') < html.index('/app.js?v=zjh-022')
+    assert html.index('/api.js?v=zjh-feedback-1') < html.index('/assistant-panel.js?v=zjh-feedback-1')
+    assert html.index('/assistant-panel.js?v=zjh-feedback-1') < html.index('/app.js?v=zjh-022')
 
 
 def test_api_client_exposes_unified_assistant_and_action_draft_calls():
     script = _text("api.js")
     assert 'queryAssistant: (payload) => json("POST", "/api/assistant/query", payload, 50000)' in script
+    assert 'feedbackAssistantTurn: (id, payload) => json("POST", `/api/assistant/turns/${encodeURIComponent(id)}/feedback`, payload)' in script
+    assert 'cancelAssistantTurnFeedback: (id) => request(`/api/assistant/turns/${encodeURIComponent(id)}/feedback`, { method: "DELETE" })' in script
     assert "new AbortController()" in script
     assert "智能问数请求超时，请稍后重试。" in script
     assert 'assistantAction: (id) => request(`/api/assistant/action-drafts/${encodeURIComponent(id)}`)' in script
@@ -57,6 +59,10 @@ def test_panel_covers_every_v3_3_1_state_and_initial_recommendations():
     assert "RETRIEVAL_DEGRADED" in script
     assert 'if (result.answer_type === "unsupported") return "unsupported";' in script
     assert 'unsupported: { label: "NOT SUPPORTED"' in script
+    assert "renderFeedback(card, result)" in script
+    assert 'this.api.feedbackAssistantTurn(result.turn_id' in script
+    assert "this.api.cancelAssistantTurnFeedback(result.turn_id)" in script
+    assert "正向结果经管理员复核后可沉淀为标准问法" in script
 
 
 def test_teacher_and_student_receive_concrete_role_specific_recommendations():
@@ -136,3 +142,5 @@ def test_panel_styles_are_scoped_responsive_and_keep_legacy_shell_hidden():
     assert ".v3ap-action.is-confirmed" in css
     assert ".v3ap-answer.is-unauthorized" in css
     assert ".v3ap-answer.is-unsupported" in css
+    assert ".v3ap-feedback-actions" in css
+    assert ".v3ap-feedback-form[hidden]" in css

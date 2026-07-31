@@ -271,6 +271,7 @@
       this.renderData(card, result.data);
       this.renderEvidence(card, result.evidence || []);
       this.renderSql(card, result.sql);
+      this.renderFeedback(card, result);
       this.renderTrace(card, result.trace_summary);
       this.renderSuggestedQuestions(card, result.suggested_questions || []);
       this.renderActions(card, result.suggested_actions || []);
@@ -374,6 +375,127 @@
       details.append(el("summary", "", "查看生成 SQL"));
       details.append(el("pre", "", sql));
       card.append(details);
+    }
+
+    renderFeedback(card, result) {
+      if (
+        !result.turn_id
+        || result.answer_type !== "nl2sql"
+        || !result.sql
+        || !["success", "degraded"].includes(result.status)
+        || typeof this.api.feedbackAssistantTurn !== "function"
+      ) return;
+
+      const section = this.section("结果反馈", "反馈将进入质量治理；正向结果经管理员复核后可沉淀为标准问法");
+      const actions = el("div", "v3ap-feedback-actions");
+      const good = button("👍 结果正确", "v3ap-feedback-button");
+      const bad = button("👎 需要改进", "v3ap-feedback-button");
+      const status = el("p", "v3ap-feedback-status", "");
+      const form = el("div", "v3ap-feedback-form");
+      form.hidden = true;
+      let currentKind = "";
+
+      const category = document.createElement("select");
+      category.className = "v3ap-feedback-category";
+      [
+        ["wrong_sql", "SQL 不正确"],
+        ["wrong_scope", "数据范围不正确"],
+        ["missing_filter", "筛选条件缺失"],
+        ["wrong_aggregation", "聚合口径不正确"],
+        ["incomplete_result", "结果不完整"],
+        ["misunderstood_question", "问题理解偏差"],
+        ["other", "其他"],
+      ].forEach(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        category.append(option);
+      });
+      const reason = document.createElement("textarea");
+      reason.className = "v3ap-feedback-reason";
+      reason.maxLength = 1000;
+      reason.rows = 3;
+      reason.placeholder = "请说明哪里与预期不符，方便管理员复核。";
+      const submit = button("提交反馈", "v3ap-feedback-submit");
+      form.append(category, reason, submit);
+
+      const setBusy = (busy) => {
+        good.disabled = busy;
+        bad.disabled = busy;
+        submit.disabled = busy;
+      };
+      const send = async (kind) => {
+        const isIncorrect = kind === "incorrect";
+        const message = reason.value.trim();
+        if (isIncorrect && !message) {
+          status.textContent = "请先填写需要改进的原因。";
+          status.className = "v3ap-feedback-status is-error";
+          reason.focus();
+          return;
+        }
+        setBusy(true);
+        status.textContent = "正在提交…";
+        status.className = "v3ap-feedback-status";
+        try {
+          const response = await this.api.feedbackAssistantTurn(result.turn_id, {
+            kind,
+            category: isIncorrect ? category.value : "confirmed_example",
+            reason: isIncorrect ? message : "",
+            sql: result.sql,
+          });
+          const savedKind = response.item?.kind || kind;
+          currentKind = savedKind;
+          good.classList.toggle("is-active", savedKind === "correct");
+          bad.classList.toggle("is-active", savedKind === "incorrect");
+          form.hidden = true;
+          status.textContent = savedKind === "correct"
+            ? "已点赞并进入标准问法复核队列。"
+            : "反馈已提交，管理员可在质量治理中复核。";
+          status.className = "v3ap-feedback-status is-success";
+        } catch (error) {
+          status.textContent = error?.message || "反馈提交失败，请稍后重试。";
+          status.className = "v3ap-feedback-status is-error";
+        } finally {
+          setBusy(false);
+        }
+      };
+      const cancel = async () => {
+        if (!currentKind || typeof this.api.cancelAssistantTurnFeedback !== "function") return;
+        setBusy(true);
+        try {
+          await this.api.cancelAssistantTurnFeedback(result.turn_id);
+          currentKind = "";
+          good.classList.remove("is-active");
+          bad.classList.remove("is-active");
+          form.hidden = true;
+          status.textContent = "本次反馈已取消。";
+          status.className = "v3ap-feedback-status";
+        } catch (error) {
+          status.textContent = error?.message || "取消反馈失败，请稍后重试。";
+          status.className = "v3ap-feedback-status is-error";
+        } finally {
+          setBusy(false);
+        }
+      };
+      good.addEventListener("click", () => {
+        if (currentKind === "correct") cancel();
+        else send("correct");
+      });
+      bad.addEventListener("click", () => {
+        if (currentKind === "incorrect") {
+          cancel();
+          return;
+        }
+        form.hidden = !form.hidden;
+        status.textContent = form.hidden ? "" : "请选择问题类型并补充说明。";
+        status.className = "v3ap-feedback-status";
+        if (!form.hidden) reason.focus();
+      });
+      submit.addEventListener("click", () => send("incorrect"));
+
+      actions.append(good, bad);
+      section.append(actions, form, status);
+      card.append(section);
     }
 
     renderTrace(card, trace) {
